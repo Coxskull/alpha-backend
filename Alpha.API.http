@@ -1,0 +1,6 @@
+@Alpha.API_HostAddress = http://localhost:5148
+
+GET {{Alpha.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
