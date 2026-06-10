@@ -1,9 +1,15 @@
 using Alpha.API.Data;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.ReferenceHandler =
+            ReferenceHandler.IgnoreCycles;
+    });
 
 builder.Services.AddEndpointsApiExplorer();
 
@@ -45,5 +51,7 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.MapGet("/", () => Results.Redirect("/swagger"));
+
+app.MapGet("/health", () => "API WORKING");
 
 app.Run();
