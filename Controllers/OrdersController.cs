@@ -72,19 +72,61 @@ public class OrdersController : ControllerBase
     // =========================================================
 
     [HttpGet]
-public async Task<IActionResult> GetOrders()
-{
-    try
+    public async Task<IActionResult> GetOrders()
     {
         var orders = await _context.Orders
+            .Include(o => o.Supplier)
+            .Include(o => o.Driver)
+            .Select(o => new
+            {
+                o.Id,
+
+                o.OrderNumber,
+
+                o.CustomerName,
+
+                o.PickupAddress,
+
+                o.DeliveryAddress,
+
+                o.ItemDescription,
+
+                o.Zone,
+
+                Status =
+                    o.Status == "pending"
+                        ? "Pending"
+                    : o.Status == "supplier_assigned"
+                        ? "Supplier Assigned"
+                    : o.Status == "driver_assigned"
+                        ? "Driver Assigned"
+                    : o.Status == "picked_up"
+                        ? "Picked Up"
+                    : o.Status == "en_route"
+                        ? "En Route"
+                    : o.Status == "delivered"
+                        ? "Delivered"
+                    : o.Status,
+
+                SupplierName =
+                    o.Supplier != null
+                        ? o.Supplier.Name
+                        : null,
+
+                DriverName =
+                    o.Driver != null
+                        ? o.Driver.FullName
+                        : null,
+
+                o.CreatedAt,
+
+                o.UpdatedAt
+            })
             .ToListAsync();
 
         return Ok(orders);
     }
-    catch (Exception ex)
-    {
-        return StatusCode(500, ex.ToString());
-    }
+
 }
     // =========================================================
     // GET STATUS HISTORY
