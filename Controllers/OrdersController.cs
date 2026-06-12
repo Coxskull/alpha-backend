@@ -77,33 +77,44 @@ public class OrdersController : ControllerBase
         try
         {
             var orders = await _context.Orders
-                .Include(o => o.Supplier)
-                .Include(o => o.Driver)
-                .OrderByDescending(o => o.CreatedAt)
-                .Select(o => new
-                {
-                    id = o.Id,
-                    orderNumber = o.OrderNumber,
-                    customerName = o.CustomerName,
-                    pickupAddress = o.PickupAddress,
-                    deliveryAddress = o.DeliveryAddress,
-                    itemDescription = o.ItemDescription,
-                    zone = o.Zone,
-                    status = o.Status,
-                    createdAt = o.CreatedAt,
-                    updatedAt = o.UpdatedAt,
+    .Include(o => o.Supplier)
+    .Include(o => o.Driver)
+    .OrderByDescending(o => o.CreatedAt)
+    .Select(o => new
+    {
+        id = o.Id,
 
-                    supplierId = o.SupplierId,
-                    supplierName = o.Supplier != null
-                        ? o.Supplier.Name
-                        : null,
+        orderNumber = o.OrderNumber,
 
-                    driverId = o.DriverId,
-                    driverName = o.Driver != null
-                        ? o.Driver.FullName
-                        : null
-                })
-                .ToListAsync();
+        customerName = o.CustomerName,
+
+        pickupAddress = o.PickupAddress,
+
+        deliveryAddress = o.DeliveryAddress,
+
+        itemDescription = o.ItemDescription,
+
+        zone = o.Zone,
+
+        status = o.Status,
+
+        createdAt = o.CreatedAt,
+
+        updatedAt = o.UpdatedAt,
+
+        supplierId = o.SupplierId,
+
+        supplierName = o.Supplier != null
+            ? o.Supplier.Name
+            : null,
+
+        driverId = o.DriverId,
+
+        driverName = o.Driver != null
+            ? o.Driver.FullName
+            : null
+    })
+    .ToListAsync();
 
             return Ok(orders);
         }
@@ -111,6 +122,7 @@ public class OrdersController : ControllerBase
         {
             return StatusCode(500, ex.ToString());
         }
+    }
     }
     // =========================================================
     // GET STATUS HISTORY
@@ -199,29 +211,62 @@ public class OrdersController : ControllerBase
 
     [HttpPost("{id}/assign-driver/{driverId}")]
     public async Task<IActionResult> AssignDriver(
-     Guid id,
-     Guid driverId)
+    Guid id,
+    Guid driverId)
     {
-        var order = await _context.Orders.FindAsync(id);
+        var order = await _context.Orders
+            .FirstOrDefaultAsync(x => x.Id == id);
 
         if (order == null)
             return NotFound();
 
+        if (order.Status != "supplier_assigned")
+        {
+            return BadRequest(
+                "Driver can only be assigned after supplier assignment."
+            );
+        }
+
         var driver = await _context.Drivers
-            .FindAsync(driverId);
+            .FirstOrDefaultAsync(x => x.Id == driverId);
 
         if (driver == null)
             return NotFound();
+
+        if (driver.AvailabilityStatus != "available")
+        {
+            return BadRequest(
+                "Driver is not available."
+            );
+        }
 
         order.DriverId = driver.Id;
 
         order.Status = "driver_assigned";
 
+        order.UpdatedAt = DateTime.UtcNow;
+
         driver.AvailabilityStatus = "busy";
 
         await _context.SaveChangesAsync();
 
-        return Ok();
+        await AddStatusHistory(
+            order.Id,
+            "driver_assigned"
+        );
+
+        await AddAuditLog(
+            order.Id,
+            $"Driver Assigned: {driver.FullName}"
+        );
+
+        return Ok(new
+        {
+            message = "Driver assigned successfully",
+            driverId = driver.Id,
+            driverName = driver.FullName,
+            status = order.Status
+        });
     }
 
     // =========================================================
@@ -436,5 +481,51 @@ public class OrdersController : ControllerBase
         _context.AuditLogs.Add(log);
 
         await _context.SaveChangesAsync();
+    }
+    [HttpGet("{id}/details")]
+    public async Task<IActionResult> GetDetails(Guid id)
+    {
+        var order = await _context.Orders
+            .Include(x => x.Supplier)
+            .Include(x => x.Driver)
+            .FirstOrDefaultAsync(x => x.Id == id);
+
+        if (order == null)
+            return NotFound();
+
+        return Ok(new
+        {
+            id = order.Id,
+
+            orderNumber = order.OrderNumber,
+
+            customerName = order.CustomerName,
+
+            itemDescription = order.ItemDescription,
+
+            pickupAddress = order.PickupAddress,
+
+            deliveryAddress = order.DeliveryAddress,
+
+            zone = order.Zone,
+
+            status = order.Status,
+
+            supplierId = order.SupplierId,
+
+            supplierName = order.Supplier != null
+                ? order.Supplier.Name
+                : null,
+
+            driverId = order.DriverId,
+
+            driverName = order.Driver != null
+                ? order.Driver.FullName
+                : null,
+
+            createdAt = order.CreatedAt,
+
+            updatedAt = order.UpdatedAt
+        });
     }
 }
