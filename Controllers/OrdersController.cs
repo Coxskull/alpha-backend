@@ -141,7 +141,13 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound();
 
-        // Find AVAILABLE supplier
+        if (order.Status != "pending")
+        {
+            return BadRequest(
+                "Supplier can only be assigned when order is Pending."
+            );
+        }
+
         var supplier = await _context.Suppliers
             .Where(s => s.AvailabilityStatus == "available")
             .FirstOrDefaultAsync();
@@ -149,13 +155,10 @@ public class OrdersController : ControllerBase
         if (supplier == null)
             return BadRequest("No available suppliers");
 
-        // Assign supplier
         order.SupplierId = supplier.Id;
 
-        // Change supplier status
         supplier.AvailabilityStatus = "busy";
 
-        // Update order status
         order.Status = "supplier_assigned";
 
         order.UpdatedAt = DateTime.UtcNow;
@@ -195,7 +198,13 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound();
 
-        // Find AVAILABLE driver
+        if (order.Status != "supplier_assigned")
+        {
+            return BadRequest(
+                "Driver can only be assigned after supplier assignment."
+            );
+        }
+
         var driver = await _context.Drivers
             .Where(d => d.AvailabilityStatus == "available")
             .FirstOrDefaultAsync();
@@ -203,13 +212,10 @@ public class OrdersController : ControllerBase
         if (driver == null)
             return BadRequest("No available drivers");
 
-        // Assign driver
         order.DriverId = driver.Id;
 
-        // Change driver status
         driver.AvailabilityStatus = "busy";
 
-        // Update order status
         order.Status = "driver_assigned";
 
         order.UpdatedAt = DateTime.UtcNow;
@@ -239,7 +245,6 @@ public class OrdersController : ControllerBase
     // PICKED UP
     // POST: /api/Orders/{id}/picked-up
     // =========================================================
-
     [HttpPost("{id}/picked-up")]
     public async Task<IActionResult> PickedUp(Guid id)
     {
@@ -247,6 +252,20 @@ public class OrdersController : ControllerBase
 
         if (order == null)
             return NotFound();
+
+        if (order.Status != "driver_assigned")
+        {
+            return BadRequest(
+                "Order must have assigned driver before pickup."
+            );
+        }
+
+        if (order.DriverId == null)
+        {
+            return BadRequest(
+                "No driver assigned."
+            );
+        }
 
         order.Status = "picked_up";
 
@@ -277,6 +296,13 @@ public class OrdersController : ControllerBase
 
         if (order == null)
             return NotFound();
+
+        if (order.Status != "picked_up")
+        {
+            return BadRequest(
+                "Order must be picked up first."
+            );
+        }
 
         order.Status = "en_route";
 
@@ -310,17 +336,22 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound();
 
+        if (order.Status != "en_route")
+        {
+            return BadRequest(
+                "Order must be en route before delivery."
+            );
+        }
+
         order.Status = "delivered";
 
         order.UpdatedAt = DateTime.UtcNow;
 
-        // Free driver
         if (order.Driver != null)
         {
             order.Driver.AvailabilityStatus = "available";
         }
 
-        // Free supplier
         if (order.Supplier != null)
         {
             order.Supplier.AvailabilityStatus = "available";
