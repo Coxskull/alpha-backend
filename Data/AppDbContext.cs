@@ -25,30 +25,36 @@ public class AppDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        modelBuilder.Entity<User>()
-            .ToTable("users");
+        modelBuilder.Entity<User>().ToTable("users");
+        modelBuilder.Entity<Order>().ToTable("orders");
+        modelBuilder.Entity<Driver>().ToTable("drivers");
+        modelBuilder.Entity<Supplier>().ToTable("suppliers");
+        modelBuilder.Entity<AuditLog>().ToTable("audit_logs");
+        modelBuilder.Entity<StatusHistory>().ToTable("status_history");
+        modelBuilder.Entity<DeliveryProof>().ToTable("delivery_proof");
 
-        modelBuilder.Entity<Order>()
-            .ToTable("orders");
-
-        modelBuilder.Entity<Driver>()
-            .ToTable("drivers");
+        // Supplier mappings
+        modelBuilder.Entity<Supplier>()
+            .Property(x => x.Territory)
+            .HasColumnName("territory");
 
         modelBuilder.Entity<Supplier>()
-            .ToTable("suppliers");
+            .Property(x => x.CurrentWorkload)
+            .HasColumnName("current_workload");
 
-        modelBuilder.Entity<AuditLog>()
-            .ToTable("audit_logs");
+        // Driver mappings
+        modelBuilder.Entity<Driver>()
+            .Property(x => x.Territory)
+            .HasColumnName("territory");
 
-        modelBuilder.Entity<StatusHistory>()
-            .ToTable("status_history");
+        modelBuilder.Entity<Driver>()
+            .Property(x => x.ActiveJobs)
+            .HasColumnName("active_jobs");
 
-        modelBuilder.Entity<DeliveryProof>()
-            .ToTable("delivery_proof");
         modelBuilder.Entity<Order>()
-    .HasOne(o => o.Supplier)
-    .WithMany()
-    .HasForeignKey(o => o.SupplierId);
+            .HasOne(o => o.Supplier)
+            .WithMany()
+            .HasForeignKey(o => o.SupplierId);
 
         modelBuilder.Entity<Order>()
             .HasOne(o => o.Driver)

@@ -51,6 +51,14 @@ public class SuppliersController : ControllerBase
         {
             var suppliers = await _context.Suppliers
                 .Where(x => x.AvailabilityStatus == "available")
+                .Select(x => new
+                {
+                    x.Id,
+                    Name = x.Name,
+                    Availability = x.AvailabilityStatus,
+                    Territory = x.Territory,
+                    CurrentWorkload = x.CurrentWorkload
+                })
                 .ToListAsync();
 
             return Ok(suppliers);
