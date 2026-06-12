@@ -44,4 +44,21 @@ public class DriversController : ControllerBase
 
         return Ok(driver);
     }
+    [HttpGet("available")]
+    public async Task<IActionResult> GetAvailableDrivers()
+    {
+        var drivers = await _context.Drivers
+            .Where(x => x.AvailabilityStatus == "available")
+            .Select(x => new
+            {
+                x.Id,
+                x.FullName,
+                Availability = x.AvailabilityStatus,
+                Territory = x.Territory,
+                ActiveJobs = x.ActiveJobs
+            })
+            .ToListAsync();
+
+        return Ok(drivers);
+    }
 }

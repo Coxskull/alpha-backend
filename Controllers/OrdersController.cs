@@ -132,14 +132,16 @@ public class OrdersController : ControllerBase
     // ASSIGN SUPPLIER
     // POST: /api/Orders/{id}/assign-supplier
     // =========================================================
-    [HttpPost("{id}/assign-supplier")]
-    public async Task<IActionResult> AssignSupplier(Guid id)
+    [HttpPost("{id}/assign-supplier/{supplierId}")]
+    public async Task<IActionResult> AssignSupplier(
+    Guid id,
+    Guid supplierId)
     {
         var order = await _context.Orders
-            .FindAsync(id);
+            .FirstOrDefaultAsync(o => o.Id == id);
 
         if (order == null)
-            return NotFound();
+            return NotFound("Order not found.");
 
         if (order.Status != "pending")
         {
@@ -149,38 +151,45 @@ public class OrdersController : ControllerBase
         }
 
         var supplier = await _context.Suppliers
-            .Where(s => s.AvailabilityStatus == "available")
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(s => s.Id == supplierId);
 
         if (supplier == null)
-            return BadRequest("No available suppliers");
+            return NotFound("Supplier not found.");
+
+        if (supplier.AvailabilityStatus != "available")
+        {
+            return BadRequest(
+                "Selected supplier is not available."
+            );
+        }
 
         order.SupplierId = supplier.Id;
+        order.SupplierName = supplier.Name; // remove if not in your model
+
+        order.Status = "supplier_assigned";
+        order.UpdatedAt = DateTime.UtcNow;
 
         supplier.AvailabilityStatus = "busy";
 
-        order.Status = "supplier_assigned";
-
-        order.UpdatedAt = DateTime.UtcNow;
-
         await _context.SaveChangesAsync();
 
+        // Optional if you already have these methods
         await AddStatusHistory(
-            id,
+            order.Id,
             "supplier_assigned"
         );
 
         await AddAuditLog(
-            id,
+            order.Id,
             $"Supplier Assigned: {supplier.Name}"
         );
 
         return Ok(new
         {
             message = "Supplier assigned successfully",
-            supplier = supplier.Name,
             supplierId = supplier.Id,
-            orderStatus = order.Status
+            supplierName = supplier.Name,
+            status = order.Status
         });
     }
 
@@ -189,56 +198,31 @@ public class OrdersController : ControllerBase
     // POST: /api/Orders/{id}/assign-driver
     // =========================================================
 
-    [HttpPost("{id}/assign-driver")]
-    public async Task<IActionResult> AssignDriver(Guid id)
+    [HttpPost("{id}/assign-driver/{driverId}")]
+    public async Task<IActionResult> AssignDriver(
+     Guid id,
+     Guid driverId)
     {
-        var order = await _context.Orders
-            .FindAsync(id);
+        var order = await _context.Orders.FindAsync(id);
 
         if (order == null)
             return NotFound();
 
-        if (order.Status != "supplier_assigned")
-        {
-            return BadRequest(
-                "Driver can only be assigned after supplier assignment."
-            );
-        }
-
         var driver = await _context.Drivers
-            .Where(d => d.AvailabilityStatus == "available")
-            .FirstOrDefaultAsync();
+            .FindAsync(driverId);
 
         if (driver == null)
-            return BadRequest("No available drivers");
+            return NotFound();
 
         order.DriverId = driver.Id;
 
-        driver.AvailabilityStatus = "busy";
-
         order.Status = "driver_assigned";
 
-        order.UpdatedAt = DateTime.UtcNow;
+        driver.AvailabilityStatus = "busy";
 
         await _context.SaveChangesAsync();
 
-        await AddStatusHistory(
-            id,
-            "driver_assigned"
-        );
-
-        await AddAuditLog(
-            id,
-            $"Driver Assigned: {driver.FullName}"
-        );
-
-        return Ok(new
-        {
-            message = "Driver assigned successfully",
-            driver = driver.FullName,
-            driverId = driver.Id,
-            orderStatus = order.Status
-        });
+        return Ok();
     }
 
     // =========================================================
