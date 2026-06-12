@@ -15,4 +15,7 @@ public class Driver
     public string AvailabilityStatus { get; set; } = "available";
 
     public DateTime CreatedAt { get; set; }
+    public string? Territory { get; set; }
+
+    public int ActiveJobs { get; set; } = 0;
 }

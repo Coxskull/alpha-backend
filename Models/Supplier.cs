@@ -13,4 +13,7 @@ public class Supplier
     public string AvailabilityStatus { get; set; } = "available";
 
     public DateTime CreatedAt { get; set; }
+    public string? Territory { get; set; }
+
+    public int CurrentWorkload { get; set; } = 0;
 }

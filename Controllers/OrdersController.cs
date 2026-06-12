@@ -164,7 +164,6 @@ public class OrdersController : ControllerBase
         }
 
         order.SupplierId = supplier.Id;
-        order.SupplierName = supplier.Name; // remove if not in your model
 
         order.Status = "supplier_assigned";
         order.UpdatedAt = DateTime.UtcNow;
