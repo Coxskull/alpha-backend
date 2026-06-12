@@ -20,6 +20,7 @@ public class AppDbContext : DbContext
     public DbSet<StatusHistory> StatusHistory { get; set; }
     public DbSet<AuditLog> AuditLogs { get; set; }
     public DbSet<DeliveryProof> DeliveryProofs { get; set; }
+    public DbSet<OperationalAlert> OperationalAlerts { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
