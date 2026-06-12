@@ -1,96 +1,57 @@
+using Alpha.API.Data;
+using Alpha.API.Models;
+using Microsoft.EntityFrameworkCore;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Alpha.API.Services;
 
-public class AlertService
+public static class AlertService
 {
-    private readonly AppDbContext _context;
-
-    public AlertService(
+    public static async Task<object> GenerateAlerts(
         AppDbContext context)
     {
-        _context = context;
-    }
+        var alerts = new List<object>();
 
-    public async Task CheckOrderAlerts(
-        Order order)
-    {
-        var age =
-            DateTime.UtcNow -
-            order.CreatedAt;
+        var supplierOverdue =
+            await context.Orders
+                .Where(x =>
+                    x.Status == "pending" &&
+                    x.SupplierId == null)
+                .ToListAsync();
 
-        if (
-            order.Status == "pending"
-            &&
-            age.TotalMinutes > 10
-        )
+        foreach (var order in supplierOverdue)
         {
-            await CreateAlert(
-                order.Id,
-                "supplier_overdue",
-                "No supplier assigned after 10 minutes"
-            );
-        }
-
-        if (
-            order.Status ==
-            "supplier_assigned"
-            &&
-            age.TotalMinutes > 15
-        )
-        {
-            await CreateAlert(
-                order.Id,
-                "driver_overdue",
-                "No driver assigned after 15 minutes"
-            );
-        }
-
-        if (
-            order.Status != "delivered"
-            &&
-            age.TotalMinutes > 60
-        )
-        {
-            await CreateAlert(
-                order.Id,
-                "delivery_delayed",
-                "Delivery delayed"
-            );
-        }
-    }
-
-    private async Task CreateAlert(
-        Guid orderId,
-        string type,
-        string message)
-    {
-        var exists =
-            await _context
-                .OperationalAlerts
-                .AnyAsync(x =>
-                    x.OrderId ==
-                    orderId
-                    &&
-                    x.AlertType ==
-                    type
-                    &&
-                    !x.Resolved);
-
-        if (exists)
-            return;
-
-        _context.OperationalAlerts.Add(
-            new OperationalAlert
+            alerts.Add(new
             {
-                OrderId = orderId,
-                AlertType = type,
-                Message = message,
-                CreatedAt =
-                    DateTime.UtcNow
+                id = Guid.NewGuid(),
+                alertType = "supplier_overdue",
+                message =
+                    $"Order {order.OrderNumber} has no supplier assigned",
+                createdAt = DateTime.UtcNow
             });
+        }
 
-        await _context.SaveChangesAsync();
+        var driverOverdue =
+            await context.Orders
+                .Where(x =>
+                    x.Status == "supplier_assigned" &&
+                    x.DriverId == null)
+                .ToListAsync();
+
+        foreach (var order in driverOverdue)
+        {
+            alerts.Add(new
+            {
+                id = Guid.NewGuid(),
+                alertType = "driver_overdue",
+                message =
+                    $"Order {order.OrderNumber} has no driver assigned",
+                createdAt = DateTime.UtcNow
+            });
+        }
+
+        return alerts;
     }
 }
