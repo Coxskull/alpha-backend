@@ -47,18 +47,18 @@ public class SuppliersController : ControllerBase
     [HttpGet("available")]
     public async Task<IActionResult> GetAvailableSuppliers()
     {
-        var suppliers = await _context.Suppliers
-            .Where(x => x.AvailabilityStatus == "available")
-            .Select(x => new
-            {
-                x.Id,
-                Name = x.Name,
-                Availability = x.AvailabilityStatus,
-                Territory = x.Territory,
-                CurrentWorkload = x.CurrentWorkload
-            })
-            .ToListAsync();
+        try
+        {
+            var suppliers = await _context.Suppliers
+                .Where(x => x.AvailabilityStatus == "available")
+                .ToListAsync();
 
-        return Ok(suppliers);
+            return Ok(suppliers);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ex.ToString());
+        }
     }
+
 }
