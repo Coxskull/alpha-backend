@@ -72,20 +72,46 @@ public class OrdersController : ControllerBase
     // =========================================================
 
     [HttpGet]
-public async Task<IActionResult> GetOrders()
-{
-    try
+    public async Task<IActionResult> GetOrders()
     {
-        var orders = await _context.Orders
-            .ToListAsync();
+        try
+        {
+            var orders = await _context.Orders
+                .Include(o => o.Supplier)
+                .Include(o => o.Driver)
+                .OrderByDescending(o => o.CreatedAt)
+                .Select(o => new
+                {
+                    id = o.Id,
+                    orderNumber = o.OrderNumber,
+                    customerName = o.CustomerName,
+                    pickupAddress = o.PickupAddress,
+                    deliveryAddress = o.DeliveryAddress,
+                    itemDescription = o.ItemDescription,
+                    zone = o.Zone,
+                    status = o.Status,
+                    createdAt = o.CreatedAt,
+                    updatedAt = o.UpdatedAt,
 
-        return Ok(orders);
+                    supplierId = o.SupplierId,
+                    supplierName = o.Supplier != null
+                        ? o.Supplier.Name
+                        : null,
+
+                    driverId = o.DriverId,
+                    driverName = o.Driver != null
+                        ? o.Driver.FullName
+                        : null
+                })
+                .ToListAsync();
+
+            return Ok(orders);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ex.ToString());
+        }
     }
-    catch (Exception ex)
-    {
-        return StatusCode(500, ex.ToString());
-    }
-}
     // =========================================================
     // GET STATUS HISTORY
     // GET: /api/Orders/{id}/status
