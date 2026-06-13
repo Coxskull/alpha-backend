@@ -81,28 +81,7 @@ public class AppDbContext : DbContext
         // ==========================
 
         modelBuilder.Entity<Product>()
-            .Property(x => x.SupplierId)
-            .HasColumnName("supplier_id");
-
-        modelBuilder.Entity<Product>()
-            .Property(x => x.PartNumber)
-            .HasColumnName("part_number");
-
-        modelBuilder.Entity<Product>()
-            .Property(x => x.ImageUrl)
-            .HasColumnName("image_url");
-
-        modelBuilder.Entity<Product>()
-            .Property(x => x.QuantityAvailable)
-            .HasColumnName("quantity_available");
-
-        modelBuilder.Entity<Product>()
-            .Property(x => x.IsActive)
-            .HasColumnName("is_active");
-
-        modelBuilder.Entity<Product>()
-            .Property(x => x.CreatedAt)
-            .HasColumnName("created_at");
+            .ToTable("products");
 
         // ==========================
         // CUSTOMER ADDRESS MAPPINGS
