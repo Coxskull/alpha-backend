@@ -20,11 +20,15 @@ public class ProductsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetProducts()
     {
-        var products = await _context.Products
-            .Where(x => x.IsActive)
-            .ToListAsync();
-
-        return Ok(products);
+        try
+        {
+            var products = await _context.Products.ToListAsync();
+            return Ok(products);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ex.ToString());
+        }
     }
 
     [HttpGet("{id:guid}")]

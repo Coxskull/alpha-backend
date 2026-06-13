@@ -1,12 +1,16 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace Alpha.API.Models;
 
 public class Product
 {
+    [Key]
     public Guid Id { get; set; }
 
     public Guid SupplierId { get; set; }
+
+    public string PartNumber { get; set; } = string.Empty;
 
     public string Brand { get; set; } = string.Empty;
 
@@ -21,4 +25,6 @@ public class Product
     public int QuantityAvailable { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
