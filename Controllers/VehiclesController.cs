@@ -11,14 +11,14 @@ namespace Alpha.API.Controllers;
 [Route("api/[controller]")]
 public class VehiclesController : ControllerBase
 {
-    private readonly AlphaDbContext _context;
+    private readonly AppDbContext _context;
 
-    public VehiclesController(AlphaDbContext context)
+    public VehiclesController(AppDbContext context)
     {
         _context = context;
     }
 
-    [HttpGet("customer/{customerId}")]
+    [HttpGet("customer/{customerId:guid}")]
     public async Task<IActionResult> GetVehicles(Guid customerId)
     {
         var vehicles = await _context.CustomerVehicles
@@ -28,15 +28,43 @@ public class VehiclesController : ControllerBase
         return Ok(vehicles);
     }
 
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> GetVehicle(Guid id)
+    {
+        var vehicle = await _context.CustomerVehicles
+            .FirstOrDefaultAsync(x => x.Id == id);
+
+        if (vehicle == null)
+            return NotFound();
+
+        return Ok(vehicle);
+    }
+
     [HttpPost]
     public async Task<IActionResult> AddVehicle(CustomerVehicle vehicle)
     {
         vehicle.Id = Guid.NewGuid();
+        vehicle.CreatedAt = DateTime.UtcNow;
 
         _context.CustomerVehicles.Add(vehicle);
 
         await _context.SaveChangesAsync();
 
         return Ok(vehicle);
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeleteVehicle(Guid id)
+    {
+        var vehicle = await _context.CustomerVehicles.FindAsync(id);
+
+        if (vehicle == null)
+            return NotFound();
+
+        _context.CustomerVehicles.Remove(vehicle);
+
+        await _context.SaveChangesAsync();
+
+        return NoContent();
     }
 }

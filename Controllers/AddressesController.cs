@@ -11,14 +11,14 @@ namespace Alpha.API.Controllers;
 [Route("api/[controller]")]
 public class AddressesController : ControllerBase
 {
-    private readonly AlphaDbContext _context;
+    private readonly AppDbContext _context;
 
-    public AddressesController(AlphaDbContext context)
+    public AddressesController(AppDbContext context)
     {
         _context = context;
     }
 
-    [HttpGet("{customerId}")]
+    [HttpGet("{customerId:guid}")]
     public async Task<IActionResult> GetAddresses(Guid customerId)
     {
         var addresses = await _context.CustomerAddresses
@@ -29,14 +29,30 @@ public class AddressesController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(CustomerAddress address)
+    public async Task<IActionResult> CreateAddress(CustomerAddress address)
     {
         address.Id = Guid.NewGuid();
+        address.CreatedAt = DateTime.UtcNow;
 
         _context.CustomerAddresses.Add(address);
 
         await _context.SaveChangesAsync();
 
         return Ok(address);
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeleteAddress(Guid id)
+    {
+        var address = await _context.CustomerAddresses.FindAsync(id);
+
+        if (address == null)
+            return NotFound();
+
+        _context.CustomerAddresses.Remove(address);
+
+        await _context.SaveChangesAsync();
+
+        return NoContent();
     }
 }

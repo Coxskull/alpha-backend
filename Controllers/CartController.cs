@@ -11,14 +11,14 @@ namespace Alpha.API.Controllers;
 [Route("api/[controller]")]
 public class CartController : ControllerBase
 {
-    private readonly AlphaDbContext _context;
+    private readonly AppDbContext _context;
 
-    public CartController(AlphaDbContext context)
+    public CartController(AppDbContext context)
     {
         _context = context;
     }
 
-    [HttpGet("{customerId}")]
+    [HttpGet("{customerId:guid}")]
     public async Task<IActionResult> GetCart(Guid customerId)
     {
         var items = await _context.CartItems
@@ -32,6 +32,7 @@ public class CartController : ControllerBase
     public async Task<IActionResult> AddToCart(CartItem item)
     {
         item.Id = Guid.NewGuid();
+        item.CreatedAt = DateTime.UtcNow;
 
         _context.CartItems.Add(item);
 
@@ -40,7 +41,24 @@ public class CartController : ControllerBase
         return Ok(item);
     }
 
-    [HttpDelete("remove/{id}")]
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> UpdateQuantity(
+        Guid id,
+        [FromBody] int quantity)
+    {
+        var item = await _context.CartItems.FindAsync(id);
+
+        if (item == null)
+            return NotFound();
+
+        item.Quantity = quantity;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(item);
+    }
+
+    [HttpDelete("remove/{id:guid}")]
     public async Task<IActionResult> Remove(Guid id)
     {
         var item = await _context.CartItems.FindAsync(id);
@@ -49,6 +67,20 @@ public class CartController : ControllerBase
             return NotFound();
 
         _context.CartItems.Remove(item);
+
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    [HttpDelete("clear/{customerId:guid}")]
+    public async Task<IActionResult> ClearCart(Guid customerId)
+    {
+        var items = await _context.CartItems
+            .Where(x => x.CustomerId == customerId)
+            .ToListAsync();
+
+        _context.CartItems.RemoveRange(items);
 
         await _context.SaveChangesAsync();
 

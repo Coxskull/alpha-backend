@@ -10,9 +10,9 @@ namespace Alpha.API.Controllers;
 [Route("api/[controller]")]
 public class ProductsController : ControllerBase
 {
-    private readonly AlphaDbContext _context;
+    private readonly AppDbContext _context;
 
-    public ProductsController(AlphaDbContext context)
+    public ProductsController(AppDbContext context)
     {
         _context = context;
     }
@@ -27,7 +27,7 @@ public class ProductsController : ControllerBase
         return Ok(products);
     }
 
-    [HttpGet("{id}")]
+    [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetProduct(Guid id)
     {
         var product = await _context.Products
@@ -40,8 +40,11 @@ public class ProductsController : ControllerBase
     }
 
     [HttpGet("search")]
-    public async Task<IActionResult> Search(string keyword)
+    public async Task<IActionResult> Search([FromQuery] string keyword)
     {
+        if (string.IsNullOrWhiteSpace(keyword))
+            return BadRequest("Keyword is required.");
+
         var products = await _context.Products
             .Where(x =>
                 x.Name.Contains(keyword) ||

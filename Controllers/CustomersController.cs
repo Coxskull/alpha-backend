@@ -11,9 +11,9 @@ namespace Alpha.API.Controllers;
 [Route("api/[controller]")]
 public class CustomersController : ControllerBase
 {
-    private readonly AlphaDbContext _context;
+    private readonly AppDbContext _context;
 
-    public CustomersController(AlphaDbContext context)
+    public CustomersController(AppDbContext context)
     {
         _context = context;
     }
@@ -24,7 +24,7 @@ public class CustomersController : ControllerBase
         return Ok(await _context.Customers.ToListAsync());
     }
 
-    [HttpGet("{id}")]
+    [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetCustomer(Guid id)
     {
         var customer = await _context.Customers.FindAsync(id);
@@ -36,14 +36,33 @@ public class CustomersController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(Customer customer)
+    public async Task<IActionResult> CreateCustomer(Customer customer)
     {
         customer.Id = Guid.NewGuid();
+        customer.CreatedAt = DateTime.UtcNow;
 
         _context.Customers.Add(customer);
 
         await _context.SaveChangesAsync();
 
-        return Ok(customer);
+        return CreatedAtAction(
+            nameof(GetCustomer),
+            new { id = customer.Id },
+            customer);
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeleteCustomer(Guid id)
+    {
+        var customer = await _context.Customers.FindAsync(id);
+
+        if (customer == null)
+            return NotFound();
+
+        _context.Customers.Remove(customer);
+
+        await _context.SaveChangesAsync();
+
+        return NoContent();
     }
 }
