@@ -463,18 +463,17 @@ public class OrdersController : ControllerBase
     // HELPER: AUDIT LOG
     // =========================================================
 
-    private async Task AddAuditLog(Guid orderId, string action)
+    private async Task AddAuditLog(
+    Guid orderId,
+    string action,
+    string performedBy = "System")
     {
         var log = new AuditLog
         {
             Id = Guid.NewGuid(),
-
             OrderId = orderId,
-
             Action = action,
-
-            PerformedBy = "System",
-
+            PerformedBy = performedBy,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -528,4 +527,5 @@ public class OrdersController : ControllerBase
             updatedAt = order.UpdatedAt
         });
     }
+
 }

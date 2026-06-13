@@ -21,6 +21,15 @@ public class AppDbContext : DbContext
     public DbSet<AuditLog> AuditLogs { get; set; }
     public DbSet<DeliveryProof> DeliveryProofs { get; set; }
     public DbSet<OperationalAlert> OperationalAlerts { get; set; }
+    public DbSet<Product> Products { get; set; }
+
+    public DbSet<Customer> Customers { get; set; }
+
+    public DbSet<CustomerAddress> CustomerAddresses { get; set; }
+
+    public DbSet<CustomerVehicle> CustomerVehicles { get; set; }
+
+    public DbSet<CartItem> CartItems { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
