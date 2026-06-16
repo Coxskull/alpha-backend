@@ -57,24 +57,36 @@ public class AppDbContext : DbContext
         // ==========================
 
         modelBuilder.Entity<Supplier>()
-            .Property(x => x.Territory)
-            .HasColumnName("territory");
+     .Property(x => x.Territory)
+     .HasColumnName("Territory");
 
         modelBuilder.Entity<Supplier>()
             .Property(x => x.CurrentWorkload)
-            .HasColumnName("current_workload");
+            .HasColumnName("CurrentWorkload");
+
+        modelBuilder.Entity<Supplier>()
+            .Property(x => x.ResponseRate)
+            .HasColumnName("ResponseRate");
 
         // ==========================
         // DRIVER MAPPINGS
         // ==========================
 
         modelBuilder.Entity<Driver>()
-            .Property(x => x.Territory)
-            .HasColumnName("territory");
+     .Property(x => x.Territory)
+     .HasColumnName("Territory");
 
         modelBuilder.Entity<Driver>()
             .Property(x => x.ActiveJobs)
-            .HasColumnName("active_jobs");
+            .HasColumnName("ActiveJobs");
+
+        modelBuilder.Entity<Driver>()
+            .Property(x => x.ResponseRate)
+            .HasColumnName("ResponseRate");
+
+        modelBuilder.Entity<Driver>()
+            .Property(x => x.LastSeenAt)
+            .HasColumnName("LastSeenAt");
 
         // ==========================
         // PRODUCT MAPPINGS
