@@ -222,10 +222,10 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound();
 
-        if (order.Status != "supplier_assigned")
+        if (order.Status != "ready_for_pickup")
         {
             return BadRequest(
-                "Driver can only be assigned after supplier assignment."
+                "Order must be ready for pickup before assigning a driver."
             );
         }
 
