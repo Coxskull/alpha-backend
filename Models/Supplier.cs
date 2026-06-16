@@ -12,13 +12,11 @@ public class Supplier
 
     public string AvailabilityStatus { get; set; } = "available";
 
-    public DateTime CreatedAt { get; set; }
-    public string? Territory { get; set; }
-
-    public int CurrentWorkload { get; set; } = 0;
     public string Territory { get; set; } = "";
 
-    public int CurrentWorkload { get; set; }
+    public int CurrentWorkload { get; set; } = 0;
 
-    public double ResponseRate { get; set; }
+    public double ResponseRate { get; set; } = 100;
+
+    public DateTime CreatedAt { get; set; }
 }

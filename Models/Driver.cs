@@ -14,15 +14,13 @@ public class Driver
 
     public string AvailabilityStatus { get; set; } = "available";
 
-    public DateTime CreatedAt { get; set; }
-    public string? Territory { get; set; }
-
-    public int ActiveJobs { get; set; } = 0;
     public string Territory { get; set; } = "";
 
-    public int ActiveJobs { get; set; }
+    public int ActiveJobs { get; set; } = 0;
 
-    public double ResponseRate { get; set; }
+    public double ResponseRate { get; set; } = 100;
 
     public DateTime? LastSeenAt { get; set; }
+
+    public DateTime CreatedAt { get; set; }
 }
