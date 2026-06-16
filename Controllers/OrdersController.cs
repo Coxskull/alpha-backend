@@ -182,6 +182,8 @@ public class OrdersController : ControllerBase
 
         supplier.AvailabilityStatus = "busy";
 
+        supplier.CurrentWorkload++;
+
         await _context.SaveChangesAsync();
 
         // Optional if you already have these methods
@@ -247,6 +249,8 @@ public class OrdersController : ControllerBase
         order.UpdatedAt = DateTime.UtcNow;
 
         driver.AvailabilityStatus = "busy";
+
+        driver.ActiveJobs++;
 
         await _context.SaveChangesAsync();
 
@@ -377,12 +381,24 @@ public class OrdersController : ControllerBase
 
         if (order.Driver != null)
         {
-            order.Driver.AvailabilityStatus = "available";
+            order.Driver.ActiveJobs--;
+
+            if (order.Driver.ActiveJobs < 0)
+                order.Driver.ActiveJobs = 0;
+
+            order.Driver.AvailabilityStatus =
+                "available";
         }
 
         if (order.Supplier != null)
         {
-            order.Supplier.AvailabilityStatus = "available";
+            order.Supplier.CurrentWorkload--;
+
+            if (order.Supplier.CurrentWorkload < 0)
+                order.Supplier.CurrentWorkload = 0;
+
+            order.Supplier.AvailabilityStatus =
+                "available";
         }
 
         await _context.SaveChangesAsync();
@@ -525,6 +541,37 @@ public class OrdersController : ControllerBase
             createdAt = order.CreatedAt,
 
             updatedAt = order.UpdatedAt
+        });
+    }
+    [HttpGet("{id}/recommendations")]
+    public async Task<IActionResult> GetRecommendations(Guid id)
+    {
+        var order = await _context.Orders
+            .FirstOrDefaultAsync(x => x.Id == id);
+
+        if (order == null)
+            return NotFound();
+
+        var supplier =
+            await _context.Suppliers
+                .Where(x =>
+                    x.AvailabilityStatus == "available" &&
+                    x.Territory == order.Zone)
+                .OrderBy(x => x.CurrentWorkload)
+                .FirstOrDefaultAsync();
+
+        var driver =
+            await _context.Drivers
+                .Where(x =>
+                    x.AvailabilityStatus == "available" &&
+                    x.Territory == order.Zone)
+                .OrderBy(x => x.ActiveJobs)
+                .FirstOrDefaultAsync();
+
+        return Ok(new
+        {
+            supplier,
+            driver
         });
     }
 

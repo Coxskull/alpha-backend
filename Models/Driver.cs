@@ -18,4 +18,11 @@ public class Driver
     public string? Territory { get; set; }
 
     public int ActiveJobs { get; set; } = 0;
+    public string Territory { get; set; } = "";
+
+    public int ActiveJobs { get; set; }
+
+    public double ResponseRate { get; set; }
+
+    public DateTime? LastSeenAt { get; set; }
 }

@@ -16,4 +16,9 @@ public class Supplier
     public string? Territory { get; set; }
 
     public int CurrentWorkload { get; set; } = 0;
+    public string Territory { get; set; } = "";
+
+    public int CurrentWorkload { get; set; }
+
+    public double ResponseRate { get; set; }
 }
