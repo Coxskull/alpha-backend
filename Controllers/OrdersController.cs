@@ -430,25 +430,23 @@ public class OrdersController : ControllerBase
         var proof = new DeliveryProof
         {
             Id = Guid.NewGuid(),
-
             OrderId = id,
-
             ImageUrl = imageUrl,
-
             UploadedAt = DateTime.UtcNow
         };
 
         _context.DeliveryProofs.Add(proof);
 
-        order.Status = "proof_uploaded";
-
+        order.Status = "delivered";
         order.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
         await AddStatusHistory(id, "proof_uploaded");
+        await AddStatusHistory(id, "delivered");
 
         await AddAuditLog(id, "Delivery Proof Uploaded");
+        await AddAuditLog(id, "Order Delivered With Proof");
 
         return Ok(proof);
     }
