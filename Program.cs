@@ -7,25 +7,47 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Railway / Production port binding
+builder.WebHost.ConfigureKestrel(options =>
+{
+    var port = Environment.GetEnvironmentVariable("PORT");
+
+    if (!string.IsNullOrEmpty(port))
+    {
+        options.ListenAnyIP(int.Parse(port));
+    }
+});
+
+// JWT Authentication
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         var key = builder.Configuration["Jwt:Key"];
 
-        options.TokenValidationParameters = new TokenValidationParameters
+        if (string.IsNullOrEmpty(key))
         {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(key!)
-            )
-        };
+            throw new Exception("JWT Key is missing.");
+        }
+
+        options.TokenValidationParameters =
+            new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                ValidIssuer = builder.Configuration["Jwt:Issuer"],
+                ValidAudience = builder.Configuration["Jwt:Audience"],
+                IssuerSigningKey = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(key)
+                )
+            };
     });
+
+builder.Services.AddAuthorization();
+
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -34,19 +56,14 @@ builder.Services.AddControllers()
     });
 
 builder.Services.AddEndpointsApiExplorer();
-
 builder.Services.AddSwaggerGen();
 
-// =====================================================
-// DATABASE CONNECTION
-// =====================================================
-
+// Database
 var databaseUrl = builder.Configuration["DATABASE_URL"];
 
 if (!string.IsNullOrEmpty(databaseUrl))
 {
     var uri = new Uri(databaseUrl);
-
     var userInfo = uri.UserInfo.Split(':');
 
     var connectionString = new NpgsqlConnectionStringBuilder
@@ -64,54 +81,37 @@ if (!string.IsNullOrEmpty(databaseUrl))
         options.UseNpgsql(connectionString));
 }
 
-// =====================================================
 // CORS
-// =====================================================
-
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll",
-        policy =>
-        {
-            policy
-                .AllowAnyOrigin()
-                .AllowAnyMethod()
-                .AllowAnyHeader()
-                .WithExposedHeaders("X-Total-Count");
-        });
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy
+            .AllowAnyOrigin()
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .WithExposedHeaders("X-Total-Count");
+    });
 });
 
 var app = builder.Build();
-
-// =====================================================
-// DEVELOPMENT
-// =====================================================
 
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
 }
 
-// =====================================================
-// MIDDLEWARE
-// =====================================================
-
 app.UseSwagger();
-
 app.UseSwaggerUI();
 
 app.UseCors("AllowAll");
+
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-// =====================================================
-// ROUTES
-// =====================================================
-
 app.MapGet("/", () => Results.Redirect("/swagger"));
-
 app.MapGet("/health", () => "API WORKING");
 
 app.Run();
