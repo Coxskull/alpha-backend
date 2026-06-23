@@ -32,11 +32,38 @@ public class AppDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+
         // ==========================
         // TABLE MAPPINGS
         // ==========================
 
-        modelBuilder.Entity<User>().ToTable("users");
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.ToTable("users");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id)
+                .HasColumnName("Id");
+
+            entity.Property(e => e.FullName)
+                .HasColumnName("FullName");
+
+            entity.Property(e => e.Email)
+                .HasColumnName("Email");
+
+            entity.Property(e => e.Phone)
+                .HasColumnName("Phone");
+
+            entity.Property(e => e.Role)
+                .HasColumnName("Role");
+
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("CreatedAt");
+
+            entity.Property(e => e.PasswordHash)
+                .HasColumnName("PasswordHash");
+        });
         modelBuilder.Entity<Order>().ToTable("orders");
         modelBuilder.Entity<Supplier>().ToTable("suppliers");
         modelBuilder.Entity<Driver>().ToTable("drivers");

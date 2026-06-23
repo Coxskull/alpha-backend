@@ -46,7 +46,7 @@ public class AuthController : ControllerBase
             return BadRequest("Invalid role.");
 
         var exists = await _context.Users
-            .AnyAsync(u => u.Email == dto.Email);
+    .AnyAsync(u => u.Email == dto.Email.ToLower());
 
         if (exists)
             return BadRequest("Email already exists.");
