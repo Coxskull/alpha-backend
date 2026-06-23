@@ -28,6 +28,11 @@ public class AppDbContext : DbContext
     public DbSet<CustomerAddress> CustomerAddresses { get; set; }
     public DbSet<CustomerVehicle> CustomerVehicles { get; set; }
     public DbSet<CartItem> CartItems { get; set; }
+
+    public DbSet<Mechanic> Mechanics { get; set; }
+    public DbSet<ServiceRequest> ServiceRequests { get; set; }
+    public DbSet<OrderFinancial> OrderFinancials { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -196,5 +201,68 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(o => o.DriverId)
             .OnDelete(DeleteBehavior.Restrict);
+
+
+        modelBuilder.Entity<Mechanic>(entity =>
+        {
+            entity.ToTable("mechanics");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.FullName).HasColumnName("full_name");
+            entity.Property(e => e.Email).HasColumnName("email");
+            entity.Property(e => e.Phone).HasColumnName("phone");
+            entity.Property(e => e.ServiceArea).HasColumnName("service_area");
+            entity.Property(e => e.AvailabilityStatus).HasColumnName("availability_status");
+            entity.Property(e => e.Latitude).HasColumnName("latitude");
+            entity.Property(e => e.Longitude).HasColumnName("longitude");
+            entity.Property(e => e.ServiceRadiusKm).HasColumnName("service_radius_km");
+            entity.Property(e => e.ActiveJobs).HasColumnName("active_jobs");
+            entity.Property(e => e.ResponseRate).HasColumnName("response_rate");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+        });
+
+        modelBuilder.Entity<ServiceRequest>(entity =>
+        {
+            entity.ToTable("service_requests");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.CustomerName).HasColumnName("customer_name");
+            entity.Property(e => e.CustomerPhone).HasColumnName("customer_phone");
+            entity.Property(e => e.VehicleInfo).HasColumnName("vehicle_info");
+            entity.Property(e => e.IssueDescription).HasColumnName("issue_description");
+            entity.Property(e => e.ServiceAddress).HasColumnName("service_address");
+            entity.Property(e => e.Zone).HasColumnName("zone");
+            entity.Property(e => e.Latitude).HasColumnName("latitude");
+            entity.Property(e => e.Longitude).HasColumnName("longitude");
+            entity.Property(e => e.MechanicId).HasColumnName("mechanic_id");
+            entity.Property(e => e.Status).HasColumnName("status");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+        });
+
+        modelBuilder.Entity<OrderFinancial>(entity =>
+        {
+            entity.ToTable("order_financials");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.OrderId).HasColumnName("order_id");
+            entity.Property(e => e.ServiceRequestId).HasColumnName("service_request_id");
+            entity.Property(e => e.CustomerPaid).HasColumnName("customer_paid");
+            entity.Property(e => e.SupplierAmount).HasColumnName("supplier_amount");
+            entity.Property(e => e.DriverAmount).HasColumnName("driver_amount");
+            entity.Property(e => e.MechanicAmount).HasColumnName("mechanic_amount");
+            entity.Property(e => e.AlphaPlatformFee).HasColumnName("alpha_platform_fee");
+            entity.Property(e => e.FinancialStatus).HasColumnName("financial_status");
+            entity.Property(e => e.PayoutStatus).HasColumnName("payout_status");
+            entity.Property(e => e.CompletionProofUrl).HasColumnName("completion_proof_url");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+        });
     }
 }

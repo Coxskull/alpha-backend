@@ -35,12 +35,16 @@ public class AuthController : ControllerBase
         var role = dto.Role.ToLower();
 
         var allowedRoles = new[]
-        {
-            "admin",
-            "customer",
-            "driver",
-            "provider"
-        };
+ {
+    "admin",
+    "dispatcher",
+    "customer",
+    "driver",
+    "provider",
+    "supplier",
+    "mechanic",
+    "tow_provider"
+};
 
         if (!allowedRoles.Contains(role))
             return BadRequest("Invalid role.");
