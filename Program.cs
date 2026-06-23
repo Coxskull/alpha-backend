@@ -100,7 +100,22 @@ if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
 }
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("========== API ERROR ==========");
+        Console.WriteLine(ex.ToString());
+        Console.WriteLine("===============================");
 
+        context.Response.StatusCode = 500;
+        await context.Response.WriteAsync(ex.ToString());
+    }
+});
 app.UseSwagger();
 app.UseSwaggerUI();
 
