@@ -32,6 +32,7 @@ public class AppDbContext : DbContext
     public DbSet<Mechanic> Mechanics { get; set; }
     public DbSet<ServiceRequest> ServiceRequests { get; set; }
     public DbSet<OrderFinancial> OrderFinancials { get; set; }
+    public DbSet<Payment> Payments { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -245,24 +246,10 @@ public class AppDbContext : DbContext
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
         });
 
-        modelBuilder.Entity<OrderFinancial>(entity =>
-        {
-            entity.ToTable("order_financials");
+        modelBuilder.Entity<OrderFinancial>()
+    .ToTable("order_financials");
 
-            entity.HasKey(e => e.Id);
-
-            entity.Property(e => e.Id).HasColumnName("id");
-            entity.Property(e => e.OrderId).HasColumnName("order_id");
-            entity.Property(e => e.ServiceRequestId).HasColumnName("service_request_id");
-            entity.Property(e => e.CustomerPaid).HasColumnName("customer_paid");
-            entity.Property(e => e.SupplierAmount).HasColumnName("supplier_amount");
-            entity.Property(e => e.DriverAmount).HasColumnName("driver_amount");
-            entity.Property(e => e.MechanicAmount).HasColumnName("mechanic_amount");
-            entity.Property(e => e.AlphaPlatformFee).HasColumnName("alpha_platform_fee");
-            entity.Property(e => e.FinancialStatus).HasColumnName("financial_status");
-            entity.Property(e => e.PayoutStatus).HasColumnName("payout_status");
-            entity.Property(e => e.CompletionProofUrl).HasColumnName("completion_proof_url");
-            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
-        });
+        modelBuilder.Entity<Payment>()
+            .ToTable("payments");
     }
 }

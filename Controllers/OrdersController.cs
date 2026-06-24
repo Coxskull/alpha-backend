@@ -27,38 +27,89 @@ public class OrdersController : ControllerBase
     {
         try
         {
+            var currency = dto.Currency.ToUpper();
+
+            if (currency != "USD" && currency != "MXN")
+                return BadRequest("Currency must be USD or MXN.");
+
+            decimal exchangeRate = currency == "USD" ? 1 : 17.59m;
+
+            decimal deliveryFee = currency == "USD" ? 8.00m : 8.00m * exchangeRate;
+            decimal serviceFee = currency == "USD" ? 3.00m : 3.00m * exchangeRate;
+            decimal tax = dto.ItemSubtotal * 0.08m;
+            decimal discount = 0;
+
+            decimal totalAmount =
+                dto.ItemSubtotal +
+                deliveryFee +
+                serviceFee +
+                tax -
+                discount;
+
+            decimal driverEarning = deliveryFee * 0.80m;
+            decimal supplierEarning = dto.ItemSubtotal;
+            decimal companyRevenue = serviceFee + (deliveryFee - driverEarning);
+
             var order = new Order
             {
                 Id = Guid.NewGuid(),
-
                 CustomerName = dto.CustomerName,
-
                 PickupAddress = dto.PickupAddress,
-
                 DeliveryAddress = dto.DeliveryAddress,
-
                 ItemDescription = dto.ItemDescription,
-
                 Zone = dto.Zone,
-
                 OrderNumber = $"ALPHA-{DateTime.UtcNow.Ticks}",
-
-                Status = "pending",
-
+                Status = "payment_pending",
                 CreatedAt = DateTime.UtcNow,
-
                 UpdatedAt = DateTime.UtcNow
             };
 
             _context.Orders.Add(order);
 
+            var financial = new OrderFinancial
+            {
+                Id = Guid.NewGuid(),
+                OrderId = order.Id,
+                Currency = currency,
+                ExchangeRate = exchangeRate,
+                ItemSubtotal = dto.ItemSubtotal,
+                DeliveryFee = Math.Round(deliveryFee, 2),
+                ServiceFee = Math.Round(serviceFee, 2),
+                Tax = Math.Round(tax, 2),
+                Discount = discount,
+                TotalAmount = Math.Round(totalAmount, 2),
+                SupplierEarning = Math.Round(supplierEarning, 2),
+                DriverEarning = Math.Round(driverEarning, 2),
+                CompanyRevenue = Math.Round(companyRevenue, 2),
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.OrderFinancials.Add(financial);
+
+            var payment = new Payment
+            {
+                Id = Guid.NewGuid(),
+                OrderId = order.Id,
+                Amount = financial.TotalAmount,
+                Currency = currency,
+                PaymentMethod = dto.PaymentMethod,
+                PaymentStatus = dto.PaymentMethod == "cash" ? "pending" : "unpaid",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.Payments.Add(payment);
+
             await _context.SaveChangesAsync();
 
-            await AddStatusHistory(order.Id, "pending");
+            await AddStatusHistory(order.Id, "payment_pending");
+            await AddAuditLog(order.Id, "Order Created with Financials");
 
-            await AddAuditLog(order.Id, "Order Created");
-
-            return Ok(order);
+            return Ok(new
+            {
+                order,
+                financial,
+                payment
+            });
         }
         catch (Exception ex)
         {
@@ -571,6 +622,94 @@ public class OrdersController : ControllerBase
             supplier,
             driver
         });
+    }
+    [HttpPost("{id}/confirm-payment")]
+    public async Task<IActionResult> ConfirmPayment(Guid id, string transactionReference)
+    {
+        var order = await _context.Orders.FindAsync(id);
+
+        if (order == null)
+            return NotFound();
+
+        var payment = await _context.Payments
+            .FirstOrDefaultAsync(x => x.OrderId == id);
+
+        if (payment == null)
+            return NotFound("Payment record not found.");
+
+        payment.PaymentStatus = "paid";
+        payment.TransactionReference = transactionReference;
+        payment.PaidAt = DateTime.UtcNow;
+
+        order.Status = "pending";
+        order.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        await AddStatusHistory(id, "payment_paid");
+        await AddStatusHistory(id, "pending");
+        await AddAuditLog(id, "Payment Confirmed");
+
+        return Ok(new
+        {
+            message = "Payment confirmed. Order is now pending dispatch.",
+            orderStatus = order.Status,
+            paymentStatus = payment.PaymentStatus
+        });
+    }
+    [HttpPost("{id}/supplier-accept")]
+    public async Task<IActionResult> SupplierAccept(Guid id)
+    {
+        var order = await _context.Orders.FindAsync(id);
+
+        if (order == null)
+            return NotFound();
+
+        order.Status = "supplier_accepted";
+        order.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        await AddStatusHistory(id, "supplier_accepted");
+        await AddAuditLog(id, "Supplier Accepted Order");
+
+        return Ok(order);
+    }
+    [HttpPost("{id}/ready-for-pickup")]
+    public async Task<IActionResult> ReadyForPickup(Guid id)
+    {
+        var order = await _context.Orders.FindAsync(id);
+
+        if (order == null)
+            return NotFound();
+
+        order.Status = "ready_for_pickup";
+        order.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        await AddStatusHistory(id, "ready_for_pickup");
+        await AddAuditLog(id, "Order Ready For Pickup");
+
+        return Ok(order);
+    }
+    [HttpPost("{id}/driver-accept")]
+    public async Task<IActionResult> DriverAccept(Guid id)
+    {
+        var order = await _context.Orders.FindAsync(id);
+
+        if (order == null)
+            return NotFound();
+
+        order.Status = "driver_accepted";
+        order.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        await AddStatusHistory(id, "driver_accepted");
+        await AddAuditLog(id, "Driver Accepted Order");
+
+        return Ok(order);
     }
 
 }
