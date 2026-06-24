@@ -12,10 +12,13 @@ public class OrderFinancial
     public Guid Id { get; set; }
 
     [Column("order_id")]
-    public Guid OrderId { get; set; }
+    public Guid? OrderId { get; set; }
+
+    [Column("service_request_id")]
+    public Guid? ServiceRequestId { get; set; }
 
     [Column("currency")]
-    public string Currency { get; set; } = "USD"; // USD or MXN
+    public string Currency { get; set; } = "USD";
 
     [Column("exchange_rate")]
     public decimal ExchangeRate { get; set; } = 1;
@@ -38,6 +41,21 @@ public class OrderFinancial
     [Column("total_amount")]
     public decimal TotalAmount { get; set; }
 
+    [Column("customer_paid")]
+    public decimal CustomerPaid { get; set; }
+
+    [Column("supplier_amount")]
+    public decimal SupplierAmount { get; set; }
+
+    [Column("driver_amount")]
+    public decimal DriverAmount { get; set; }
+
+    [Column("mechanic_amount")]
+    public decimal MechanicAmount { get; set; }
+
+    [Column("alpha_platform_fee")]
+    public decimal AlphaPlatformFee { get; set; }
+
     [Column("supplier_earning")]
     public decimal SupplierEarning { get; set; }
 
@@ -47,6 +65,15 @@ public class OrderFinancial
     [Column("company_revenue")]
     public decimal CompanyRevenue { get; set; }
 
+    [Column("financial_status")]
+    public string FinancialStatus { get; set; } = "pending_review";
+
+    [Column("payout_status")]
+    public string PayoutStatus { get; set; } = "manual_review";
+
+    [Column("completion_proof_url")]
+    public string? CompletionProofUrl { get; set; }
+
     [Column("created_at")]
-    public DateTime CreatedAt { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
