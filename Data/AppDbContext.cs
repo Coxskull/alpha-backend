@@ -117,8 +117,6 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Territory).HasColumnName("Territory");
             entity.Property(e => e.CurrentWorkload).HasColumnName("CurrentWorkload");
             entity.Property(e => e.ResponseRate).HasColumnName("ResponseRate");
-            entity.Property(e => e.Email).HasColumnName("email");
-            entity.Property(e => e.PasswordHash).HasColumnName("password_hash");
         });
 
         // ==========================
@@ -142,8 +140,6 @@ public class AppDbContext : DbContext
             entity.Property(e => e.ActiveJobs).HasColumnName("ActiveJobs");
             entity.Property(e => e.ResponseRate).HasColumnName("ResponseRate");
             entity.Property(e => e.LastSeenAt).HasColumnName("LastSeenAt");
-            entity.Property(e => e.Email).HasColumnName("email");
-            entity.Property(e => e.PasswordHash).HasColumnName("password_hash");
         });
 
         // ==========================
@@ -250,7 +246,6 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.FullName).HasColumnName("full_name");
             entity.Property(e => e.Email).HasColumnName("email");
-            entity.Property(e => e.Phone).HasColumnName("phone");
         });
 
         // ==========================
@@ -291,7 +286,6 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Make).HasColumnName("make");
             entity.Property(e => e.Model).HasColumnName("model");
             entity.Property(e => e.Engine).HasColumnName("engine");
-            entity.Property(e => e.Vin).HasColumnName("vin");
             entity.Property(e => e.Nickname).HasColumnName("nickname");
 
             entity.Ignore(e => e.IsPrimary);
