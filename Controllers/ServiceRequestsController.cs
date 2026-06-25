@@ -1,15 +1,19 @@
 using Alpha.API.Data;
+using Alpha.API.DTOs;
 using Alpha.API.Models;
+using Alpha.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Alpha.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class ServiceRequestsController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -20,19 +24,42 @@ public class ServiceRequestsController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "admin,dispatcher,mechanic")]
-    public async Task<IActionResult> GetRequests()
+    [Authorize(Roles = "admin,dispatcher")]
+    public async Task<IActionResult> GetAll()
     {
-        return Ok(await _context.ServiceRequests
+        var requests = await _context.ServiceRequests
             .OrderByDescending(x => x.CreatedAt)
-            .ToListAsync());
+            .ToListAsync();
+
+        return Ok(requests);
+    }
+
+    [HttpGet("my")]
+    [Authorize(Roles = "mechanic")]
+    public async Task<IActionResult> GetMyRequests()
+    {
+        var userId = User.GetUserId();
+
+        var mechanic = await _context.Mechanics
+            .FirstOrDefaultAsync(x => x.UserId == userId);
+
+        if (mechanic == null)
+            return Forbid();
+
+        var requests = await _context.ServiceRequests
+            .Where(x => x.MechanicId == mechanic.Id)
+            .OrderByDescending(x => x.CreatedAt)
+            .ToListAsync();
+
+        return Ok(requests);
     }
 
     [HttpPost]
+    [AllowAnonymous]
     public async Task<IActionResult> Create(ServiceRequest request)
     {
         request.Id = Guid.NewGuid();
-        request.Status = "pending";
+        request.Status = "new_request";
         request.CreatedAt = DateTime.UtcNow;
         request.UpdatedAt = DateTime.UtcNow;
 
@@ -89,12 +116,13 @@ public class ServiceRequestsController : ControllerBase
     [Authorize(Roles = "mechanic")]
     public async Task<IActionResult> Accept(Guid id)
     {
-        var request = await _context.ServiceRequests.FindAsync(id);
+        var request = await GetOwnedMechanicRequest(id);
 
         if (request == null)
-            return NotFound();
+            return Forbid();
 
-        request.Status = "mechanic_accepted";
+        request.Status = "accepted";
+        request.AcceptedAt = DateTime.UtcNow;
         request.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
@@ -104,15 +132,16 @@ public class ServiceRequestsController : ControllerBase
 
     [HttpPost("{id}/reject")]
     [Authorize(Roles = "mechanic")]
-    public async Task<IActionResult> Reject(Guid id)
+    public async Task<IActionResult> Reject(Guid id, RejectServiceRequestDto dto)
     {
-        var request = await _context.ServiceRequests.FindAsync(id);
+        var request = await GetOwnedMechanicRequest(id);
 
         if (request == null)
-            return NotFound();
+            return Forbid();
 
+        request.Status = "rejected";
+        request.RejectionReason = dto.Reason;
         request.MechanicId = null;
-        request.Status = "mechanic_rejected";
         request.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
@@ -120,16 +149,73 @@ public class ServiceRequestsController : ControllerBase
         return Ok(request);
     }
 
-    [HttpPost("{id}/in-progress")]
+    [HttpPost("{id}/status")]
     [Authorize(Roles = "mechanic")]
-    public async Task<IActionResult> InProgress(Guid id)
+    public async Task<IActionResult> UpdateStatus(Guid id, UpdateServiceStatusDto dto)
     {
-        var request = await _context.ServiceRequests.FindAsync(id);
+        var allowedStatuses = new[]
+        {
+            "accepted",
+            "en_route",
+            "started",
+            "waiting_for_parts",
+            "completed",
+            "closed"
+        };
+
+        if (!allowedStatuses.Contains(dto.Status))
+            return BadRequest("Invalid mechanic job status.");
+
+        var request = await GetOwnedMechanicRequest(id);
 
         if (request == null)
-            return NotFound();
+            return Forbid();
 
-        request.Status = "repair_in_progress";
+        request.Status = dto.Status;
+        request.UpdatedAt = DateTime.UtcNow;
+
+        if (dto.Status == "started")
+            request.StartedAt = DateTime.UtcNow;
+
+        if (dto.Status == "completed")
+            request.CompletedAt = DateTime.UtcNow;
+
+        if (dto.Status == "closed")
+            request.ClosedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(request);
+    }
+
+    [HttpPost("{id}/request-parts")]
+    [Authorize(Roles = "mechanic")]
+    public async Task<IActionResult> RequestParts(Guid id, RequestPartsDto dto)
+    {
+        var request = await GetOwnedMechanicRequest(id);
+
+        if (request == null)
+            return Forbid();
+
+        request.Status = "waiting_for_parts";
+        request.PartsRequestNote = dto.Notes;
+        request.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(request);
+    }
+
+    [HttpPost("{id}/proof")]
+    [Authorize(Roles = "mechanic")]
+    public async Task<IActionResult> UploadProof(Guid id, UploadProofDto dto)
+    {
+        var request = await GetOwnedMechanicRequest(id);
+
+        if (request == null)
+            return Forbid();
+
+        request.ProofImageUrl = dto.ImageUrl;
         request.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
@@ -141,36 +227,42 @@ public class ServiceRequestsController : ControllerBase
     [Authorize(Roles = "mechanic")]
     public async Task<IActionResult> Complete(Guid id)
     {
-        var request = await _context.ServiceRequests.FindAsync(id);
+        var request = await GetOwnedMechanicRequest(id);
 
         if (request == null)
-            return NotFound();
+            return Forbid();
 
-        request.Status = "repair_completed";
+        request.Status = "completed";
+        request.CompletedAt = DateTime.UtcNow;
         request.UpdatedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
+        var mechanic = await _context.Mechanics
+            .FirstOrDefaultAsync(x => x.Id == request.MechanicId);
 
-        var financial = new OrderFinancial
+        if (mechanic != null)
         {
-            Id = Guid.NewGuid(),
-            ServiceRequestId = request.Id,
-            CustomerPaid = 0,
-            MechanicAmount = 0,
-            AlphaPlatformFee = 0,
-            FinancialStatus = "pending_review",
-            PayoutStatus = "manual_review",
-            CreatedAt = DateTime.UtcNow
-        };
-
-        _context.OrderFinancials.Add(financial);
+            mechanic.ActiveJobs = Math.Max(0, mechanic.ActiveJobs - 1);
+            mechanic.AvailabilityStatus = "available";
+        }
 
         await _context.SaveChangesAsync();
 
-        return Ok(new
-        {
-            request,
-            financial
-        });
+        return Ok(request);
+    }
+
+    private async Task<ServiceRequest?> GetOwnedMechanicRequest(Guid requestId)
+    {
+        var userId = User.GetUserId();
+
+        var mechanic = await _context.Mechanics
+            .FirstOrDefaultAsync(x => x.UserId == userId);
+
+        if (mechanic == null)
+            return null;
+
+        return await _context.ServiceRequests
+            .FirstOrDefaultAsync(x =>
+                x.Id == requestId &&
+                x.MechanicId == mechanic.Id);
     }
 }

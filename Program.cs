@@ -156,7 +156,38 @@ app.UseCors("AllowAll");
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.Use(async (context, next) =>
+{
+    await next();
 
+    if (context.Response.StatusCode == 401 || context.Response.StatusCode == 403)
+    {
+        using var scope = app.Services.CreateScope();
+
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var userIdClaim = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        Guid? userId = null;
+
+        if (Guid.TryParse(userIdClaim, out var parsedUserId))
+            userId = parsedUserId;
+
+        db.SecurityLogs.Add(new Alpha.API.Models.SecurityLog
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            Email = context.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value,
+            Role = context.User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value,
+            Path = context.Request.Path,
+            Method = context.Request.Method,
+            StatusCode = context.Response.StatusCode,
+            CreatedAt = DateTime.UtcNow
+        });
+
+        await db.SaveChangesAsync();
+    }
+});
 app.MapControllers();
 
 app.MapGet("/", () => Results.Redirect("/swagger"));

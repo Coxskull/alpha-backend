@@ -28,9 +28,16 @@ public class AppDbContext : DbContext
     public DbSet<CustomerAddress> CustomerAddresses { get; set; }
     public DbSet<CustomerVehicle> CustomerVehicles { get; set; }
     public DbSet<CartItem> CartItems { get; set; }
+    public DbSet<OrderItem> OrderItems { get; set; }
 
+    // Mechanic Module
     public DbSet<Mechanic> Mechanics { get; set; }
     public DbSet<ServiceRequest> ServiceRequests { get; set; }
+    public DbSet<PartsRequest> PartsRequests { get; set; }
+    public DbSet<RepairProof> RepairProofs { get; set; }
+    public DbSet<SecurityLog> SecurityLogs { get; set; }
+
+    // Financial Module
     public DbSet<OrderFinancial> OrderFinancials { get; set; }
     public DbSet<Payment> Payments { get; set; }
 
@@ -38,9 +45,8 @@ public class AppDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-
         // ==========================
-        // TABLE MAPPINGS
+        // USERS
         // ==========================
 
         modelBuilder.Entity<User>(entity =>
@@ -49,160 +55,287 @@ public class AppDbContext : DbContext
 
             entity.HasKey(e => e.Id);
 
-            entity.Property(e => e.Id)
-                .HasColumnName("Id");
-
-            entity.Property(e => e.FullName)
-                .HasColumnName("FullName");
-
-            entity.Property(e => e.Email)
-                .HasColumnName("Email");
-
-            entity.Property(e => e.Phone)
-                .HasColumnName("Phone");
-
-            entity.Property(e => e.Role)
-                .HasColumnName("Role");
-
-            entity.Property(e => e.CreatedAt)
-                .HasColumnName("CreatedAt");
-
-            entity.Property(e => e.PasswordHash)
-                .HasColumnName("PasswordHash");
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.FullName).HasColumnName("FullName");
+            entity.Property(e => e.Email).HasColumnName("Email");
+            entity.Property(e => e.Phone).HasColumnName("Phone");
+            entity.Property(e => e.Role).HasColumnName("Role");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+            entity.Property(e => e.PasswordHash).HasColumnName("PasswordHash");
         });
-        modelBuilder.Entity<Order>().ToTable("orders");
-        modelBuilder.Entity<Supplier>().ToTable("suppliers");
-        modelBuilder.Entity<Driver>().ToTable("drivers");
-        modelBuilder.Entity<StatusHistory>().ToTable("status_history");
-        modelBuilder.Entity<AuditLog>().ToTable("audit_logs");
-        modelBuilder.Entity<DeliveryProof>().ToTable("delivery_proof");
-        modelBuilder.Entity<OperationalAlert>().ToTable("operational_alerts");
-
-        modelBuilder.Entity<Product>().ToTable("products");
-        modelBuilder.Entity<Customer>().ToTable("customers");
-        modelBuilder.Entity<CustomerAddress>().ToTable("customer_addresses");
-        modelBuilder.Entity<CustomerVehicle>().ToTable("customer_vehicles");
-        modelBuilder.Entity<CartItem>().ToTable("cart_items");
 
         // ==========================
-        // SUPPLIER MAPPINGS
+        // ORDERS
         // ==========================
 
-        modelBuilder.Entity<Supplier>()
-     .Property(x => x.Territory)
-     .HasColumnName("Territory");
+        modelBuilder.Entity<Order>(entity =>
+        {
+            entity.ToTable("orders");
 
-        modelBuilder.Entity<Supplier>()
-            .Property(x => x.CurrentWorkload)
-            .HasColumnName("CurrentWorkload");
+            entity.HasKey(e => e.Id);
 
-        modelBuilder.Entity<Supplier>()
-            .Property(x => x.ResponseRate)
-            .HasColumnName("ResponseRate");
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.OrderNumber).HasColumnName("order_number");
+            entity.Property(e => e.CustomerName).HasColumnName("customer_name");
+            entity.Property(e => e.PickupAddress).HasColumnName("pickup_address");
+            entity.Property(e => e.DeliveryAddress).HasColumnName("delivery_address");
+            entity.Property(e => e.ItemDescription).HasColumnName("item_description");
+            entity.Property(e => e.Zone).HasColumnName("zone");
+            entity.Property(e => e.SupplierId).HasColumnName("supplier_id");
+            entity.Property(e => e.DriverId).HasColumnName("driver_id");
+            entity.Property(e => e.Status).HasColumnName("status");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
 
-        // ==========================
-        // DRIVER MAPPINGS
-        // ==========================
+            entity.HasOne(o => o.Supplier)
+                .WithMany()
+                .HasForeignKey(o => o.SupplierId)
+                .OnDelete(DeleteBehavior.Restrict);
 
-        modelBuilder.Entity<Driver>()
-     .Property(x => x.Territory)
-     .HasColumnName("Territory");
-
-        modelBuilder.Entity<Driver>()
-            .Property(x => x.ActiveJobs)
-            .HasColumnName("ActiveJobs");
-
-        modelBuilder.Entity<Driver>()
-            .Property(x => x.ResponseRate)
-            .HasColumnName("ResponseRate");
-
-        modelBuilder.Entity<Driver>()
-            .Property(x => x.LastSeenAt)
-            .HasColumnName("LastSeenAt");
+            entity.HasOne(o => o.Driver)
+                .WithMany()
+                .HasForeignKey(o => o.DriverId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
 
         // ==========================
-        // PRODUCT MAPPINGS
+        // SUPPLIERS
         // ==========================
 
-        modelBuilder.Entity<Product>()
-            .ToTable("products");
+        modelBuilder.Entity<Supplier>(entity =>
+        {
+            entity.ToTable("suppliers");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.Name).HasColumnName("Name");
+            entity.Property(e => e.ContactNumber).HasColumnName("ContactNumber");
+            entity.Property(e => e.Address).HasColumnName("Address");
+            entity.Property(e => e.AvailabilityStatus).HasColumnName("AvailabilityStatus");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+            entity.Property(e => e.Territory).HasColumnName("Territory");
+            entity.Property(e => e.CurrentWorkload).HasColumnName("CurrentWorkload");
+            entity.Property(e => e.ResponseRate).HasColumnName("ResponseRate");
+            entity.Property(e => e.Email).HasColumnName("email");
+            entity.Property(e => e.PasswordHash).HasColumnName("password_hash");
+        });
 
         // ==========================
-        // CUSTOMER ADDRESS MAPPINGS
+        // DRIVERS
         // ==========================
 
-        modelBuilder.Entity<CustomerAddress>()
-            .Property(x => x.CustomerId)
-            .HasColumnName("customer_id");
+        modelBuilder.Entity<Driver>(entity =>
+        {
+            entity.ToTable("drivers");
 
-        modelBuilder.Entity<CustomerAddress>()
-            .Property(x => x.AddressLine1)
-            .HasColumnName("address_line1");
+            entity.HasKey(e => e.Id);
 
-        modelBuilder.Entity<CustomerAddress>()
-            .Property(x => x.AddressLine2)
-            .HasColumnName("address_line2");
-
-        modelBuilder.Entity<CustomerAddress>()
-            .Property(x => x.ZipCode)
-            .HasColumnName("zip_code");
-
-        modelBuilder.Entity<CustomerAddress>()
-            .Property(x => x.IsDefault)
-            .HasColumnName("is_default");
-
-        modelBuilder.Entity<CustomerAddress>()
-            .Property(x => x.CreatedAt)
-            .HasColumnName("created_at");
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.FullName).HasColumnName("FullName");
+            entity.Property(e => e.PhoneNumber).HasColumnName("PhoneNumber");
+            entity.Property(e => e.VehicleType).HasColumnName("VehicleType");
+            entity.Property(e => e.PlateNumber).HasColumnName("PlateNumber");
+            entity.Property(e => e.AvailabilityStatus).HasColumnName("AvailabilityStatus");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+            entity.Property(e => e.Territory).HasColumnName("Territory");
+            entity.Property(e => e.ActiveJobs).HasColumnName("ActiveJobs");
+            entity.Property(e => e.ResponseRate).HasColumnName("ResponseRate");
+            entity.Property(e => e.LastSeenAt).HasColumnName("LastSeenAt");
+            entity.Property(e => e.Email).HasColumnName("email");
+            entity.Property(e => e.PasswordHash).HasColumnName("password_hash");
+        });
 
         // ==========================
-        // CUSTOMER VEHICLE MAPPINGS
+        // STATUS HISTORY
         // ==========================
 
-        modelBuilder.Entity<CustomerVehicle>()
-            .Property(x => x.CustomerId)
-            .HasColumnName("customer_id");
+        modelBuilder.Entity<StatusHistory>(entity =>
+        {
+            entity.ToTable("status_history");
 
-        modelBuilder.Entity<CustomerVehicle>()
-            .Property(x => x.IsPrimary)
-            .HasColumnName("is_primary");
+            entity.HasKey(e => e.Id);
 
-        modelBuilder.Entity<CustomerVehicle>()
-            .Property(x => x.CreatedAt)
-            .HasColumnName("created_at");
-
-        // ==========================
-        // CART ITEM MAPPINGS
-        // ==========================
-
-        modelBuilder.Entity<CartItem>()
-            .Property(x => x.CustomerId)
-            .HasColumnName("customer_id");
-
-        modelBuilder.Entity<CartItem>()
-            .Property(x => x.ProductId)
-            .HasColumnName("product_id");
-
-        modelBuilder.Entity<CartItem>()
-            .Property(x => x.CreatedAt)
-            .HasColumnName("created_at");
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.OrderId).HasColumnName("order_id");
+            entity.Property(e => e.Status).HasColumnName("status");
+            entity.Property(e => e.Notes).HasColumnName("notes");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+        });
 
         // ==========================
-        // ORDER RELATIONSHIPS
+        // AUDIT LOGS
         // ==========================
 
-        modelBuilder.Entity<Order>()
-            .HasOne(o => o.Supplier)
-            .WithMany()
-            .HasForeignKey(o => o.SupplierId)
-            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<AuditLog>(entity =>
+        {
+            entity.ToTable("audit_logs");
 
-        modelBuilder.Entity<Order>()
-            .HasOne(o => o.Driver)
-            .WithMany()
-            .HasForeignKey(o => o.DriverId)
-            .OnDelete(DeleteBehavior.Restrict);
+            entity.HasKey(e => e.Id);
 
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.OrderId).HasColumnName("order_id");
+            entity.Property(e => e.Action).HasColumnName("action");
+            entity.Property(e => e.PerformedBy).HasColumnName("performed_by");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+        });
+
+        // ==========================
+        // DELIVERY PROOF
+        // ==========================
+
+        modelBuilder.Entity<DeliveryProof>(entity =>
+        {
+            entity.ToTable("delivery_proof");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.OrderId).HasColumnName("order_id");
+            entity.Property(e => e.ImageUrl).HasColumnName("image_url");
+            entity.Property(e => e.UploadedAt).HasColumnName("uploaded_at");
+        });
+
+        // ==========================
+        // OPERATIONAL ALERTS
+        // ==========================
+
+        modelBuilder.Entity<OperationalAlert>(entity =>
+        {
+            entity.ToTable("operational_alerts");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.OrderId).HasColumnName("order_id");
+            entity.Property(e => e.AlertType).HasColumnName("alert_type");
+            entity.Property(e => e.Message).HasColumnName("message");
+            entity.Property(e => e.Resolved).HasColumnName("resolved");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+        });
+
+        // ==========================
+        // PRODUCTS
+        // ==========================
+
+        modelBuilder.Entity<Product>(entity =>
+        {
+            entity.ToTable("products");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.SupplierId).HasColumnName("supplier_id");
+            entity.Property(e => e.PartNumber).HasColumnName("part_number");
+            entity.Property(e => e.Brand).HasColumnName("brand");
+            entity.Property(e => e.Name).HasColumnName("name");
+            entity.Property(e => e.Description).HasColumnName("description");
+            entity.Property(e => e.ImageUrl).HasColumnName("image_url");
+            entity.Property(e => e.Price).HasColumnName("price");
+            entity.Property(e => e.QuantityAvailable).HasColumnName("quantity_available");
+            entity.Property(e => e.IsActive).HasColumnName("is_active");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+        });
+
+        // ==========================
+        // CUSTOMERS
+        // ==========================
+
+        modelBuilder.Entity<Customer>(entity =>
+        {
+            entity.ToTable("customers");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.FullName).HasColumnName("full_name");
+            entity.Property(e => e.Email).HasColumnName("email");
+            entity.Property(e => e.Phone).HasColumnName("phone");
+        });
+
+        // ==========================
+        // CUSTOMER ADDRESSES
+        // ==========================
+
+        modelBuilder.Entity<CustomerAddress>(entity =>
+        {
+            entity.ToTable("customer_addresses");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.CustomerId).HasColumnName("customer_id");
+            entity.Property(e => e.AddressLine1).HasColumnName("address");
+            entity.Property(e => e.City).HasColumnName("city");
+            entity.Property(e => e.State).HasColumnName("state");
+            entity.Property(e => e.ZipCode).HasColumnName("zip_code");
+
+            entity.Ignore(e => e.AddressLine2);
+            entity.Ignore(e => e.IsDefault);
+            entity.Ignore(e => e.CreatedAt);
+        });
+
+        // ==========================
+        // CUSTOMER VEHICLES
+        // ==========================
+
+        modelBuilder.Entity<CustomerVehicle>(entity =>
+        {
+            entity.ToTable("customer_vehicles");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.CustomerId).HasColumnName("customer_id");
+            entity.Property(e => e.Year).HasColumnName("year");
+            entity.Property(e => e.Make).HasColumnName("make");
+            entity.Property(e => e.Model).HasColumnName("model");
+            entity.Property(e => e.Engine).HasColumnName("engine");
+            entity.Property(e => e.Vin).HasColumnName("vin");
+            entity.Property(e => e.Nickname).HasColumnName("nickname");
+
+            entity.Ignore(e => e.IsPrimary);
+            entity.Ignore(e => e.CreatedAt);
+        });
+
+        // ==========================
+        // CART ITEMS
+        // ==========================
+
+        modelBuilder.Entity<CartItem>(entity =>
+        {
+            entity.ToTable("cart_items");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.CustomerId).HasColumnName("customer_id");
+            entity.Property(e => e.ProductId).HasColumnName("product_id");
+            entity.Property(e => e.Quantity).HasColumnName("quantity");
+
+            entity.Ignore(e => e.CreatedAt);
+        });
+
+        // ==========================
+        // ORDER ITEMS
+        // ==========================
+
+        modelBuilder.Entity<OrderItem>(entity =>
+        {
+            entity.ToTable("order_items");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.OrderId).HasColumnName("order_id");
+            entity.Property(e => e.ProductId).HasColumnName("product_id");
+            entity.Property(e => e.Quantity).HasColumnName("quantity");
+            entity.Property(e => e.UnitPrice).HasColumnName("unit_price");
+        });
+
+        // ==========================
+        // MECHANICS
+        // ==========================
 
         modelBuilder.Entity<Mechanic>(entity =>
         {
@@ -225,6 +358,10 @@ public class AppDbContext : DbContext
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
         });
 
+        // ==========================
+        // SERVICE REQUESTS
+        // ==========================
+
         modelBuilder.Entity<ServiceRequest>(entity =>
         {
             entity.ToTable("service_requests");
@@ -232,6 +369,7 @@ public class AppDbContext : DbContext
             entity.HasKey(e => e.Id);
 
             entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.CustomerId).HasColumnName("customer_id");
             entity.Property(e => e.CustomerName).HasColumnName("customer_name");
             entity.Property(e => e.CustomerPhone).HasColumnName("customer_phone");
             entity.Property(e => e.VehicleInfo).HasColumnName("vehicle_info");
@@ -242,14 +380,126 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Longitude).HasColumnName("longitude");
             entity.Property(e => e.MechanicId).HasColumnName("mechanic_id");
             entity.Property(e => e.Status).HasColumnName("status");
+            entity.Property(e => e.PartsRequestNote).HasColumnName("parts_request_note");
+            entity.Property(e => e.ProofImageUrl).HasColumnName("proof_image_url");
+            entity.Property(e => e.RejectionReason).HasColumnName("rejection_reason");
+            entity.Property(e => e.AcceptedAt).HasColumnName("accepted_at");
+            entity.Property(e => e.StartedAt).HasColumnName("started_at");
+            entity.Property(e => e.CompletedAt).HasColumnName("completed_at");
+            entity.Property(e => e.ClosedAt).HasColumnName("closed_at");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+
+            entity.HasOne<Mechanic>()
+                .WithMany()
+                .HasForeignKey(e => e.MechanicId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ==========================
+        // PARTS REQUESTS
+        // ==========================
+
+        modelBuilder.Entity<PartsRequest>(entity =>
+        {
+            entity.ToTable("parts_requests");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.ServiceRequestId).HasColumnName("service_request_id");
+            entity.Property(e => e.MechanicId).HasColumnName("mechanic_id");
+            entity.Property(e => e.PartDescription).HasColumnName("part_description");
+            entity.Property(e => e.Notes).HasColumnName("notes");
+            entity.Property(e => e.Status).HasColumnName("status");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
         });
 
-        modelBuilder.Entity<OrderFinancial>()
-    .ToTable("order_financials");
+        // ==========================
+        // REPAIR PROOFS
+        // ==========================
 
-        modelBuilder.Entity<Payment>()
-            .ToTable("payments");
+        modelBuilder.Entity<RepairProof>(entity =>
+        {
+            entity.ToTable("repair_proofs");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.ServiceRequestId).HasColumnName("service_request_id");
+            entity.Property(e => e.MechanicId).HasColumnName("mechanic_id");
+            entity.Property(e => e.ImageUrl).HasColumnName("image_url");
+            entity.Property(e => e.Notes).HasColumnName("notes");
+            entity.Property(e => e.UploadedAt).HasColumnName("uploaded_at");
+        });
+
+        // ==========================
+        // ORDER FINANCIALS
+        // ==========================
+
+        modelBuilder.Entity<OrderFinancial>(entity =>
+        {
+            entity.ToTable("order_financials");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.OrderId).HasColumnName("order_id");
+            entity.Property(e => e.ServiceRequestId).HasColumnName("service_request_id");
+            entity.Property(e => e.CustomerPaid).HasColumnName("customer_paid");
+            entity.Property(e => e.SupplierAmount).HasColumnName("supplier_amount");
+            entity.Property(e => e.DriverAmount).HasColumnName("driver_amount");
+            entity.Property(e => e.MechanicAmount).HasColumnName("mechanic_amount");
+            entity.Property(e => e.AlphaPlatformFee).HasColumnName("alpha_platform_fee");
+            entity.Property(e => e.FinancialStatus).HasColumnName("financial_status");
+            entity.Property(e => e.PayoutStatus).HasColumnName("payout_status");
+            entity.Property(e => e.CompletionProofUrl).HasColumnName("completion_proof_url");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+        });
+
+        // ==========================
+        // PAYMENTS
+        // ==========================
+
+        modelBuilder.Entity<Payment>(entity =>
+        {
+            entity.ToTable("payments");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.OrderId).HasColumnName("order_id");
+            entity.Property(e => e.Amount).HasColumnName("amount");
+            entity.Property(e => e.Currency).HasColumnName("currency");
+            entity.Property(e => e.PaymentMethod).HasColumnName("payment_method");
+            entity.Property(e => e.PaymentStatus).HasColumnName("payment_status");
+            entity.Property(e => e.TransactionReference).HasColumnName("transaction_reference");
+            entity.Property(e => e.PaidAt).HasColumnName("paid_at");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+        });
+
+        // ==========================
+        // SECURITY LOGS
+        // ==========================
+
+        modelBuilder.Entity<SecurityLog>(entity =>
+        {
+            entity.ToTable("security_logs");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.Email).HasColumnName("email");
+            entity.Property(e => e.Role).HasColumnName("role");
+            entity.Property(e => e.Path).HasColumnName("path");
+            entity.Property(e => e.Method).HasColumnName("method");
+            entity.Property(e => e.StatusCode).HasColumnName("status_code");
+            entity.Property(e => e.Message).HasColumnName("message");
+            entity.Property(e => e.IpAddress).HasColumnName("ip_address");
+            entity.Property(e => e.UserAgent).HasColumnName("user_agent");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+        });
     }
 }

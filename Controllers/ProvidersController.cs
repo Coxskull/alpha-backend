@@ -8,7 +8,8 @@ using System.Threading.Tasks;
 namespace Alpha.API.Controllers;
 
 [ApiController]
-[Route("api/providers")]
+[Route("api/[controller]")]
+[Authorize]
 public class ProvidersController : ControllerBase
 {
     private readonly AppDbContext _context;

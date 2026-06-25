@@ -6,11 +6,13 @@ public class ServiceRequest
 {
     public Guid Id { get; set; }
 
+    public Guid? CustomerId { get; set; }
     public string CustomerName { get; set; } = string.Empty;
     public string? CustomerPhone { get; set; }
-    public string? VehicleInfo { get; set; }
 
+    public string? VehicleInfo { get; set; }
     public string IssueDescription { get; set; } = string.Empty;
+
     public string ServiceAddress { get; set; } = string.Empty;
     public string Zone { get; set; } = string.Empty;
 
@@ -19,7 +21,16 @@ public class ServiceRequest
 
     public Guid? MechanicId { get; set; }
 
-    public string Status { get; set; } = "pending";
+    public string Status { get; set; } = "new_request";
+
+    public string? PartsRequestNote { get; set; }
+    public string? ProofImageUrl { get; set; }
+    public string? RejectionReason { get; set; }
+
+    public DateTime? AcceptedAt { get; set; }
+    public DateTime? StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public DateTime? ClosedAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
