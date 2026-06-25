@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Alpha.API.Data;
-
+using Microsoft.AspNetCore.Authorization;
 namespace Alpha.API.Controllers;
 
 [ApiController]
