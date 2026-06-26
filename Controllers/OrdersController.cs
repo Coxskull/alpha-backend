@@ -398,13 +398,27 @@ public class OrdersController : ControllerBase
         if (order.SupplierId == null)
             return BadRequest("Assign supplier first.");
 
-        if (order.Status != "supplier_assigned" && order.Status != "ready_for_pickup")
-            return BadRequest($"Driver cannot be assigned while order status is {order.Status}.");
+        if (
+            order.Status != "supplier_assigned" &&
+            order.Status != "ready_for_pickup" &&
+            order.Status != "supplier_accepted"
+        )
+        {
+            return BadRequest(
+                $"Driver cannot be assigned while order status is {order.Status}."
+            );
+        }
 
         var driver = await _context.Drivers
             .Where(d =>
-                d.AvailabilityStatus == "available" &&
-                (d.Territory == order.Zone || d.Territory == null))
+                d.AvailabilityStatus.ToLower() == "available" &&
+                d.Territory == order.Zone)
+            .OrderBy(d => d.ActiveJobs)
+            .ThenByDescending(d => d.ResponseRate)
+            .FirstOrDefaultAsync();
+
+        driver ??= await _context.Drivers
+            .Where(d => d.AvailabilityStatus.ToLower() == "available")
             .OrderBy(d => d.ActiveJobs)
             .ThenByDescending(d => d.ResponseRate)
             .FirstOrDefaultAsync();
@@ -417,7 +431,7 @@ public class OrdersController : ControllerBase
         order.UpdatedAt = DateTime.UtcNow;
 
         driver.AvailabilityStatus = "busy";
-        driver.ActiveJobs++;
+        driver.ActiveJobs += 1;
 
         await _context.SaveChangesAsync();
 
