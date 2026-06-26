@@ -257,6 +257,50 @@ public class OrdersController : ControllerBase
         });
     }
 
+    [HttpPost("{id}/assign-supplier")]
+    public async Task<IActionResult> AssignSupplierAuto(Guid id)
+    {
+        var order = await _context.Orders
+            .FirstOrDefaultAsync(o => o.Id == id);
+
+        if (order == null)
+            return NotFound("Order not found.");
+
+        if (order.Status != "pending" && order.Status != "payment_confirmed")
+            return BadRequest($"Supplier cannot be assigned while order status is {order.Status}.");
+
+        var supplier = await _context.Suppliers
+            .Where(s =>
+                s.AvailabilityStatus == "available" &&
+                (s.Territory == order.Zone || s.Territory == null))
+            .OrderBy(s => s.CurrentWorkload)
+            .ThenByDescending(s => s.ResponseRate)
+            .FirstOrDefaultAsync();
+
+        if (supplier == null)
+            return NotFound("No available supplier found.");
+
+        order.SupplierId = supplier.Id;
+        order.Status = "supplier_assigned";
+        order.UpdatedAt = DateTime.UtcNow;
+
+        supplier.AvailabilityStatus = "busy";
+        supplier.CurrentWorkload++;
+
+        await _context.SaveChangesAsync();
+
+        await AddStatusHistory(order.Id, "supplier_assigned");
+        await AddAuditLog(order.Id, $"Auto Supplier Assigned: {supplier.Name}");
+
+        return Ok(new
+        {
+            message = "Supplier assigned successfully",
+            supplierId = supplier.Id,
+            supplierName = supplier.Name,
+            status = order.Status
+        });
+    }
+
     // =========================================================
     // ASSIGN DRIVER
     // POST: /api/Orders/{id}/assign-driver
@@ -314,6 +358,53 @@ public class OrdersController : ControllerBase
             order.Id,
             $"Driver Assigned: {driver.FullName}"
         );
+
+        return Ok(new
+        {
+            message = "Driver assigned successfully",
+            driverId = driver.Id,
+            driverName = driver.FullName,
+            status = order.Status
+        });
+    }
+
+    [HttpPost("{id}/assign-driver")]
+    public async Task<IActionResult> AssignDriverAuto(Guid id)
+    {
+        var order = await _context.Orders
+            .FirstOrDefaultAsync(o => o.Id == id);
+
+        if (order == null)
+            return NotFound("Order not found.");
+
+        if (order.SupplierId == null)
+            return BadRequest("Assign supplier first.");
+
+        if (order.Status != "supplier_assigned" && order.Status != "ready_for_pickup")
+            return BadRequest($"Driver cannot be assigned while order status is {order.Status}.");
+
+        var driver = await _context.Drivers
+            .Where(d =>
+                d.AvailabilityStatus == "available" &&
+                (d.Territory == order.Zone || d.Territory == null))
+            .OrderBy(d => d.ActiveJobs)
+            .ThenByDescending(d => d.ResponseRate)
+            .FirstOrDefaultAsync();
+
+        if (driver == null)
+            return NotFound("No available driver found.");
+
+        order.DriverId = driver.Id;
+        order.Status = "driver_assigned";
+        order.UpdatedAt = DateTime.UtcNow;
+
+        driver.AvailabilityStatus = "busy";
+        driver.ActiveJobs++;
+
+        await _context.SaveChangesAsync();
+
+        await AddStatusHistory(order.Id, "driver_assigned");
+        await AddAuditLog(order.Id, $"Auto Driver Assigned: {driver.FullName}");
 
         return Ok(new
         {
