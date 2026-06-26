@@ -206,10 +206,14 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound("Order not found.");
 
-        if (order.Status != "pending")
+        if (
+    order.Status != "pending" &&
+    order.Status != "payment_confirmed" &&
+    order.Status != "payment_paid"
+)
         {
             return BadRequest(
-                "Supplier can only be assigned when order is Pending."
+                $"Supplier cannot be assigned while order status is {order.Status}."
             );
         }
 
@@ -266,8 +270,14 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound("Order not found.");
 
-        if (order.Status != "pending" && order.Status != "payment_confirmed")
+        if (
+    order.Status != "pending" &&
+    order.Status != "payment_confirmed" &&
+    order.Status != "payment_paid"
+)
+        {
             return BadRequest($"Supplier cannot be assigned while order status is {order.Status}.");
+        }
 
         var supplier = await _context.Suppliers
             .Where(s =>
