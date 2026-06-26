@@ -271,18 +271,26 @@ public class OrdersController : ControllerBase
             return NotFound("Order not found.");
 
         if (
-    order.Status != "pending" &&
-    order.Status != "payment_confirmed" &&
-    order.Status != "payment_paid"
-)
+            order.Status != "pending" &&
+            order.Status != "payment_confirmed" &&
+            order.Status != "payment_paid"
+        )
         {
-            return BadRequest($"Supplier cannot be assigned while order status is {order.Status}.");
+            return BadRequest(
+                $"Supplier cannot be assigned while order status is {order.Status}."
+            );
         }
 
         var supplier = await _context.Suppliers
             .Where(s =>
-                s.AvailabilityStatus == "available" &&
-                (s.Territory == order.Zone || s.Territory == null))
+                s.AvailabilityStatus.ToLower() == "available" &&
+                s.Territory == order.Zone)
+            .OrderBy(s => s.CurrentWorkload)
+            .ThenByDescending(s => s.ResponseRate)
+            .FirstOrDefaultAsync();
+
+        supplier ??= await _context.Suppliers
+            .Where(s => s.AvailabilityStatus.ToLower() == "available")
             .OrderBy(s => s.CurrentWorkload)
             .ThenByDescending(s => s.ResponseRate)
             .FirstOrDefaultAsync();
@@ -295,7 +303,7 @@ public class OrdersController : ControllerBase
         order.UpdatedAt = DateTime.UtcNow;
 
         supplier.AvailabilityStatus = "busy";
-        supplier.CurrentWorkload++;
+        supplier.CurrentWorkload += 1;
 
         await _context.SaveChangesAsync();
 
