@@ -27,7 +27,9 @@ public class OrdersController : ControllerBase
     {
         try
         {
-            var currency = dto.Currency.ToUpper();
+            var currency = string.IsNullOrWhiteSpace(dto.Currency)
+                ? "USD"
+                : dto.Currency.ToUpper();
 
             if (currency != "USD" && currency != "MXN")
                 return BadRequest("Currency must be USD or MXN.");
@@ -66,6 +68,10 @@ public class OrdersController : ControllerBase
 
             _context.Orders.Add(order);
 
+            // IMPORTANT:
+            // Save order first so FK order_financials.order_id exists.
+            await _context.SaveChangesAsync();
+
             var financial = new OrderFinancial
             {
                 Id = Guid.NewGuid(),
@@ -81,6 +87,13 @@ public class OrdersController : ControllerBase
                 SupplierEarning = Math.Round(supplierEarning, 2),
                 DriverEarning = Math.Round(driverEarning, 2),
                 CompanyRevenue = Math.Round(companyRevenue, 2),
+                CustomerPaid = 0,
+                SupplierAmount = Math.Round(supplierEarning, 2),
+                DriverAmount = Math.Round(driverEarning, 2),
+                MechanicAmount = 0,
+                AlphaPlatformFee = Math.Round(companyRevenue, 2),
+                FinancialStatus = "pending_review",
+                PayoutStatus = "manual_review",
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -92,7 +105,9 @@ public class OrdersController : ControllerBase
                 OrderId = order.Id,
                 Amount = financial.TotalAmount,
                 Currency = currency,
-                PaymentMethod = dto.PaymentMethod,
+                PaymentMethod = string.IsNullOrWhiteSpace(dto.PaymentMethod)
+                    ? "cash"
+                    : dto.PaymentMethod,
                 PaymentStatus = dto.PaymentMethod == "cash" ? "pending" : "unpaid",
                 CreatedAt = DateTime.UtcNow
             };
