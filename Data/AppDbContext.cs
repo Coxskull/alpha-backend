@@ -383,6 +383,25 @@ public class AppDbContext : DbContext
             entity.Property(e => e.ClosedAt).HasColumnName("closed_at");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+            entity.Property(e => e.ProviderId).HasColumnName("provider_id");
+            entity.Property(e => e.DriverId).HasColumnName("driver_id");
+            entity.Property(e => e.PartsRequestId).HasColumnName("parts_request_id");
+            entity.Property(e => e.FinalAmount).HasColumnName("final_amount");
+            entity.Property(e => e.PaymentStatus).HasColumnName("payment_status");
+            entity.Property(e => e.ProviderAcceptedAt).HasColumnName("provider_accepted_at");
+            entity.Property(e => e.MechanicAcceptedAt).HasColumnName("mechanic_accepted_at");
+            entity.Property(e => e.DriverAssignedAt).HasColumnName("driver_assigned_at");
+            entity.Property(e => e.ProofUploadedAt).HasColumnName("proof_uploaded_at");
+
+            entity.HasOne<Supplier>()
+                .WithMany()
+                .HasForeignKey(e => e.ProviderId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne<Driver>()
+                .WithMany()
+                .HasForeignKey(e => e.DriverId)
+                .OnDelete(DeleteBehavior.SetNull);
 
             entity.HasOne<Mechanic>()
                 .WithMany()

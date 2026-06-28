@@ -1,7 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Alpha.API.Data;
+﻿using Alpha.API.Data;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
 namespace Alpha.API.Controllers;
 
 [ApiController]
@@ -16,43 +17,117 @@ public class DashboardController : ControllerBase
         _context = context;
     }
 
-    // =====================================================
-    // DASHBOARD STATS
-    // =====================================================
-
-    [HttpGet("stats")]
-    public async Task<IActionResult> GetStats()
+    [HttpGet("overview")]
+    [Authorize(Roles = "admin,dispatcher")]
+    public async Task<IActionResult> Overview()
     {
-        var orders =
-            await _context.Orders.ToListAsync();
+        var today = DateTime.UtcNow.Date;
 
-        var suppliers =
-            await _context.Suppliers.ToListAsync();
+        var serviceRequests = await _context.ServiceRequests.ToListAsync();
+        var financials = await _context.OrderFinancials.ToListAsync();
 
-        var drivers =
-            await _context.Drivers.ToListAsync();
-
-        var response = new
+        return Ok(new
         {
-            activeOrders = orders.Count,
+            serviceRequests = new
+            {
+                total = serviceRequests.Count,
+                active = serviceRequests.Count(x =>
+                    x.Status != "completed" &&
+                    x.Status != "closed" &&
+                    x.Status != "cancelled"),
+                newRequests = serviceRequests.Count(x => x.Status == "new_request"),
+                providerNeeded = serviceRequests.Count(x => x.Status == "provider_needed"),
+                mechanicNeeded = serviceRequests.Count(x => x.Status == "mechanic_needed"),
+                driverNeeded = serviceRequests.Count(x => x.Status == "driver_needed"),
+                waitingForParts = serviceRequests.Count(x => x.Status == "parts_requested"),
+                completedToday = serviceRequests.Count(x =>
+                    x.Status == "completed" &&
+                    x.CompletedAt != null &&
+                    x.CompletedAt.Value.Date == today)
+            },
+            financials = new
+            {
+                grossRevenue = financials.Sum(x => x.TotalAmount),
+                customerPaid = financials.Sum(x => x.CustomerPaid),
+                alphaRevenue = financials.Sum(x => x.AlphaPlatformFee),
+                providerPayouts = financials.Sum(x => x.SupplierAmount),
+                mechanicPayouts = financials.Sum(x => x.MechanicAmount),
+                driverPayouts = financials.Sum(x => x.DriverAmount),
+                pendingReview = financials.Count(x => x.FinancialStatus == "pending_review")
+            }
+        });
+    }
 
-            availableDrivers =
-                drivers.Count(x =>
-                    x.AvailabilityStatus == "available"),
+    [HttpGet("mechanic")]
+    [Authorize(Roles = "mechanic")]
+    public async Task<IActionResult> MechanicDashboard()
+    {
+        var userId = User.GetUserId();
 
-            activeSuppliers =
-                suppliers.Count(x =>
-                    x.AvailabilityStatus == "available"),
+        var mechanic = await _context.Mechanics
+            .FirstOrDefaultAsync(x => x.UserId == userId);
 
-            enRouteDeliveries =
-                orders.Count(x =>
-                    x.Status == "en_route"),
+        if (mechanic == null)
+            return Forbid();
 
-            deliveredToday =
-                orders.Count(x =>
-                    x.Status == "delivered")
-        };
+        var requests = await _context.ServiceRequests
+            .Where(x => x.MechanicId == mechanic.Id)
+            .ToListAsync();
 
-        return Ok(response);
+        var financials = await _context.OrderFinancials
+            .Where(x => requests.Select(r => r.Id).Contains(x.ServiceRequestId ?? Guid.Empty))
+            .ToListAsync();
+
+        return Ok(new
+        {
+            jobs = new
+            {
+                assigned = requests.Count(x => x.Status == "mechanic_assigned"),
+                accepted = requests.Count(x => x.Status == "mechanic_accepted"),
+                waitingForParts = requests.Count(x => x.Status == "parts_requested"),
+                completed = requests.Count(x => x.Status == "completed")
+            },
+            financials = new
+            {
+                earnings = financials.Sum(x => x.MechanicAmount),
+                pendingReview = financials.Count(x => x.FinancialStatus == "pending_review")
+            }
+        });
+    }
+
+    [HttpGet("driver")]
+    [Authorize(Roles = "driver")]
+    public async Task<IActionResult> DriverDashboard()
+    {
+        var email = User.GetEmail();
+
+        var driver = await _context.Drivers
+            .FirstOrDefaultAsync(x => x.Email == email);
+
+        if (driver == null)
+            return Forbid();
+
+        var requests = await _context.ServiceRequests
+            .Where(x => x.DriverId == driver.Id)
+            .ToListAsync();
+
+        var financials = await _context.OrderFinancials
+            .Where(x => requests.Select(r => r.Id).Contains(x.ServiceRequestId ?? Guid.Empty))
+            .ToListAsync();
+
+        return Ok(new
+        {
+            jobs = new
+            {
+                assigned = requests.Count(x => x.Status == "driver_assigned"),
+                pickedUp = requests.Count(x => x.Status == "parts_picked_up"),
+                delivered = requests.Count(x => x.Status == "parts_delivered"),
+                completed = requests.Count(x => x.Status == "completed")
+            },
+            financials = new
+            {
+                earnings = financials.Sum(x => x.DriverAmount)
+            }
+        });
     }
 }
