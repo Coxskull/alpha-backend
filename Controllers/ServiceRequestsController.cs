@@ -77,13 +77,19 @@ public class ServiceRequestsController : ControllerBase
     [Authorize(Roles = "mechanic")]
     public async Task<IActionResult> GetMyMechanicRequests()
     {
-        var userId = User.GetUserId();
+        Guid userId;
 
-        if (userId == null)
+        try
+        {
+            userId = User.GetUserId();
+        }
+        catch
+        {
             return Forbid();
+        }
 
         var mechanic = await _context.Mechanics
-            .FirstOrDefaultAsync(x => x.UserId == userId.Value);
+            .FirstOrDefaultAsync(x => x.UserId == userId);
 
         if (mechanic == null)
             return Forbid();
@@ -100,10 +106,16 @@ public class ServiceRequestsController : ControllerBase
     [Authorize(Roles = "driver")]
     public async Task<IActionResult> GetMyDriverRequests()
     {
-        var email = User.GetEmail();
+        string email;
 
-        if (string.IsNullOrWhiteSpace(email))
+        try
+        {
+            email = User.GetEmail();
+        }
+        catch
+        {
             return Forbid();
+        }
 
         var driver = await _context.Drivers
             .FirstOrDefaultAsync(x => x.Email == email);
@@ -464,13 +476,19 @@ public class ServiceRequestsController : ControllerBase
 
     private async Task<ServiceRequest?> GetOwnedMechanicRequest(Guid requestId)
     {
-        var userId = User.GetUserId();
+        Guid userId;
 
-        if (userId == null)
-            return Forbid();
+        try
+        {
+            userId = User.GetUserId();
+        }
+        catch
+        {
+            return null;
+        }
 
         var mechanic = await _context.Mechanics
-            .FirstOrDefaultAsync(x => x.UserId == userId.Value);
+            .FirstOrDefaultAsync(x => x.UserId == userId);
 
         if (mechanic == null)
             return null;

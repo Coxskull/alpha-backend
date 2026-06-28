@@ -1,8 +1,9 @@
 ﻿using Alpha.API.Data;
+using Alpha.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Alpha.API.Security;
+
 namespace Alpha.API.Controllers;
 
 [ApiController]
@@ -62,13 +63,19 @@ public class DashboardController : ControllerBase
     [Authorize(Roles = "mechanic")]
     public async Task<IActionResult> MechanicDashboard()
     {
-        var userId = User.GetUserId();
+        Guid userId;
 
-        if (userId == null)
+        try
+        {
+            userId = User.GetUserId();
+        }
+        catch
+        {
             return Forbid();
+        }
 
         var mechanic = await _context.Mechanics
-            .FirstOrDefaultAsync(x => x.UserId == userId.Value);
+            .FirstOrDefaultAsync(x => x.UserId == userId);
 
         if (mechanic == null)
             return Forbid();
@@ -77,8 +84,12 @@ public class DashboardController : ControllerBase
             .Where(x => x.MechanicId == mechanic.Id)
             .ToListAsync();
 
+        var requestIds = requests.Select(x => x.Id).ToList();
+
         var financials = await _context.OrderFinancials
-            .Where(x => requests.Select(r => r.Id).Contains(x.ServiceRequestId ?? Guid.Empty))
+            .Where(x =>
+                x.ServiceRequestId != null &&
+                requestIds.Contains(x.ServiceRequestId.Value))
             .ToListAsync();
 
         return Ok(new
@@ -102,10 +113,16 @@ public class DashboardController : ControllerBase
     [Authorize(Roles = "driver")]
     public async Task<IActionResult> DriverDashboard()
     {
-        var email = User.GetEmail();
+        string email;
 
-        if (string.IsNullOrWhiteSpace(email))
+        try
+        {
+            email = User.GetEmail();
+        }
+        catch
+        {
             return Forbid();
+        }
 
         var driver = await _context.Drivers
             .FirstOrDefaultAsync(x => x.Email == email);
@@ -117,8 +134,12 @@ public class DashboardController : ControllerBase
             .Where(x => x.DriverId == driver.Id)
             .ToListAsync();
 
+        var requestIds = requests.Select(x => x.Id).ToList();
+
         var financials = await _context.OrderFinancials
-            .Where(x => requests.Select(r => r.Id).Contains(x.ServiceRequestId ?? Guid.Empty))
+            .Where(x =>
+                x.ServiceRequestId != null &&
+                requestIds.Contains(x.ServiceRequestId.Value))
             .ToListAsync();
 
         return Ok(new

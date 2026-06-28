@@ -44,7 +44,7 @@ public class MechanicsController : ControllerBase
     [Authorize(Roles = "mechanic")]
     public async Task<IActionResult> Me()
     {
-        var userId = User.GetUserId();
+        var userId = AuthUser.GetUserId(User);
 
         var mechanic = await _context.Mechanics
             .FirstOrDefaultAsync(x => x.UserId == userId);
@@ -64,7 +64,7 @@ public class MechanicsController : ControllerBase
         if (!allowed.Contains(dto.Status))
             return BadRequest("Invalid availability status.");
 
-        var userId = User.GetUserId();
+        var userId = AuthUser.GetUserId(User);
 
         var mechanic = await _context.Mechanics
             .FirstOrDefaultAsync(x => x.UserId == userId);

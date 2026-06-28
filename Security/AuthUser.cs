@@ -20,10 +20,21 @@ public static class AuthUser
         return user.FindFirstValue(ClaimTypes.Role) ?? "";
     }
 
+    public static string GetEmail(this ClaimsPrincipal user)
+    {
+        var email =
+            user.FindFirstValue(ClaimTypes.Email)
+            ?? user.FindFirstValue("email");
+
+        if (string.IsNullOrWhiteSpace(email))
+            throw new UnauthorizedAccessException("Missing email.");
+
+        return email;
+    }
+
     public static bool IsAdminOrDispatcher(this ClaimsPrincipal user)
     {
         var role = user.GetRole();
-
         return role == AppRoles.Admin || role == AppRoles.Dispatcher;
     }
 }
