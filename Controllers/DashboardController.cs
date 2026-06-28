@@ -2,7 +2,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-
+using Alpha.API.Security;
 namespace Alpha.API.Controllers;
 
 [ApiController]
@@ -64,8 +64,11 @@ public class DashboardController : ControllerBase
     {
         var userId = User.GetUserId();
 
+        if (userId == null)
+            return Forbid();
+
         var mechanic = await _context.Mechanics
-            .FirstOrDefaultAsync(x => x.UserId == userId);
+            .FirstOrDefaultAsync(x => x.UserId == userId.Value);
 
         if (mechanic == null)
             return Forbid();
@@ -100,6 +103,9 @@ public class DashboardController : ControllerBase
     public async Task<IActionResult> DriverDashboard()
     {
         var email = User.GetEmail();
+
+        if (string.IsNullOrWhiteSpace(email))
+            return Forbid();
 
         var driver = await _context.Drivers
             .FirstOrDefaultAsync(x => x.Email == email);

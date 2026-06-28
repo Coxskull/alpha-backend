@@ -140,6 +140,8 @@ public class AppDbContext : DbContext
             entity.Property(e => e.ActiveJobs).HasColumnName("ActiveJobs");
             entity.Property(e => e.ResponseRate).HasColumnName("ResponseRate");
             entity.Property(e => e.LastSeenAt).HasColumnName("LastSeenAt");
+            entity.Property(e => e.Email).HasColumnName("email");
+            entity.Property(e => e.PasswordHash).HasColumnName("password_hash");
         });
 
         // ==========================
