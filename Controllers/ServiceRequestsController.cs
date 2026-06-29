@@ -29,6 +29,42 @@ public class ServiceRequestsController : ControllerBase
     {
         var requests = await _context.ServiceRequests
             .OrderByDescending(x => x.CreatedAt)
+            .Select(x => new
+            {
+                x.Id,
+                x.CustomerId,
+                x.CustomerName,
+                x.CustomerPhone,
+                x.VehicleInfo,
+                x.IssueDescription,
+                x.ServiceAddress,
+                x.Zone,
+                x.Status,
+                x.FinalAmount,
+                x.PaymentStatus,
+                x.ProviderId,
+                x.MechanicId,
+                x.DriverId,
+                x.PartsRequestNote,
+                x.ProofImageUrl,
+                x.CreatedAt,
+                x.UpdatedAt,
+
+                ProviderName = _context.Suppliers
+                    .Where(s => s.Id == x.ProviderId)
+                    .Select(s => s.Name)
+                    .FirstOrDefault(),
+
+                MechanicName = _context.Mechanics
+                    .Where(m => m.Id == x.MechanicId)
+                    .Select(m => m.FullName)
+                    .FirstOrDefault(),
+
+                DriverName = _context.Drivers
+                    .Where(d => d.Id == x.DriverId)
+                    .Select(d => d.FullName)
+                    .FirstOrDefault()
+            })
             .ToListAsync();
 
         return Ok(requests);
@@ -38,7 +74,45 @@ public class ServiceRequestsController : ControllerBase
     [Authorize(Roles = "admin,dispatcher,mechanic,driver,supplier,provider,customer")]
     public async Task<IActionResult> GetById(Guid id)
     {
-        var request = await _context.ServiceRequests.FindAsync(id);
+        var request = await _context.ServiceRequests
+            .Where(x => x.Id == id)
+            .Select(x => new
+            {
+                x.Id,
+                x.CustomerId,
+                x.CustomerName,
+                x.CustomerPhone,
+                x.VehicleInfo,
+                x.IssueDescription,
+                x.ServiceAddress,
+                x.Zone,
+                x.Status,
+                x.FinalAmount,
+                x.PaymentStatus,
+                x.ProviderId,
+                x.MechanicId,
+                x.DriverId,
+                x.PartsRequestNote,
+                x.ProofImageUrl,
+                x.CreatedAt,
+                x.UpdatedAt,
+
+                ProviderName = _context.Suppliers
+                    .Where(s => s.Id == x.ProviderId)
+                    .Select(s => s.Name)
+                    .FirstOrDefault(),
+
+                MechanicName = _context.Mechanics
+                    .Where(m => m.Id == x.MechanicId)
+                    .Select(m => m.FullName)
+                    .FirstOrDefault(),
+
+                DriverName = _context.Drivers
+                    .Where(d => d.Id == x.DriverId)
+                    .Select(d => d.FullName)
+                    .FirstOrDefault()
+            })
+            .FirstOrDefaultAsync();
 
         if (request == null)
             return NotFound();
