@@ -207,7 +207,9 @@ public class ServiceRequestsController : ControllerBase
             .FirstOrDefaultAsync(x => x.Email == email);
 
         if (driver == null)
-            return Forbid();
+        {
+            return Forbid("No driver profile is linked to this user email.");
+        }
 
         var requests = await _context.ServiceRequests
             .Where(x => x.DriverId == driver.Id)

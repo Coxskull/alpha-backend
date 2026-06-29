@@ -110,7 +110,7 @@ public class DashboardController : ControllerBase
     }
 
     [HttpGet("driver")]
-    [Authorize(Roles = "driver")]
+    [Authorize(Roles = "driver,Driver,admin,dispatcher")]
     public async Task<IActionResult> DriverDashboard()
     {
         string email;
@@ -128,7 +128,7 @@ public class DashboardController : ControllerBase
             .FirstOrDefaultAsync(x => x.Email == email);
 
         if (driver == null)
-            return Forbid();
+            return Forbid("No driver profile is linked to this user email.");
 
         var requests = await _context.ServiceRequests
             .Where(x => x.DriverId == driver.Id)
