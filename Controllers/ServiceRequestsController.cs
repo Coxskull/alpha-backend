@@ -78,6 +78,7 @@ public class ServiceRequestsController : ControllerBase
     public async Task<IActionResult> GetMyMechanicRequests()
     {
         Guid userId;
+        string? email = null;
 
         try
         {
@@ -88,8 +89,19 @@ public class ServiceRequestsController : ControllerBase
             return Forbid();
         }
 
+        try
+        {
+            email = User.GetEmail();
+        }
+        catch
+        {
+            email = null;
+        }
+
         var mechanic = await _context.Mechanics
-            .FirstOrDefaultAsync(x => x.UserId == userId);
+            .FirstOrDefaultAsync(x =>
+                x.UserId == userId ||
+                (!string.IsNullOrWhiteSpace(email) && x.Email == email));
 
         if (mechanic == null)
             return Forbid();
@@ -477,6 +489,7 @@ public class ServiceRequestsController : ControllerBase
     private async Task<ServiceRequest?> GetOwnedMechanicRequest(Guid requestId)
     {
         Guid userId;
+        string? email = null;
 
         try
         {
@@ -487,8 +500,19 @@ public class ServiceRequestsController : ControllerBase
             return null;
         }
 
+        try
+        {
+            email = User.GetEmail();
+        }
+        catch
+        {
+            email = null;
+        }
+
         var mechanic = await _context.Mechanics
-            .FirstOrDefaultAsync(x => x.UserId == userId);
+            .FirstOrDefaultAsync(x =>
+                x.UserId == userId ||
+                (!string.IsNullOrWhiteSpace(email) && x.Email == email));
 
         if (mechanic == null)
             return null;
