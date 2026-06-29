@@ -27,44 +27,8 @@ public class ServiceRequestsController : ControllerBase
     [Authorize(Roles = "admin,dispatcher")]
     public async Task<IActionResult> GetAll()
     {
-        var requests = await _context.ServiceRequests
+        var requests = await ServiceRequestDtoQuery()
             .OrderByDescending(x => x.CreatedAt)
-            .Select(x => new
-            {
-                x.Id,
-                x.CustomerId,
-                x.CustomerName,
-                x.CustomerPhone,
-                x.VehicleInfo,
-                x.IssueDescription,
-                x.ServiceAddress,
-                x.Zone,
-                x.Status,
-                x.FinalAmount,
-                x.PaymentStatus,
-                x.ProviderId,
-                x.MechanicId,
-                x.DriverId,
-                x.PartsRequestNote,
-                x.ProofImageUrl,
-                x.CreatedAt,
-                x.UpdatedAt,
-
-                ProviderName = _context.Suppliers
-                    .Where(s => s.Id == x.ProviderId)
-                    .Select(s => s.Name)
-                    .FirstOrDefault(),
-
-                MechanicName = _context.Mechanics
-                    .Where(m => m.Id == x.MechanicId)
-                    .Select(m => m.FullName)
-                    .FirstOrDefault(),
-
-                DriverName = _context.Drivers
-                    .Where(d => d.Id == x.DriverId)
-                    .Select(d => d.FullName)
-                    .FirstOrDefault()
-            })
             .ToListAsync();
 
         return Ok(requests);
@@ -74,45 +38,8 @@ public class ServiceRequestsController : ControllerBase
     [Authorize(Roles = "admin,dispatcher,mechanic,driver,supplier,provider,customer")]
     public async Task<IActionResult> GetById(Guid id)
     {
-        var request = await _context.ServiceRequests
-            .Where(x => x.Id == id)
-            .Select(x => new
-            {
-                x.Id,
-                x.CustomerId,
-                x.CustomerName,
-                x.CustomerPhone,
-                x.VehicleInfo,
-                x.IssueDescription,
-                x.ServiceAddress,
-                x.Zone,
-                x.Status,
-                x.FinalAmount,
-                x.PaymentStatus,
-                x.ProviderId,
-                x.MechanicId,
-                x.DriverId,
-                x.PartsRequestNote,
-                x.ProofImageUrl,
-                x.CreatedAt,
-                x.UpdatedAt,
-
-                ProviderName = _context.Suppliers
-                    .Where(s => s.Id == x.ProviderId)
-                    .Select(s => s.Name)
-                    .FirstOrDefault(),
-
-                MechanicName = _context.Mechanics
-                    .Where(m => m.Id == x.MechanicId)
-                    .Select(m => m.FullName)
-                    .FirstOrDefault(),
-
-                DriverName = _context.Drivers
-                    .Where(d => d.Id == x.DriverId)
-                    .Select(d => d.FullName)
-                    .FirstOrDefault()
-            })
-            .FirstOrDefaultAsync();
+        var request = await ServiceRequestDtoQuery()
+            .FirstOrDefaultAsync(x => x.Id == id);
 
         if (request == null)
             return NotFound();
@@ -148,7 +75,7 @@ public class ServiceRequestsController : ControllerBase
     }
 
     [HttpGet("my-mechanic")]
-    [Authorize(Roles = "mechanic")]
+    [Authorize(Roles = "mechanic,Mechanic,admin,dispatcher")]
     public async Task<IActionResult> GetMyMechanicRequests()
     {
         Guid userId;
@@ -180,7 +107,7 @@ public class ServiceRequestsController : ControllerBase
         if (mechanic == null)
             return Forbid();
 
-        var requests = await _context.ServiceRequests
+        var requests = await ServiceRequestDtoQuery()
             .Where(x => x.MechanicId == mechanic.Id)
             .OrderByDescending(x => x.CreatedAt)
             .ToListAsync();
@@ -207,11 +134,9 @@ public class ServiceRequestsController : ControllerBase
             .FirstOrDefaultAsync(x => x.Email == email);
 
         if (driver == null)
-        {
             return Forbid("No driver profile is linked to this user email.");
-        }
 
-        var requests = await _context.ServiceRequests
+        var requests = await ServiceRequestDtoQuery()
             .Where(x => x.DriverId == driver.Id)
             .OrderByDescending(x => x.CreatedAt)
             .ToListAsync();
@@ -597,5 +522,47 @@ public class ServiceRequestsController : ControllerBase
             .FirstOrDefaultAsync(x =>
                 x.Id == requestId &&
                 x.MechanicId == mechanic.Id);
+    }
+
+    private IQueryable<ServiceRequestDto> ServiceRequestDtoQuery()
+    {
+        return _context.ServiceRequests
+            .Select(x => new ServiceRequestDto
+            {
+                Id = x.Id,
+                CustomerId = x.CustomerId,
+                CustomerName = x.CustomerName,
+                CustomerPhone = x.CustomerPhone,
+                VehicleInfo = x.VehicleInfo,
+                IssueDescription = x.IssueDescription,
+                ServiceAddress = x.ServiceAddress,
+                Zone = x.Zone,
+                Status = x.Status,
+                FinalAmount = x.FinalAmount,
+                PaymentStatus = x.PaymentStatus,
+
+                ProviderId = x.ProviderId,
+                ProviderName = _context.Suppliers
+                    .Where(s => s.Id == x.ProviderId)
+                    .Select(s => s.Name)
+                    .FirstOrDefault(),
+
+                MechanicId = x.MechanicId,
+                MechanicName = _context.Mechanics
+                    .Where(m => m.Id == x.MechanicId)
+                    .Select(m => m.FullName)
+                    .FirstOrDefault(),
+
+                DriverId = x.DriverId,
+                DriverName = _context.Drivers
+                    .Where(d => d.Id == x.DriverId)
+                    .Select(d => d.FullName)
+                    .FirstOrDefault(),
+
+                PartsRequestNote = x.PartsRequestNote,
+                ProofImageUrl = x.ProofImageUrl,
+                CreatedAt = x.CreatedAt,
+                UpdatedAt = x.UpdatedAt
+            });
     }
 }
