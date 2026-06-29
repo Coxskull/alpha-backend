@@ -189,7 +189,7 @@ public class ServiceRequestsController : ControllerBase
     }
 
     [HttpGet("my-driver")]
-    [Authorize(Roles = "driver")]
+    [Authorize(Roles = "driver,Driver,admin,dispatcher")]
     public async Task<IActionResult> GetMyDriverRequests()
     {
         string email;
@@ -402,7 +402,7 @@ public class ServiceRequestsController : ControllerBase
     }
 
     [HttpPost("{id}/driver-status")]
-    [Authorize(Roles = "driver,admin,dispatcher")]
+    [Authorize(Roles = "driver,Driver,admin,dispatcher")]
     public async Task<IActionResult> DriverStatus(Guid id, UpdateServiceStatusDto dto)
     {
         var allowedStatuses = new[]
