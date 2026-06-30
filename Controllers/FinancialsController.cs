@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Threading.Tasks;
-
+using Alpha.API.Models;
 namespace Alpha.API.Controllers;
 
 [ApiController]
