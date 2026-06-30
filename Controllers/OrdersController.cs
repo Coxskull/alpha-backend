@@ -76,24 +76,18 @@ public class OrdersController : ControllerBase
             {
                 Id = Guid.NewGuid(),
                 OrderId = order.Id,
-                Currency = currency,
-                ExchangeRate = exchangeRate,
+                Currency = dto.Currency ?? "USD",
                 ItemSubtotal = dto.ItemSubtotal,
-                DeliveryFee = Math.Round(deliveryFee, 2),
-                ServiceFee = Math.Round(serviceFee, 2),
-                Tax = Math.Round(tax, 2),
-                Discount = discount,
-                TotalAmount = Math.Round(totalAmount, 2),
-                SupplierEarning = Math.Round(supplierEarning, 2),
-                DriverEarning = Math.Round(driverEarning, 2),
-                CompanyRevenue = Math.Round(companyRevenue, 2),
+                DeliveryFee = dto.DeliveryFee,
+                ServiceFee = dto.ServiceFee,
+                Tax = dto.Tax,
+                Discount = dto.Discount,
+                TotalAmount = dto.TotalAmount,
                 CustomerPaid = 0,
-                SupplierAmount = Math.Round(supplierEarning, 2),
-                DriverAmount = Math.Round(driverEarning, 2),
-                MechanicAmount = 0,
-                AlphaPlatformFee = Math.Round(companyRevenue, 2),
-                FinancialStatus = "pending_review",
-                PayoutStatus = "manual_review",
+                FinancialStatus = dto.PaymentMethod == "paypal"
+        ? "awaiting_payment"
+        : "pending_review",
+                PayoutStatus = "not_ready",
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -103,12 +97,10 @@ public class OrdersController : ControllerBase
             {
                 Id = Guid.NewGuid(),
                 OrderId = order.Id,
-                Amount = financial.TotalAmount,
-                Currency = currency,
-                PaymentMethod = string.IsNullOrWhiteSpace(dto.PaymentMethod)
-                    ? "cash"
-                    : dto.PaymentMethod,
-                PaymentStatus = dto.PaymentMethod == "cash" ? "pending" : "unpaid",
+                Amount = dto.TotalAmount,
+                Currency = dto.Currency ?? "USD",
+                PaymentMethod = dto.PaymentMethod,
+                PaymentStatus = dto.PaymentMethod == "paypal" ? "pending" : "cash_pending",
                 CreatedAt = DateTime.UtcNow
             };
 

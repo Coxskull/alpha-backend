@@ -46,7 +46,7 @@ builder.Services
                 )
             };
     });
-
+builder.Services.AddHttpClient<Alpha.API.Services.PayPalService>();
 builder.Services.AddAuthorization();
 
 builder.Services.AddControllers()

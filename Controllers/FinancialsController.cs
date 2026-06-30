@@ -60,4 +60,61 @@ public class FinancialsController : ControllerBase
 
         return Ok(record);
     }
+
+    [HttpPost("{id}/approve")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> Approve(Guid id)
+    {
+        var record = await _context.OrderFinancials.FindAsync(id);
+        if (record == null) return NotFound();
+
+        if (record.CustomerPaid <= 0)
+            return BadRequest("Customer payment is not confirmed.");
+
+        record.FinancialStatus = "approved";
+        record.PayoutStatus = "approved_for_payout";
+
+        if (record.SupplierAmount > 0)
+        {
+            _context.SettlementQueue.Add(new SettlementQueue
+            {
+                Id = Guid.NewGuid(),
+                OrderFinancialId = record.Id,
+                PayeeType = "supplier",
+                Amount = record.SupplierAmount,
+                Status = "pending_payout",
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        if (record.DriverAmount > 0)
+        {
+            _context.SettlementQueue.Add(new SettlementQueue
+            {
+                Id = Guid.NewGuid(),
+                OrderFinancialId = record.Id,
+                PayeeType = "driver",
+                Amount = record.DriverAmount,
+                Status = "pending_payout",
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        if (record.MechanicAmount > 0)
+        {
+            _context.SettlementQueue.Add(new SettlementQueue
+            {
+                Id = Guid.NewGuid(),
+                OrderFinancialId = record.Id,
+                PayeeType = "mechanic",
+                Amount = record.MechanicAmount,
+                Status = "pending_payout",
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(record);
+    }
 }
