@@ -40,6 +40,7 @@ public class AppDbContext : DbContext
     // Financial Module
     public DbSet<OrderFinancial> OrderFinancials { get; set; }
     public DbSet<Payment> Payments { get; set; }
+    public DbSet<SettlementQueue> SettlementQueue { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
