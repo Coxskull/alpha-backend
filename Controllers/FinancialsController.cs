@@ -27,39 +27,6 @@ public class FinancialsController : ControllerBase
             .ToListAsync());
     }
 
-    [HttpPost("{id}/approve")]
-    [Authorize(Roles = "admin")]
-    public async Task<IActionResult> Approve(Guid id)
-    {
-        var record = await _context.OrderFinancials.FindAsync(id);
-
-        if (record == null)
-            return NotFound();
-
-        record.PayoutStatus = "approved_for_payout";
-        record.FinancialStatus = "approved";
-
-        await _context.SaveChangesAsync();
-
-        return Ok(record);
-    }
-
-    [HttpPost("{id}/hold")]
-    [Authorize(Roles = "admin,dispatcher")]
-    public async Task<IActionResult> Hold(Guid id)
-    {
-        var record = await _context.OrderFinancials.FindAsync(id);
-
-        if (record == null)
-            return NotFound();
-
-        record.PayoutStatus = "on_hold";
-        record.FinancialStatus = "needs_review";
-
-        await _context.SaveChangesAsync();
-
-        return Ok(record);
-    }
 
     [HttpPost("{id}/approve")]
     [Authorize(Roles = "admin")]
@@ -117,4 +84,22 @@ public class FinancialsController : ControllerBase
 
         return Ok(record);
     }
+
+    [HttpPost("{id}/hold")]
+    [Authorize(Roles = "admin,dispatcher")]
+    public async Task<IActionResult> Hold(Guid id)
+    {
+        var record = await _context.OrderFinancials.FindAsync(id);
+
+        if (record == null)
+            return NotFound();
+
+        record.PayoutStatus = "on_hold";
+        record.FinancialStatus = "needs_review";
+
+        await _context.SaveChangesAsync();
+
+        return Ok(record);
+    }
+
 }
