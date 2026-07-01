@@ -22,9 +22,11 @@ public class FinancialsController : ControllerBase
     [HttpGet("settlement-queue")]
     public async Task<IActionResult> GetSettlementQueue()
     {
-        return Ok(await _context.OrderFinancials
+        var queue = await _context.SettlementQueue
             .OrderByDescending(x => x.CreatedAt)
-            .ToListAsync());
+            .ToListAsync();
+
+        return Ok(queue);
     }
 
 
@@ -102,4 +104,75 @@ public class FinancialsController : ControllerBase
         return Ok(record);
     }
 
+    [HttpPost("settlement/{id}/mark-paid")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> MarkSettlementPaid(Guid id)
+    {
+        var settlement = await _context.SettlementQueue.FindAsync(id);
+        if (settlement == null) return NotFound();
+
+        settlement.Status = "paid";
+        settlement.ReviewedAt = DateTime.UtcNow;
+        settlement.ReviewedBy = User.Identity?.Name ?? "admin";
+
+        await _context.SaveChangesAsync();
+
+        return Ok(settlement);
+    }
+
+    [HttpGet("supplier/{supplierId}/earnings")]
+    [Authorize(Roles = "admin,dispatcher,supplier,provider")]
+    public async Task<IActionResult> GetSupplierEarnings(Guid supplierId)
+    {
+        var records = await _context.OrderFinancials
+            .Where(x => x.SupplierAmount > 0)
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => new
+            {
+                x.Id,
+                x.OrderId,
+                x.ServiceRequestId,
+                amount = x.SupplierAmount,
+                x.Currency,
+                x.FinancialStatus,
+                x.PayoutStatus,
+                x.CreatedAt
+            })
+            .ToListAsync();
+
+        return Ok(records);
+    }
+
+    [HttpGet("driver/{driverId}/wallet")]
+    [Authorize(Roles = "admin,dispatcher,driver")]
+    public async Task<IActionResult> GetDriverWallet(Guid driverId)
+    {
+        var orderEarnings = await _context.OrderFinancials
+            .Where(x => x.DriverAmount > 0)
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => new
+            {
+                x.Id,
+                x.OrderId,
+                x.ServiceRequestId,
+                amount = x.DriverAmount,
+                x.Currency,
+                x.FinancialStatus,
+                x.PayoutStatus,
+                x.CreatedAt
+            })
+            .ToListAsync();
+
+        var totalEarned = orderEarnings.Sum(x => x.amount);
+        var pending = orderEarnings
+            .Where(x => x.PayoutStatus != "paid")
+            .Sum(x => x.amount);
+
+        return Ok(new
+        {
+            totalEarned,
+            pending,
+            items = orderEarnings
+        });
+    }
 }

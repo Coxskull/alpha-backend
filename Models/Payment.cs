@@ -34,4 +34,16 @@ public class Payment
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; }
+
+    [Column("refunded_amount")]
+    public decimal RefundedAmount { get; set; }
+
+    [Column("refund_status")]
+    public string RefundStatus { get; set; } = "none";
+
+    [Column("refund_reference")]
+    public string? RefundReference { get; set; }
+
+    [Column("refunded_at")]
+    public DateTime? RefundedAt { get; set; }
 }

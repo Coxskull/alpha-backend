@@ -440,7 +440,8 @@ public class ServiceRequestsController : ControllerBase
 
         request.FinalAmount = finalAmount;
         request.Status = "completed";
-        request.PaymentStatus = "paid";
+        if (request.PaymentStatus != "paid")
+            return BadRequest("Customer payment is required before completing service request.");
         request.CompletedAt = DateTime.UtcNow;
         request.UpdatedAt = DateTime.UtcNow;
 

@@ -41,6 +41,8 @@ public class AppDbContext : DbContext
     public DbSet<OrderFinancial> OrderFinancials { get; set; }
     public DbSet<Payment> Payments { get; set; }
     public DbSet<SettlementQueue> SettlementQueue { get; set; }
+    public DbSet<Invoice> Invoices { get; set; }
+
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -516,6 +518,22 @@ public class AppDbContext : DbContext
             entity.Property(e => e.IpAddress).HasColumnName("ip_address");
             entity.Property(e => e.UserAgent).HasColumnName("user_agent");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+        });
+
+        modelBuilder.Entity<Invoice>(entity =>
+        {
+            entity.ToTable("invoices");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.OrderId).HasColumnName("order_id");
+            entity.Property(e => e.InvoiceNumber).HasColumnName("invoice_number");
+            entity.Property(e => e.Subtotal).HasColumnName("subtotal");
+            entity.Property(e => e.Tax).HasColumnName("tax");
+            entity.Property(e => e.Total).HasColumnName("total");
+            entity.Property(e => e.Currency).HasColumnName("currency");
+            entity.Property(e => e.IssuedAt).HasColumnName("issued_at");
         });
     }
 }

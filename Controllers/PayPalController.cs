@@ -139,4 +139,45 @@ public class PayPalController : ControllerBase
             captureId
         });
     }
+
+    [HttpPost("refund")]
+    public async Task<IActionResult> Refund(RefundPaymentDto dto)
+    {
+        var payment = await _context.Payments
+            .FirstOrDefaultAsync(x => x.OrderId == dto.OrderId);
+
+        if (payment == null) return NotFound("Payment not found.");
+
+        if (payment.PaymentStatus != "paid")
+            return BadRequest("Only paid payments can be refunded.");
+
+        if (string.IsNullOrWhiteSpace(payment.TransactionReference))
+            return BadRequest("Missing PayPal capture reference.");
+
+        if (dto.Amount <= 0 || dto.Amount > payment.Amount)
+            return BadRequest("Invalid refund amount.");
+
+        var refund = await _paypal.RefundCapture(
+            payment.TransactionReference,
+            dto.Amount,
+            payment.Currency
+        );
+
+        var refundId = refund.RootElement.GetProperty("id").GetString();
+
+        payment.RefundedAmount += dto.Amount;
+        payment.RefundStatus =
+            payment.RefundedAmount >= payment.Amount ? "fully_refunded" : "partially_refunded";
+        payment.RefundReference = refundId;
+        payment.RefundedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            message = "Refund completed.",
+            refundId,
+            payment
+        });
+    }
 }

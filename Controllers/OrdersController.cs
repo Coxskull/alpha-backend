@@ -76,17 +76,30 @@ public class OrdersController : ControllerBase
             {
                 Id = Guid.NewGuid(),
                 OrderId = order.Id,
-                Currency = dto.Currency ?? "USD",
+                Currency = currency,
+                ExchangeRate = exchangeRate,
+
                 ItemSubtotal = dto.ItemSubtotal,
-                DeliveryFee = dto.DeliveryFee,
-                ServiceFee = dto.ServiceFee,
-                Tax = dto.Tax,
-                Discount = dto.Discount,
-                TotalAmount = dto.TotalAmount,
+                DeliveryFee = deliveryFee,
+                ServiceFee = serviceFee,
+                Tax = tax,
+                Discount = discount,
+                TotalAmount = totalAmount,
+
                 CustomerPaid = 0,
+                SupplierAmount = supplierEarning,
+                DriverAmount = driverEarning,
+                MechanicAmount = 0,
+                AlphaPlatformFee = companyRevenue,
+
+                SupplierEarning = supplierEarning,
+                DriverEarning = driverEarning,
+                CompanyRevenue = companyRevenue,
+
                 FinancialStatus = dto.PaymentMethod == "paypal"
-        ? "awaiting_payment"
-        : "pending_review",
+         ? "awaiting_payment"
+         : "pending_review",
+
                 PayoutStatus = "not_ready",
                 CreatedAt = DateTime.UtcNow
             };
@@ -97,10 +110,12 @@ public class OrdersController : ControllerBase
             {
                 Id = Guid.NewGuid(),
                 OrderId = order.Id,
-                Amount = dto.TotalAmount,
-                Currency = dto.Currency ?? "USD",
+                Amount = totalAmount,
+                Currency = currency,
                 PaymentMethod = dto.PaymentMethod,
-                PaymentStatus = dto.PaymentMethod == "paypal" ? "pending" : "cash_pending",
+                PaymentStatus = dto.PaymentMethod == "paypal"
+        ? "pending"
+        : "cash_pending",
                 CreatedAt = DateTime.UtcNow
             };
 

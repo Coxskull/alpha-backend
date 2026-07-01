@@ -108,4 +108,40 @@ public class PayPalService
 
         return JsonDocument.Parse(json);
     }
+
+    public async Task<JsonDocument> RefundCapture(string captureId, decimal amount, string currency)
+    {
+        var token = await GetAccessToken();
+
+        var payload = new
+        {
+            amount = new
+            {
+                value = amount.ToString("0.00"),
+                currency_code = currency
+            }
+        };
+
+        var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{BaseUrl}/v2/payments/captures/{captureId}/refund"
+        );
+
+        request.Headers.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(payload),
+            Encoding.UTF8,
+            "application/json"
+        );
+
+        var response = await _http.SendAsync(request);
+        var json = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+            throw new Exception($"PayPal refund error: {json}");
+
+        return JsonDocument.Parse(json);
+    }
 }
