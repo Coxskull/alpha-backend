@@ -6,7 +6,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-
+using Alpha.API.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 // Railway / Production port binding
