@@ -16,11 +16,16 @@ public class PayPalController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly PayPalService _paypal;
+    private readonly SettlementService _settlements;
 
-    public PayPalController(AppDbContext context, PayPalService paypal)
+    public PayPalController(
+    AppDbContext context,
+    PayPalService paypal,
+    SettlementService settlements)
     {
         _context = context;
         _paypal = paypal;
+        _settlements = settlements;
     }
 
     [HttpPost("create-order")]
@@ -130,6 +135,7 @@ public class PayPalController : ControllerBase
         });
 
         await _context.SaveChangesAsync();
+        await _settlements.CreateOrUpdateSettlementAfterPayment(dto.OrderId);
 
         return Ok(new
         {
@@ -180,4 +186,25 @@ public class PayPalController : ControllerBase
             payment
         });
     }
+
+    [HttpPost("orders/{orderId}/verify-settlement")]
+    [Authorize(Roles = "admin,dispatcher")]
+    public async Task<IActionResult> VerifySettlement(
+    Guid orderId,
+    [FromServices] SettlementService settlementService)
+    {
+        try
+        {
+            var result = await settlementService.VerifySettlement(orderId);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+
+
+
 }

@@ -24,6 +24,34 @@ public class FinancialsController : ControllerBase
     {
         var queue = await _context.SettlementQueue
             .OrderByDescending(x => x.CreatedAt)
+            .Select(x => new
+            {
+                x.Id,
+                x.OrderFinancialId,
+                x.PayeeType,
+                x.PayeeId,
+                x.Amount,
+                x.Status,
+                x.ReviewedBy,
+                x.ReviewedAt,
+                x.CreatedAt,
+
+                financial = _context.OrderFinancials
+                    .Where(f => f.Id == x.OrderFinancialId)
+                    .Select(f => new
+                    {
+                        f.OrderId,
+                        f.CustomerPaid,
+                        f.Currency,
+                        f.SupplierAmount,
+                        f.DriverAmount,
+                        f.MechanicAmount,
+                        f.AlphaPlatformFee,
+                        f.FinancialStatus,
+                        f.PayoutStatus
+                    })
+                    .FirstOrDefault()
+            })
             .ToListAsync();
 
         return Ok(queue);

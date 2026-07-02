@@ -126,7 +126,7 @@ builder.Services.AddCors(options =>
             .WithExposedHeaders("X-Total-Count");
     });
 });
-
+builder.Services.AddScoped<SettlementService>();
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
