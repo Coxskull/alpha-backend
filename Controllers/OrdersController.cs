@@ -231,7 +231,8 @@ public class OrdersController : ControllerBase
         if (
     order.Status != "pending" &&
     order.Status != "payment_confirmed" &&
-    order.Status != "payment_paid"
+    order.Status != "payment_paid" &&
+    order.Status != "paid_pending_dispatch"
 )
         {
             return BadRequest(
@@ -293,10 +294,11 @@ public class OrdersController : ControllerBase
             return NotFound("Order not found.");
 
         if (
-            order.Status != "pending" &&
-            order.Status != "payment_confirmed" &&
-            order.Status != "payment_paid"
-        )
+    order.Status != "pending" &&
+    order.Status != "payment_confirmed" &&
+    order.Status != "payment_paid" &&
+    order.Status != "paid_pending_dispatch"
+)
         {
             return BadRequest(
                 $"Supplier cannot be assigned while order status is {order.Status}."
@@ -572,7 +574,6 @@ public class OrdersController : ControllerBase
         }
 
         order.Status = "delivered";
-
         order.UpdatedAt = DateTime.UtcNow;
 
         if (order.Driver != null)
@@ -582,8 +583,7 @@ public class OrdersController : ControllerBase
             if (order.Driver.ActiveJobs < 0)
                 order.Driver.ActiveJobs = 0;
 
-            order.Driver.AvailabilityStatus =
-                "available";
+            order.Driver.AvailabilityStatus = "available";
         }
 
         if (order.Supplier != null)
@@ -593,19 +593,89 @@ public class OrdersController : ControllerBase
             if (order.Supplier.CurrentWorkload < 0)
                 order.Supplier.CurrentWorkload = 0;
 
-            order.Supplier.AvailabilityStatus =
-                "available";
+            order.Supplier.AvailabilityStatus = "available";
+        }
+
+        var financial = await _context.OrderFinancials
+            .FirstOrDefaultAsync(x => x.OrderId == id);
+
+        if (financial != null)
+        {
+            financial.FinancialStatus = "verified";
+            financial.PayoutStatus = "ready_for_payout";
+
+            var existingQueue = await _context.SettlementQueue
+                .AnyAsync(x => x.OrderFinancialId == financial.Id);
+
+            if (!existingQueue)
+            {
+                if (financial.SupplierAmount > 0)
+                {
+                    _context.SettlementQueue.Add(new SettlementQueue
+                    {
+                        Id = Guid.NewGuid(),
+                        OrderFinancialId = financial.Id,
+                        PayeeType = "supplier",
+                        PayeeId = order.SupplierId,
+                        Amount = financial.SupplierAmount,
+                        Status = "ready_for_payout",
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+
+                if (financial.DriverAmount > 0)
+                {
+                    _context.SettlementQueue.Add(new SettlementQueue
+                    {
+                        Id = Guid.NewGuid(),
+                        OrderFinancialId = financial.Id,
+                        PayeeType = "driver",
+                        PayeeId = order.DriverId,
+                        Amount = financial.DriverAmount,
+                        Status = "ready_for_payout",
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+
+                if (financial.MechanicAmount > 0)
+                {
+                    _context.SettlementQueue.Add(new SettlementQueue
+                    {
+                        Id = Guid.NewGuid(),
+                        OrderFinancialId = financial.Id,
+                        PayeeType = "mechanic",
+                        PayeeId = null,
+                        Amount = financial.MechanicAmount,
+                        Status = "ready_for_payout",
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+
+                if (financial.AlphaPlatformFee > 0)
+                {
+                    _context.SettlementQueue.Add(new SettlementQueue
+                    {
+                        Id = Guid.NewGuid(),
+                        OrderFinancialId = financial.Id,
+                        PayeeType = "alpha",
+                        PayeeId = null,
+                        Amount = financial.AlphaPlatformFee,
+                        Status = "recorded",
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+            }
         }
 
         await _context.SaveChangesAsync();
 
         await AddStatusHistory(id, "delivered");
-
         await AddAuditLog(id, "Order Delivered");
+        await AddAuditLog(id, "Settlement Queue Created");
 
         return Ok(new
         {
-            message = "Order delivered successfully",
+            message = "Order delivered successfully. Settlement queue created.",
             status = order.Status
         });
     }
@@ -786,80 +856,18 @@ public class OrdersController : ControllerBase
         payment.TransactionReference = transactionReference;
         payment.PaidAt = DateTime.UtcNow;
 
-        order.Status = "pending";
+        order.Status = "paid_pending_dispatch";
         order.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
-        var financial = await _context.OrderFinancials
-            .FirstOrDefaultAsync(x => x.OrderId == id);
-
-        if (financial == null)
-            return NotFound("Financial record not found.");
-
-        financial.CustomerPaid = payment.Amount;
-        financial.FinancialStatus = "pending";
-        financial.PayoutStatus = "not_ready";
-
-        var existingQueue = await _context.SettlementQueue
-            .AnyAsync(x => x.OrderFinancialId == financial.Id);
-
-        if (!existingQueue)
-        {
-            if (financial.SupplierAmount > 0)
-            {
-                _context.SettlementQueue.Add(new SettlementQueue
-                {
-                    Id = Guid.NewGuid(),
-                    OrderFinancialId = financial.Id,
-                    PayeeType = "supplier",
-                    PayeeId = order.SupplierId,
-                    Amount = financial.SupplierAmount,
-                    Status = "pending_review",
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
-
-            if (financial.DriverAmount > 0)
-            {
-                _context.SettlementQueue.Add(new SettlementQueue
-                {
-                    Id = Guid.NewGuid(),
-                    OrderFinancialId = financial.Id,
-                    PayeeType = "driver",
-                    PayeeId = order.DriverId,
-                    Amount = financial.DriverAmount,
-                    Status = "pending_review",
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
-
-            if (financial.AlphaPlatformFee > 0)
-            {
-                _context.SettlementQueue.Add(new SettlementQueue
-                {
-                    Id = Guid.NewGuid(),
-                    OrderFinancialId = financial.Id,
-                    PayeeType = "alpha",
-                    PayeeId = null,
-                    Amount = financial.AlphaPlatformFee,
-                    Status = "recorded",
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
-        }
-
-
-        await _context.SaveChangesAsync();
-
         await AddStatusHistory(id, "payment_paid");
-        await AddStatusHistory(id, "pending");
+        await AddStatusHistory(id, "paid_pending_dispatch");
         await AddAuditLog(id, "Payment Confirmed");
-        await AddAuditLog(id, "Settlement Queue Created");
 
         return Ok(new
         {
-            message = "Payment confirmed. Order is now pending dispatch.",
+            message = "Payment confirmed. Order is now paid and pending dispatch.",
             orderStatus = order.Status,
             paymentStatus = payment.PaymentStatus
         });
