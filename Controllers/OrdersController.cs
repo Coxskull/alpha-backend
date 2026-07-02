@@ -791,9 +791,70 @@ public class OrdersController : ControllerBase
 
         await _context.SaveChangesAsync();
 
+        var financial = await _context.OrderFinancials
+            .FirstOrDefaultAsync(x => x.OrderId == id);
+
+        if (financial == null)
+            return NotFound("Financial record not found.");
+
+        financial.CustomerPaid = payment.Amount;
+        financial.FinancialStatus = "pending";
+        financial.PayoutStatus = "not_ready";
+
+        var existingQueue = await _context.SettlementQueue
+            .AnyAsync(x => x.OrderFinancialId == financial.Id);
+
+        if (!existingQueue)
+        {
+            if (financial.SupplierAmount > 0)
+            {
+                _context.SettlementQueue.Add(new SettlementQueue
+                {
+                    Id = Guid.NewGuid(),
+                    OrderFinancialId = financial.Id,
+                    PayeeType = "supplier",
+                    PayeeId = order.SupplierId,
+                    Amount = financial.SupplierAmount,
+                    Status = "pending_review",
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+
+            if (financial.DriverAmount > 0)
+            {
+                _context.SettlementQueue.Add(new SettlementQueue
+                {
+                    Id = Guid.NewGuid(),
+                    OrderFinancialId = financial.Id,
+                    PayeeType = "driver",
+                    PayeeId = order.DriverId,
+                    Amount = financial.DriverAmount,
+                    Status = "pending_review",
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+
+            if (financial.AlphaPlatformFee > 0)
+            {
+                _context.SettlementQueue.Add(new SettlementQueue
+                {
+                    Id = Guid.NewGuid(),
+                    OrderFinancialId = financial.Id,
+                    PayeeType = "alpha",
+                    PayeeId = null,
+                    Amount = financial.AlphaPlatformFee,
+                    Status = "recorded",
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+        }
+
+        await _context.SaveChangesAsync();
+
         await AddStatusHistory(id, "payment_paid");
         await AddStatusHistory(id, "pending");
         await AddAuditLog(id, "Payment Confirmed");
+        await AddAuditLog(id, "Settlement Queue Created");
 
         return Ok(new
         {
