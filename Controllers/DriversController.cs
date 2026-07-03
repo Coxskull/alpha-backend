@@ -78,7 +78,7 @@ public class DriversController : ControllerBase
         if (user == null)
             return NotFound("User not found.");
 
-        var driver = await _context.Drivers
+        var driver = await _context.Users
             .FirstOrDefaultAsync(x => x.Email == user.Email);
 
         if (driver == null)
