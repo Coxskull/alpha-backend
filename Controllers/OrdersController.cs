@@ -96,6 +96,9 @@ public class OrdersController : ControllerBase
 
             _context.Orders.Add(order);
 
+            // Save order first so order_financials.order_id has a valid parent order.
+            await _context.SaveChangesAsync();
+
             foreach (var item in dto.Items)
             {
                 var product = products.First(x => x.Id == item.ProductId);
