@@ -1,10 +1,8 @@
 using Alpha.API.Data;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using System;
-using System.Threading.Tasks;
 using Alpha.API.DTOs;
 using Alpha.API.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Alpha.API.Controllers;
 
@@ -22,27 +20,25 @@ public class ProductsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetProducts()
     {
-        try
-        {
-            var products = await _context.Products.ToListAsync();
-            return Ok(products);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, ex.ToString());
-        }
+        var products = await _context.Products
+            .Where(x => x.IsActive && x.QuantityAvailable > 0)
+            .OrderByDescending(x => x.CreatedAt)
+            .ToListAsync();
+
+        return Ok(products);
     }
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetProduct(Guid id)
     {
-        var products = await _context.Products
-    .Where(x => x.IsActive && x.QuantityAvailable > 0)
-    .OrderByDescending(x => x.CreatedAt)
-    .ToListAsync();
+        var product = await _context.Products
+            .FirstOrDefaultAsync(x =>
+                x.Id == id &&
+                x.IsActive &&
+                x.QuantityAvailable > 0);
 
         if (product == null)
-            return NotFound();
+            return NotFound("Product not found.");
 
         return Ok(product);
     }
@@ -55,8 +51,13 @@ public class ProductsController : ControllerBase
 
         var products = await _context.Products
             .Where(x =>
-                x.Name.Contains(keyword) ||
-                x.Brand.Contains(keyword))
+                x.IsActive &&
+                x.QuantityAvailable > 0 &&
+                (
+                    x.Name.Contains(keyword) ||
+                    x.Brand.Contains(keyword)
+                ))
+            .OrderByDescending(x => x.CreatedAt)
             .ToListAsync();
 
         return Ok(products);
@@ -86,13 +87,12 @@ public class ProductsController : ControllerBase
         };
 
         _context.Products.Add(product);
-
         await _context.SaveChangesAsync();
 
         return Ok(product);
     }
 
-    [HttpGet("supplier/{supplierId}")]
+    [HttpGet("supplier/{supplierId:guid}")]
     public async Task<IActionResult> GetSupplierProducts(Guid supplierId)
     {
         var products = await _context.Products
