@@ -95,16 +95,13 @@ public class AuthController : ControllerBase
 
         var token = GenerateToken(user);
 
-        var supplierId = await _context.Suppliers
-    .Where(s => s.UserId == user.Id)
-    .Select(s => s.Id)
-    .FirstOrDefaultAsync();
+        Guid? supplierId = null;
 
         if (user.Role == "supplier" || user.Role == "provider")
         {
             supplierId = await _context.Suppliers
-                .Where(s => s.Email.ToLower() == user.Email.ToLower())
-                .Select(s => s.Id)
+                .Where(s => s.UserId == user.Id)
+                .Select(s => (Guid?)s.Id)
                 .FirstOrDefaultAsync();
         }
 

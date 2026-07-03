@@ -120,6 +120,7 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Territory).HasColumnName("Territory");
             entity.Property(e => e.CurrentWorkload).HasColumnName("CurrentWorkload");
             entity.Property(e => e.ResponseRate).HasColumnName("ResponseRate");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
         });
 
         // ==========================
