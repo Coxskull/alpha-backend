@@ -5,6 +5,7 @@ public class CreateOrderDto
     public string CustomerName { get; set; } = string.Empty;
     public string PickupAddress { get; set; } = string.Empty;
     public string DeliveryAddress { get; set; } = string.Empty;
+    public string ItemDescription { get; set; } = string.Empty;
     public string Zone { get; set; } = string.Empty;
     public string PaymentMethod { get; set; } = "cash";
     public string Currency { get; set; } = "USD";
