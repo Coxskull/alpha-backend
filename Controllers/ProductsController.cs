@@ -107,6 +107,9 @@ public class ProductsController : ControllerBase
     [RequestSizeLimit(10_000_000)]
     public async Task<IActionResult> UploadProduct([FromForm] CreateProductUploadDto dto)
     {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
         if (dto.SupplierId == Guid.Empty)
             return BadRequest("SupplierId is required.");
 
@@ -116,40 +119,26 @@ public class ProductsController : ControllerBase
         if (!supplierExists)
             return BadRequest("Supplier not found.");
 
-        string? imageUrl = null;
+        string imageUrl = "";
 
         if (dto.Image != null && dto.Image.Length > 0)
         {
-            var uploadsFolder = Path.Combine(
-                Directory.GetCurrentDirectory(),
-                "wwwroot",
-                "uploads",
-                "products"
-            );
+            await using var ms = new MemoryStream();
+            await dto.Image.CopyToAsync(ms);
 
-            Directory.CreateDirectory(uploadsFolder);
+            var base64 = Convert.ToBase64String(ms.ToArray());
 
-            var extension = Path.GetExtension(dto.Image.FileName);
-            var fileName = $"{Guid.NewGuid()}{extension}";
-            var filePath = Path.Combine(uploadsFolder, fileName);
-
-            await using var stream = new FileStream(filePath, FileMode.Create);
-            await dto.Image.CopyToAsync(stream);
-
-            imageUrl = $"/uploads/products/{fileName}";
+            imageUrl = $"data:{dto.Image.ContentType};base64,{base64}";
         }
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(ModelState);
-        }
+
         var product = new Product
         {
             Id = Guid.NewGuid(),
             SupplierId = dto.SupplierId,
-            PartNumber = dto.PartNumber,
-            Brand = dto.Brand,
-            Name = dto.Name,
-            Description = dto.Description,
+            PartNumber = dto.PartNumber ?? "",
+            Brand = dto.Brand ?? "",
+            Name = dto.Name ?? "",
+            Description = dto.Description ?? "",
             ImageUrl = imageUrl,
             Price = dto.Price,
             QuantityAvailable = dto.QuantityAvailable,

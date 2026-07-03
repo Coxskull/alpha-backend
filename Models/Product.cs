@@ -40,4 +40,7 @@ public class Product
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; }
+
+    [Column("image_base64")]
+    public string? ImageBase64 { get; set; }
 }
