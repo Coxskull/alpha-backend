@@ -69,4 +69,28 @@ public class DriversController : ControllerBase
             return StatusCode(500, ex.ToString());
         }
     }
+
+    [HttpGet("by-user/{userId}")]
+    public async Task<IActionResult> GetDriverByUser(Guid userId)
+    {
+        var user = await _context.Users.FindAsync(userId);
+
+        if (user == null)
+            return NotFound("User not found.");
+
+        var driver = await _context.Drivers
+            .FirstOrDefaultAsync(x => x.Email == user.Email);
+
+        if (driver == null)
+            return NotFound("Driver profile not found for this user.");
+
+        return Ok(new
+        {
+            id = driver.Id,
+            fullName = driver.FullName,
+            email = driver.Email,
+            availabilityStatus = driver.AvailabilityStatus,
+            territory = driver.Territory
+        });
+    }
 }
