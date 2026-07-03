@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Alpha.API.Constants;
 
 namespace Alpha.API.Controllers;
 
@@ -114,15 +115,24 @@ public class PayPalController : ControllerBase
         financial.FinancialStatus = "paid_pending_dispatch";
         financial.PayoutStatus = "not_ready";
 
-        order.Status = "pending";
+        order.Status = OrderStatuses.WaitingForSupplier;
         order.UpdatedAt = DateTime.UtcNow;
 
         _context.StatusHistory.Add(new StatusHistory
         {
             Id = Guid.NewGuid(),
             OrderId = order.Id,
-            Status = "payment_paid",
+            Status = OrderStatuses.PaymentPaid,
             Notes = "PayPal payment captured.",
+            CreatedAt = DateTime.UtcNow
+        });
+
+        _context.StatusHistory.Add(new StatusHistory
+        {
+            Id = Guid.NewGuid(),
+            OrderId = order.Id,
+            Status = OrderStatuses.WaitingForSupplier,
+            Notes = "Order moved to supplier assignment queue.",
             CreatedAt = DateTime.UtcNow
         });
 
