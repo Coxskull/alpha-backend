@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Threading.Tasks;
+using Alpha.API.DTOs;
+using Alpha.API.Models;
 
 namespace Alpha.API.Controllers;
 
@@ -34,8 +36,10 @@ public class ProductsController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetProduct(Guid id)
     {
-        var product = await _context.Products
-            .FirstOrDefaultAsync(x => x.Id == id);
+        var products = await _context.Products
+    .Where(x => x.IsActive && x.QuantityAvailable > 0)
+    .OrderByDescending(x => x.CreatedAt)
+    .ToListAsync();
 
         if (product == null)
             return NotFound();
@@ -53,6 +57,46 @@ public class ProductsController : ControllerBase
             .Where(x =>
                 x.Name.Contains(keyword) ||
                 x.Brand.Contains(keyword))
+            .ToListAsync();
+
+        return Ok(products);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CreateProduct(CreateProductDto dto)
+    {
+        var supplier = await _context.Suppliers.FindAsync(dto.SupplierId);
+
+        if (supplier == null)
+            return NotFound("Supplier not found.");
+
+        var product = new Product
+        {
+            Id = Guid.NewGuid(),
+            SupplierId = dto.SupplierId,
+            PartNumber = dto.PartNumber,
+            Brand = dto.Brand,
+            Name = dto.Name,
+            Description = dto.Description,
+            ImageUrl = dto.ImageUrl,
+            Price = dto.Price,
+            QuantityAvailable = dto.QuantityAvailable,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.Products.Add(product);
+        await _context.SaveChangesAsync();
+
+        return Ok(product);
+    }
+
+    [HttpGet("supplier/{supplierId}")]
+    public async Task<IActionResult> GetSupplierProducts(Guid supplierId)
+    {
+        var products = await _context.Products
+            .Where(x => x.SupplierId == supplierId)
+            .OrderByDescending(x => x.CreatedAt)
             .ToListAsync();
 
         return Ok(products);

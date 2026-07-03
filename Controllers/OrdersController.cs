@@ -3,7 +3,8 @@ using Alpha.API.DTOs;
 using Alpha.API.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-
+using Alpha.API.Constants;
+using Alpha.API.Services;
 namespace Alpha.API.Controllers;
 
 [ApiController]
@@ -11,10 +12,12 @@ namespace Alpha.API.Controllers;
 public class OrdersController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly OrderWorkflowService _workflow;
 
-    public OrdersController(AppDbContext context)
+    public OrdersController(AppDbContext context, OrderWorkflowService workflow)
     {
         _context = context;
+        _workflow = workflow;
     }
 
     // =========================================================
@@ -34,23 +37,48 @@ public class OrdersController : ControllerBase
             if (currency != "USD" && currency != "MXN")
                 return BadRequest("Currency must be USD or MXN.");
 
-            decimal exchangeRate = currency == "USD" ? 1 : 17.59m;
+            if (dto.Items == null || !dto.Items.Any())
+                return BadRequest("Cart is empty.");
 
-            decimal deliveryFee = currency == "USD" ? 8.00m : 8.00m * exchangeRate;
-            decimal serviceFee = currency == "USD" ? 3.00m : 3.00m * exchangeRate;
-            decimal tax = dto.ItemSubtotal * 0.08m;
+            var productIds = dto.Items.Select(x => x.ProductId).ToList();
+
+            var products = await _context.Products
+                .Where(x => productIds.Contains(x.Id) && x.IsActive)
+                .ToListAsync();
+
+            if (products.Count != productIds.Count)
+                return BadRequest("One or more products are invalid.");
+
+            foreach (var item in dto.Items)
+            {
+                var product = products.First(x => x.Id == item.ProductId);
+
+                if (item.Quantity <= 0)
+                    return BadRequest("Quantity must be greater than 0.");
+
+                if (product.QuantityAvailable < item.Quantity)
+                    return BadRequest($"{product.Name} does not have enough stock.");
+            }
+
+            decimal itemSubtotal = dto.Items.Sum(item =>
+            {
+                var product = products.First(x => x.Id == item.ProductId);
+                return product.Price * item.Quantity;
+            });
+
+            decimal deliveryFee = 8.00m;
+            decimal serviceFee = 3.00m;
+            decimal tax = itemSubtotal * 0.08m;
             decimal discount = 0;
+            decimal totalAmount = itemSubtotal + deliveryFee + serviceFee + tax - discount;
 
-            decimal totalAmount =
-                dto.ItemSubtotal +
-                deliveryFee +
+            decimal exchangeRate = currency == "MXN" ? 17.00m : 1.00m;
+            decimal supplierEarning = itemSubtotal * 0.80m;
+            decimal driverEarning = deliveryFee * 0.70m;
+            decimal companyRevenue =
                 serviceFee +
-                tax -
-                discount;
-
-            decimal driverEarning = deliveryFee * 0.80m;
-            decimal supplierEarning = dto.ItemSubtotal;
-            decimal companyRevenue = serviceFee + (deliveryFee - driverEarning);
+                (itemSubtotal * 0.20m) +
+                (deliveryFee * 0.30m);
 
             var order = new Order
             {
@@ -61,16 +89,28 @@ public class OrdersController : ControllerBase
                 ItemDescription = dto.ItemDescription,
                 Zone = dto.Zone,
                 OrderNumber = $"ALPHA-{DateTime.UtcNow.Ticks}",
-                Status = "payment_pending",
+                Status = OrderStatuses.PaymentPending,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
 
             _context.Orders.Add(order);
 
-            // IMPORTANT:
-            // Save order first so FK order_financials.order_id exists.
-            await _context.SaveChangesAsync();
+            foreach (var item in dto.Items)
+            {
+                var product = products.First(x => x.Id == item.ProductId);
+
+                _context.OrderItems.Add(new OrderItem
+                {
+                    Id = Guid.NewGuid(),
+                    OrderId = order.Id,
+                    ProductId = product.Id,
+                    Quantity = item.Quantity,
+                    UnitPrice = product.Price
+                });
+
+                product.QuantityAvailable -= item.Quantity;
+            }
 
             var financial = new OrderFinancial
             {
@@ -79,7 +119,7 @@ public class OrdersController : ControllerBase
                 Currency = currency,
                 ExchangeRate = exchangeRate,
 
-                ItemSubtotal = dto.ItemSubtotal,
+                ItemSubtotal = itemSubtotal,
                 DeliveryFee = deliveryFee,
                 ServiceFee = serviceFee,
                 Tax = tax,
@@ -97,8 +137,8 @@ public class OrdersController : ControllerBase
                 CompanyRevenue = companyRevenue,
 
                 FinancialStatus = dto.PaymentMethod == "paypal"
-         ? "awaiting_payment"
-         : "pending_review",
+                    ? "awaiting_payment"
+                    : "pending_review",
 
                 PayoutStatus = "not_ready",
                 CreatedAt = DateTime.UtcNow
@@ -114,8 +154,8 @@ public class OrdersController : ControllerBase
                 Currency = currency,
                 PaymentMethod = dto.PaymentMethod,
                 PaymentStatus = dto.PaymentMethod == "paypal"
-        ? "pending"
-        : "cash_pending",
+                    ? "pending"
+                    : "cash_pending",
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -123,14 +163,27 @@ public class OrdersController : ControllerBase
 
             await _context.SaveChangesAsync();
 
-            await AddStatusHistory(order.Id, "payment_pending");
+            await AddStatusHistory(order.Id, OrderStatuses.PaymentPending);
             await AddAuditLog(order.Id, "Order Created with Financials");
 
             return Ok(new
             {
                 order,
                 financial,
-                payment
+                payment,
+                items = dto.Items.Select(item =>
+                {
+                    var product = products.First(x => x.Id == item.ProductId);
+
+                    return new
+                    {
+                        productId = product.Id,
+                        productName = product.Name,
+                        quantity = item.Quantity,
+                        unitPrice = product.Price,
+                        lineTotal = product.Price * item.Quantity
+                    };
+                })
             });
         }
         catch (Exception ex)
@@ -228,16 +281,10 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound("Order not found.");
 
-        if (
-    order.Status != "pending" &&
-    order.Status != "payment_confirmed" &&
-    order.Status != "payment_paid" &&
-    order.Status != "paid_pending_dispatch"
-)
+        if (order.Status != OrderStatuses.WaitingForSupplier &&
+    order.Status != OrderStatuses.PaymentPaid)
         {
-            return BadRequest(
-                $"Supplier cannot be assigned while order status is {order.Status}."
-            );
+            return BadRequest($"Supplier cannot be assigned while order status is {order.Status}.");
         }
 
         var supplier = await _context.Suppliers
@@ -255,7 +302,7 @@ public class OrdersController : ControllerBase
 
         order.SupplierId = supplier.Id;
 
-        order.Status = "supplier_assigned";
+        order.Status = OrderStatuses.SupplierAssigned;
         order.UpdatedAt = DateTime.UtcNow;
 
         supplier.AvailabilityStatus = "busy";
@@ -265,10 +312,7 @@ public class OrdersController : ControllerBase
         await _context.SaveChangesAsync();
 
         // Optional if you already have these methods
-        await AddStatusHistory(
-            order.Id,
-            "supplier_assigned"
-        );
+        await AddStatusHistory(order.Id, OrderStatuses.SupplierAssigned);
 
         await AddAuditLog(
             order.Id,
@@ -293,16 +337,10 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound("Order not found.");
 
-        if (
-    order.Status != "pending" &&
-    order.Status != "payment_confirmed" &&
-    order.Status != "payment_paid" &&
-    order.Status != "paid_pending_dispatch"
-)
+        if (order.Status != OrderStatuses.WaitingForSupplier &&
+    order.Status != OrderStatuses.PaymentPaid)
         {
-            return BadRequest(
-                $"Supplier cannot be assigned while order status is {order.Status}."
-            );
+            return BadRequest($"Supplier cannot be assigned while order status is {order.Status}.");
         }
 
         var supplier = await _context.Suppliers
@@ -323,7 +361,7 @@ public class OrdersController : ControllerBase
             return NotFound("No available supplier found.");
 
         order.SupplierId = supplier.Id;
-        order.Status = "supplier_assigned";
+        order.Status = OrderStatuses.SupplierAssigned;
         order.UpdatedAt = DateTime.UtcNow;
 
         supplier.AvailabilityStatus = "busy";
@@ -331,7 +369,7 @@ public class OrdersController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        await AddStatusHistory(order.Id, "supplier_assigned");
+        await AddStatusHistory(order.Id, OrderStatuses.SupplierAssigned);
         await AddAuditLog(order.Id, $"Auto Supplier Assigned: {supplier.Name}");
 
         return Ok(new
@@ -359,10 +397,11 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound();
 
-        if (order.Status != "ready_for_pickup")
+        if (order.Status != OrderStatuses.WaitingForDriver &&
+    order.Status != OrderStatuses.SupplierAccepted)
         {
             return BadRequest(
-                "Order must be ready for pickup before assigning a driver."
+                $"Driver cannot be assigned while order status is {order.Status}."
             );
         }
 
@@ -381,7 +420,7 @@ public class OrdersController : ControllerBase
 
         order.DriverId = driver.Id;
 
-        order.Status = "driver_assigned";
+        order.Status = OrderStatuses.DriverAssigned;
 
         order.UpdatedAt = DateTime.UtcNow;
 
@@ -391,10 +430,7 @@ public class OrdersController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        await AddStatusHistory(
-            order.Id,
-            "driver_assigned"
-        );
+        await AddStatusHistory(order.Id, OrderStatuses.DriverAssigned);
 
         await AddAuditLog(
             order.Id,
@@ -422,11 +458,8 @@ public class OrdersController : ControllerBase
         if (order.SupplierId == null)
             return BadRequest("Assign supplier first.");
 
-        if (
-            order.Status != "supplier_assigned" &&
-            order.Status != "ready_for_pickup" &&
-            order.Status != "supplier_accepted"
-        )
+        if (order.Status != OrderStatuses.WaitingForDriver &&
+     order.Status != OrderStatuses.SupplierAccepted)
         {
             return BadRequest(
                 $"Driver cannot be assigned while order status is {order.Status}."
@@ -451,7 +484,7 @@ public class OrdersController : ControllerBase
             return NotFound("No available driver found.");
 
         order.DriverId = driver.Id;
-        order.Status = "driver_assigned";
+        order.Status = OrderStatuses.DriverAssigned;
         order.UpdatedAt = DateTime.UtcNow;
 
         driver.AvailabilityStatus = "busy";
@@ -459,7 +492,7 @@ public class OrdersController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        await AddStatusHistory(order.Id, "driver_assigned");
+        await AddStatusHistory(order.Id, OrderStatuses.DriverAssigned);
         await AddAuditLog(order.Id, $"Auto Driver Assigned: {driver.FullName}");
 
         return Ok(new
@@ -483,7 +516,8 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound();
 
-        if (order.Status != "driver_assigned")
+        if (order.Status != OrderStatuses.WaitingForPickup &&
+    order.Status != OrderStatuses.DriverAccepted)
         {
             return BadRequest(
                 "Order must have assigned driver before pickup."
@@ -496,20 +530,25 @@ public class OrdersController : ControllerBase
                 "No driver assigned."
             );
         }
-
-        order.Status = "picked_up";
-
+        order.Status = OrderStatuses.PickedUp;
         order.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
-        await AddStatusHistory(id, "picked_up");
-
+        await AddStatusHistory(id, OrderStatuses.PickedUp);
         await AddAuditLog(id, "Order Picked Up");
+
+        order.Status = OrderStatuses.EnRoute;
+        order.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        await AddStatusHistory(id, OrderStatuses.EnRoute);
+        await AddAuditLog(id, "Driver En Route");
 
         return Ok(new
         {
-            message = "Order marked as picked up",
+            message = "Order picked up and driver is now en route",
             status = order.Status
         });
     }
@@ -527,20 +566,20 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound();
 
-        if (order.Status != "picked_up")
+        if (order.Status != OrderStatuses.PickedUp)
         {
             return BadRequest(
                 "Order must be picked up first."
             );
         }
 
-        order.Status = "en_route";
+        order.Status = OrderStatuses.EnRoute;
 
         order.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
-        await AddStatusHistory(id, "en_route");
+        await AddStatusHistory(id, OrderStatuses.EnRoute);
 
         await AddAuditLog(id, "Order En Route");
 
@@ -566,14 +605,14 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound();
 
-        if (order.Status != "en_route")
+        if (order.Status != OrderStatuses.EnRoute)
         {
             return BadRequest(
                 "Order must be en route before delivery."
             );
         }
 
-        order.Status = "delivered";
+        order.Status = OrderStatuses.Delivered;
         order.UpdatedAt = DateTime.UtcNow;
 
         if (order.Driver != null)
@@ -601,8 +640,8 @@ public class OrdersController : ControllerBase
 
         if (financial != null)
         {
-            financial.FinancialStatus = "verified";
-            financial.PayoutStatus = "ready_for_payout";
+            financial.FinancialStatus = OrderStatuses.SettlementPending;
+            financial.PayoutStatus = OrderStatuses.ReadyForPayout;
 
             var existingQueue = await _context.SettlementQueue
                 .AnyAsync(x => x.OrderFinancialId == financial.Id);
@@ -669,9 +708,9 @@ public class OrdersController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        await AddStatusHistory(id, "delivered");
-        await AddAuditLog(id, "Order Delivered");
-        await AddAuditLog(id, "Settlement Queue Created");
+        await AddStatusHistory(id, OrderStatuses.Delivered);
+        await AddStatusHistory(id, OrderStatuses.SettlementPending);
+        await AddStatusHistory(id, OrderStatuses.ReadyForPayout);
 
         return Ok(new
         {
@@ -703,16 +742,13 @@ public class OrdersController : ControllerBase
 
         _context.DeliveryProofs.Add(proof);
 
-        order.Status = "delivered";
+        order.Status = OrderStatuses.ProofUploaded;
         order.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
-        await AddStatusHistory(id, "proof_uploaded");
-        await AddStatusHistory(id, "delivered");
-
+        await AddStatusHistory(id, OrderStatuses.ProofUploaded);
         await AddAuditLog(id, "Delivery Proof Uploaded");
-        await AddAuditLog(id, "Order Delivered With Proof");
 
         return Ok(proof);
     }
@@ -856,13 +892,13 @@ public class OrdersController : ControllerBase
         payment.TransactionReference = transactionReference;
         payment.PaidAt = DateTime.UtcNow;
 
-        order.Status = "paid_pending_dispatch";
+        order.Status = OrderStatuses.WaitingForSupplier;
         order.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
-        await AddStatusHistory(id, "payment_paid");
-        await AddStatusHistory(id, "paid_pending_dispatch");
+        await AddStatusHistory(id, OrderStatuses.PaymentPaid);
+        await AddStatusHistory(id, OrderStatuses.WaitingForSupplier);
         await AddAuditLog(id, "Payment Confirmed");
 
         return Ok(new
@@ -880,13 +916,21 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound();
 
-        order.Status = "supplier_accepted";
+        order.Status = OrderStatuses.SupplierAccepted;
         order.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
-        await AddStatusHistory(id, "supplier_accepted");
+        await AddStatusHistory(id, OrderStatuses.SupplierAccepted);
         await AddAuditLog(id, "Supplier Accepted Order");
+
+        order.Status = OrderStatuses.WaitingForDriver;
+        order.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        await AddStatusHistory(id, OrderStatuses.WaitingForDriver);
+        await AddAuditLog(id, "Order Waiting For Driver");
 
         return Ok(order);
     }
@@ -898,12 +942,12 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound();
 
-        order.Status = "ready_for_pickup";
+        order.Status = OrderStatuses.WaitingForPickup;
         order.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
-        await AddStatusHistory(id, "ready_for_pickup");
+        await AddStatusHistory(id, OrderStatuses.WaitingForPickup);
         await AddAuditLog(id, "Order Ready For Pickup");
 
         return Ok(order);
@@ -916,13 +960,21 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound();
 
-        order.Status = "driver_accepted";
+        order.Status = OrderStatuses.DriverAccepted;
         order.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
-        await AddStatusHistory(id, "driver_accepted");
+        await AddStatusHistory(id, OrderStatuses.DriverAccepted);
         await AddAuditLog(id, "Driver Accepted Order");
+
+        order.Status = OrderStatuses.WaitingForPickup;
+        order.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        await AddStatusHistory(id, OrderStatuses.WaitingForPickup);
+        await AddAuditLog(id, "Order Waiting For Pickup");
 
         return Ok(order);
     }
