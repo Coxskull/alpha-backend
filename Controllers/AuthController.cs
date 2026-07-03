@@ -95,6 +95,16 @@ public class AuthController : ControllerBase
 
         var token = GenerateToken(user);
 
+        Guid? supplierId = null;
+
+        if (user.Role == "supplier" || user.Role == "provider")
+        {
+            supplierId = await _context.Suppliers
+                .Where(s => s.Email.ToLower() == user.Email.ToLower())
+                .Select(s => s.Id)
+                .FirstOrDefaultAsync();
+        }
+
         return Ok(new
         {
             token,
@@ -103,7 +113,8 @@ public class AuthController : ControllerBase
                 user.Id,
                 user.FullName,
                 user.Email,
-                user.Role
+                user.Role,
+                SupplierId = supplierId
             }
         });
     }

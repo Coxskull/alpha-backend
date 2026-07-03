@@ -152,7 +152,7 @@ app.Use(async (context, next) =>
 });
 app.UseSwagger();
 app.UseSwaggerUI();
-
+app.UseStaticFiles();
 app.UseCors("AllowAll");
 
 app.UseAuthentication();
