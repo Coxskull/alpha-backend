@@ -138,7 +138,10 @@ public class ProductsController : ControllerBase
 
             imageUrl = $"/uploads/products/{fileName}";
         }
-
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
         var product = new Product
         {
             Id = Guid.NewGuid(),
