@@ -152,7 +152,6 @@ public class ProductsController : ControllerBase
             QuantityAvailable = dto.QuantityAvailable,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
         };
 
         _context.Products.Add(product);

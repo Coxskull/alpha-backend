@@ -19,4 +19,6 @@ public class Supplier
     public double ResponseRate { get; set; } = 100;
 
     public DateTime CreatedAt { get; set; }
+
+    public Guid? UserId { get; set; }
 }
