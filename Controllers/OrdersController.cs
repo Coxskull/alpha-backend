@@ -13,11 +13,13 @@ public class OrdersController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly OrderWorkflowService _workflow;
+    private readonly SettlementService _settlements;
 
-    public OrdersController(AppDbContext context, OrderWorkflowService workflow)
+    public OrdersController(AppDbContext context, OrderWorkflowService workflow, SettlementService settlements)
     {
         _context = context;
         _workflow = workflow;
+        _settlements = settlements;
     }
 
     // =========================================================
@@ -638,86 +640,17 @@ public class OrdersController : ControllerBase
             order.Supplier.AvailabilityStatus = "available";
         }
 
-        var financial = await _context.OrderFinancials
-            .FirstOrDefaultAsync(x => x.OrderId == id);
-
-        if (financial != null)
-        {
-            financial.FinancialStatus = OrderStatuses.SettlementPending;
-            financial.PayoutStatus = OrderStatuses.ReadyForPayout;
-
-            var existingQueue = await _context.SettlementQueue
-                .AnyAsync(x => x.OrderFinancialId == financial.Id);
-
-            if (!existingQueue)
-            {
-                if (financial.SupplierAmount > 0)
-                {
-                    _context.SettlementQueue.Add(new SettlementQueue
-                    {
-                        Id = Guid.NewGuid(),
-                        OrderFinancialId = financial.Id,
-                        PayeeType = "supplier",
-                        PayeeId = order.SupplierId,
-                        Amount = financial.SupplierAmount,
-                        Status = "ready_for_payout",
-                        CreatedAt = DateTime.UtcNow
-                    });
-                }
-
-                if (financial.DriverAmount > 0)
-                {
-                    _context.SettlementQueue.Add(new SettlementQueue
-                    {
-                        Id = Guid.NewGuid(),
-                        OrderFinancialId = financial.Id,
-                        PayeeType = "driver",
-                        PayeeId = order.DriverId,
-                        Amount = financial.DriverAmount,
-                        Status = "ready_for_payout",
-                        CreatedAt = DateTime.UtcNow
-                    });
-                }
-
-                if (financial.MechanicAmount > 0)
-                {
-                    _context.SettlementQueue.Add(new SettlementQueue
-                    {
-                        Id = Guid.NewGuid(),
-                        OrderFinancialId = financial.Id,
-                        PayeeType = "mechanic",
-                        PayeeId = null,
-                        Amount = financial.MechanicAmount,
-                        Status = "ready_for_payout",
-                        CreatedAt = DateTime.UtcNow
-                    });
-                }
-
-                if (financial.AlphaPlatformFee > 0)
-                {
-                    _context.SettlementQueue.Add(new SettlementQueue
-                    {
-                        Id = Guid.NewGuid(),
-                        OrderFinancialId = financial.Id,
-                        PayeeType = "alpha",
-                        PayeeId = null,
-                        Amount = financial.AlphaPlatformFee,
-                        Status = "recorded",
-                        CreatedAt = DateTime.UtcNow
-                    });
-                }
-            }
+        
+            
         }
 
         await _context.SaveChangesAsync();
 
         await AddStatusHistory(id, OrderStatuses.Delivered);
-        await AddStatusHistory(id, OrderStatuses.SettlementPending);
-        await AddStatusHistory(id, OrderStatuses.ReadyForPayout);
 
         return Ok(new
         {
-            message = "Order delivered successfully. Settlement queue created.",
+            message = "Order delivered successfully.",
             status = order.Status
         });
     }
@@ -728,12 +661,25 @@ public class OrdersController : ControllerBase
     // =========================================================
 
     [HttpPost("{id}/proof")]
-    public async Task<IActionResult> UploadProof(Guid id, string imageUrl)
+    [RequestSizeLimit(10_000_000)]
+    public async Task<IActionResult> UploadProof(Guid id, IFormFile image)
     {
         var order = await _context.Orders.FindAsync(id);
 
         if (order == null)
             return NotFound();
+
+        if (order.Status != OrderStatuses.Delivered)
+            return BadRequest("Order must be delivered before uploading proof.");
+
+        if (image == null || image.Length == 0)
+            return BadRequest("Proof image is required.");
+
+        await using var ms = new MemoryStream();
+        await image.CopyToAsync(ms);
+
+        var base64 = Convert.ToBase64String(ms.ToArray());
+        var imageUrl = $"data:{image.ContentType};base64,{base64}";
 
         var proof = new DeliveryProof
         {
@@ -748,12 +694,28 @@ public class OrdersController : ControllerBase
         order.Status = OrderStatuses.ProofUploaded;
         order.UpdatedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
+        var financial = await _context.OrderFinancials
+            .FirstOrDefaultAsync(x => x.OrderId == id);
 
-        await AddStatusHistory(id, OrderStatuses.ProofUploaded);
+        if (financial != null)
+        {
+            financial.CompletionProofUrl = imageUrl;
+            financial.FinancialStatus = "verified";
+            financial.PayoutStatus = OrderStatuses.ReadyForPayout;
+            financial.SettlementStatus = OrderStatuses.ReadyForPayout;
+        }
+
+        await _context.SaveChangesAsync();
+    await _settlements.VerifySettlementAfterProof(id);
+    await AddStatusHistory(id, OrderStatuses.ProofUploaded);
         await AddAuditLog(id, "Delivery Proof Uploaded");
 
-        return Ok(proof);
+        return Ok(new
+        {
+            proof,
+            status = order.Status,
+            message = "Proof uploaded successfully."
+        });
     }
 
     // =========================================================

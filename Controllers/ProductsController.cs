@@ -151,4 +151,54 @@ public class ProductsController : ControllerBase
 
         return Ok(product);
     }
+
+    [HttpPut("{id:guid}")]
+    [RequestSizeLimit(10_000_000)]
+    public async Task<IActionResult> UpdateProduct(Guid id, [FromForm] UpdateProductUploadDto dto)
+    {
+        var product = await _context.Products
+            .FirstOrDefaultAsync(x => x.Id == id && x.SupplierId == dto.SupplierId);
+
+        if (product == null)
+            return NotFound("Product not found or does not belong to this supplier.");
+
+        product.PartNumber = dto.PartNumber ?? "";
+        product.Brand = dto.Brand;
+        product.Name = dto.Name;
+        product.Description = dto.Description ?? "";
+        product.Price = dto.Price;
+        product.QuantityAvailable = dto.QuantityAvailable;
+        product.IsActive = dto.IsActive;
+
+        if (dto.Image != null && dto.Image.Length > 0)
+        {
+            await using var ms = new MemoryStream();
+            await dto.Image.CopyToAsync(ms);
+            var base64 = Convert.ToBase64String(ms.ToArray());
+            product.ImageUrl = $"data:{dto.Image.ContentType};base64,{base64}";
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(product);
+    }
+
+    [HttpDelete("{id:guid}/supplier/{supplierId:guid}")]
+    public async Task<IActionResult> DeleteProduct(Guid id, Guid supplierId)
+    {
+        var product = await _context.Products
+            .FirstOrDefaultAsync(x => x.Id == id && x.SupplierId == supplierId);
+
+        if (product == null)
+            return NotFound("Product not found or does not belong to this supplier.");
+
+        product.IsActive = false;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            message = "Product deleted successfully."
+        });
+    }
 }

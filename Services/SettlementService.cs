@@ -1,6 +1,8 @@
 using Alpha.API.Data;
 using Alpha.API.Models;
 using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading.Tasks;
 
 namespace Alpha.API.Services;
 
@@ -126,5 +128,17 @@ public class SettlementService
                 CreatedAt = DateTime.UtcNow
             });
         }
+    }
+
+    public async Task<OrderFinancial> VerifySettlementAfterProof(Guid orderId)
+    {
+        var financial = await VerifySettlement(orderId);
+
+        financial.SettlementStatus = "ready_for_payout";
+        financial.PayoutStatus = "ready_for_payout";
+
+        await _context.SaveChangesAsync();
+
+        return financial;
     }
 }
