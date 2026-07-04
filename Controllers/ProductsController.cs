@@ -96,7 +96,7 @@ public class ProductsController : ControllerBase
     public async Task<IActionResult> GetSupplierProducts(Guid supplierId)
     {
         var products = await _context.Products
-            .Where(x => x.SupplierId == supplierId)
+            .Where(x => x.SupplierId == supplierId && x.IsActive)
             .OrderByDescending(x => x.CreatedAt)
             .ToListAsync();
 
