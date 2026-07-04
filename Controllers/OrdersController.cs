@@ -611,54 +611,22 @@ public class OrdersController : ControllerBase
             return NotFound();
 
         if (order.Status != OrderStatuses.EnRoute)
-        {
-            return BadRequest(
-                "Order must be en route before delivery."
-            );
-        }
+            return BadRequest("Order must be en route before delivery.");
 
         order.Status = OrderStatuses.Delivered;
         order.UpdatedAt = DateTime.UtcNow;
 
-        if (order.Driver != null)
-        {
-            order.Driver.ActiveJobs--;
-
-            if (order.Driver.ActiveJobs < 0)
-                order.Driver.ActiveJobs = 0;
-
-            order.Driver.AvailabilityStatus = "available";
-        }
-
-        if (order.Supplier != null)
-        {
-            order.Supplier.CurrentWorkload--;
-
-            if (order.Supplier.CurrentWorkload < 0)
-                order.Supplier.CurrentWorkload = 0;
-
-            order.Supplier.AvailabilityStatus = "available";
-        }
-
-        
-            
-        }
-
         await _context.SaveChangesAsync();
 
         await AddStatusHistory(id, OrderStatuses.Delivered);
+        await AddAuditLog(id, "Order Delivered");
 
         return Ok(new
         {
-            message = "Order delivered successfully.",
+            message = "Order delivered successfully. Waiting for proof upload.",
             status = order.Status
         });
     }
-
-    // =========================================================
-    // UPLOAD DELIVERY PROOF
-    // POST: /api/Orders/{id}/proof
-    // =========================================================
 
     [HttpPost("{id}/proof")]
     [RequestSizeLimit(10_000_000)]
@@ -694,20 +662,9 @@ public class OrdersController : ControllerBase
         order.Status = OrderStatuses.ProofUploaded;
         order.UpdatedAt = DateTime.UtcNow;
 
-        var financial = await _context.OrderFinancials
-            .FirstOrDefaultAsync(x => x.OrderId == id);
-
-        if (financial != null)
-        {
-            financial.CompletionProofUrl = imageUrl;
-            financial.FinancialStatus = "verified";
-            financial.PayoutStatus = OrderStatuses.ReadyForPayout;
-            financial.SettlementStatus = OrderStatuses.ReadyForPayout;
-        }
-
         await _context.SaveChangesAsync();
-    await _settlements.VerifySettlementAfterProof(id);
-    await AddStatusHistory(id, OrderStatuses.ProofUploaded);
+
+        await AddStatusHistory(id, OrderStatuses.ProofUploaded);
         await AddAuditLog(id, "Delivery Proof Uploaded");
 
         return Ok(new
