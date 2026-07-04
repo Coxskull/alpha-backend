@@ -76,4 +76,7 @@ public class OrderFinancial
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("settlement_status")]
+    public string SettlementStatus { get; set; } = "pending";
 }
