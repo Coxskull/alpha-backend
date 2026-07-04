@@ -45,4 +45,5 @@ public class Order
     public Supplier? Supplier { get; set; }
 
     public Driver? Driver { get; set; }
+    public DeliveryProof? DeliveryProof { get; set; }
 }

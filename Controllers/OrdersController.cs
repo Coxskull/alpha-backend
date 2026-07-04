@@ -208,44 +208,53 @@ public class OrdersController : ControllerBase
         try
         {
             var orders = await _context.Orders
-    .Include(o => o.Supplier)
-    .Include(o => o.Driver)
-    .OrderByDescending(o => o.CreatedAt)
-    .Select(o => new
-    {
-        id = o.Id,
+                .Include(o => o.Supplier)
+                .Include(o => o.Driver)
+                .GroupJoin(
+                    _context.DeliveryProofs,
+                    order => order.Id,
+                    proof => proof.OrderId,
+                    (order, proofs) => new
+                    {
+                        Order = order,
+                        Proof = proofs
+                            .OrderByDescending(p => p.UploadedAt)
+                            .FirstOrDefault()
+                    }
+                )
+                .OrderByDescending(x => x.Order.CreatedAt)
+                .Select(x => new
+                {
+                    id = x.Order.Id,
+                    orderNumber = x.Order.OrderNumber,
+                    customerName = x.Order.CustomerName,
+                    pickupAddress = x.Order.PickupAddress,
+                    deliveryAddress = x.Order.DeliveryAddress,
+                    itemDescription = x.Order.ItemDescription,
+                    zone = x.Order.Zone,
+                    status = x.Order.Status,
+                    createdAt = x.Order.CreatedAt,
+                    updatedAt = x.Order.UpdatedAt,
 
-        orderNumber = o.OrderNumber,
+                    supplierId = x.Order.SupplierId,
+                    supplierName = x.Order.Supplier != null
+                        ? x.Order.Supplier.Name
+                        : null,
 
-        customerName = o.CustomerName,
+                    driverId = x.Order.DriverId,
+                    driverName = x.Order.Driver != null
+                        ? x.Order.Driver.FullName
+                        : null,
 
-        pickupAddress = o.PickupAddress,
+                    proofImageUrl = x.Proof != null
+                        ? x.Proof.ImageUrl
+                        : null,
 
-        deliveryAddress = o.DeliveryAddress,
-
-        itemDescription = o.ItemDescription,
-
-        zone = o.Zone,
-
-        status = o.Status,
-
-        createdAt = o.CreatedAt,
-
-        updatedAt = o.UpdatedAt,
-
-        supplierId = o.SupplierId,
-
-        supplierName = o.Supplier != null
-            ? o.Supplier.Name
-            : null,
-
-        driverId = o.DriverId,
-
-        driverName = o.Driver != null
-            ? o.Driver.FullName
-            : null
-    })
-    .ToListAsync();
+                    proofUploadedAt = x.Proof != null
+                        ? x.Proof.UploadedAt
+                        : (DateTime?)null
+                })
+                .ToListAsync();
 
             return Ok(orders);
         }
@@ -254,7 +263,7 @@ public class OrdersController : ControllerBase
             return StatusCode(500, ex.ToString());
         }
     }
-   
+
     // =========================================================
     // GET STATUS HISTORY
     // GET: /api/Orders/{id}/status
@@ -611,75 +620,135 @@ public class OrdersController : ControllerBase
             return NotFound();
 
         if (order.Status != OrderStatuses.EnRoute)
-            return BadRequest("Order must be en route before delivery.");
+        {
+            return BadRequest(
+                "Order must be en route before delivery."
+            );
+        }
 
         order.Status = OrderStatuses.Delivered;
         order.UpdatedAt = DateTime.UtcNow;
 
+        if (order.Driver != null)
+        {
+            order.Driver.ActiveJobs--;
+
+            if (order.Driver.ActiveJobs < 0)
+                order.Driver.ActiveJobs = 0;
+
+            order.Driver.AvailabilityStatus = "available";
+        }
+
+        if (order.Supplier != null)
+        {
+            order.Supplier.CurrentWorkload--;
+
+            if (order.Supplier.CurrentWorkload < 0)
+                order.Supplier.CurrentWorkload = 0;
+
+            order.Supplier.AvailabilityStatus = "available";
+        }
+
+        
+            
+        }
+
         await _context.SaveChangesAsync();
 
         await AddStatusHistory(id, OrderStatuses.Delivered);
-        await AddAuditLog(id, "Order Delivered");
 
         return Ok(new
         {
-            message = "Order delivered successfully. Waiting for proof upload.",
+            message = "Order delivered successfully.",
             status = order.Status
         });
     }
 
+    // =========================================================
+    // UPLOAD DELIVERY PROOF
+    // POST: /api/Orders/{id}/proof
+    // =========================================================
+
     [HttpPost("{id}/proof")]
-    [RequestSizeLimit(10_000_000)]
-    public async Task<IActionResult> UploadProof(Guid id, IFormFile image)
+[RequestSizeLimit(20_000_000)]
+public async Task<IActionResult> UploadProof(
+    Guid id,
+    [FromForm] IFormFile image
+)
+{
+    var order = await _context.Orders.FindAsync(id);
+
+    if (order == null)
+        return NotFound();
+
+    if (order.Status != OrderStatuses.Delivered)
+        return BadRequest(
+            "Order must be delivered first."
+        );
+
+    if (image == null || image.Length == 0)
+        return BadRequest("Image required.");
+
+    var uploadsPath = Path.Combine(
+        Directory.GetCurrentDirectory(),
+        "uploads",
+        "proofs"
+    );
+
+    if (!Directory.Exists(uploadsPath))
+        Directory.CreateDirectory(uploadsPath);
+
+    var extension = Path.GetExtension(image.FileName);
+
+    var fileName =
+        $"proof-{Guid.NewGuid()}{extension}";
+
+    var fullPath = Path.Combine(
+        uploadsPath,
+        fileName
+    );
+
+    await using (var stream = new FileStream(
+        fullPath,
+        FileMode.Create
+    ))
     {
-        var order = await _context.Orders.FindAsync(id);
-
-        if (order == null)
-            return NotFound();
-
-        if (order.Status != OrderStatuses.Delivered)
-            return BadRequest("Order must be delivered before uploading proof.");
-
-        if (image == null || image.Length == 0)
-            return BadRequest("Proof image is required.");
-
-        await using var ms = new MemoryStream();
-        await image.CopyToAsync(ms);
-
-        var base64 = Convert.ToBase64String(ms.ToArray());
-        var imageUrl = $"data:{image.ContentType};base64,{base64}";
-
-        var proof = new DeliveryProof
-        {
-            Id = Guid.NewGuid(),
-            OrderId = id,
-            ImageUrl = imageUrl,
-            UploadedAt = DateTime.UtcNow
-        };
-
-        _context.DeliveryProofs.Add(proof);
-
-        order.Status = OrderStatuses.ProofUploaded;
-        order.UpdatedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
-
-        await AddStatusHistory(id, OrderStatuses.ProofUploaded);
-        await AddAuditLog(id, "Delivery Proof Uploaded");
-
-        return Ok(new
-        {
-            proof,
-            status = order.Status,
-            message = "Proof uploaded successfully."
-        });
+        await image.CopyToAsync(stream);
     }
 
-    // =========================================================
-    // HELPER: STATUS HISTORY
-    // =========================================================
+    var publicPath = $"/uploads/proofs/{fileName}";
 
-    private async Task AddStatusHistory(Guid orderId, string status)
+    var proof = new DeliveryProof
+    {
+        Id = Guid.NewGuid(),
+        OrderId = id,
+        ImageUrl = publicPath,
+        UploadedAt = DateTime.UtcNow
+    };
+
+    _context.DeliveryProofs.Add(proof);
+
+    order.Status = OrderStatuses.ProofUploaded;
+    order.UpdatedAt = DateTime.UtcNow;
+
+    await _context.SaveChangesAsync();
+
+    await _settlements.VerifySettlementAfterProof(id);
+    await AddStatusHistory(id, OrderStatuses.ProofUploaded);
+    await AddAuditLog(id, "Delivery Proof Uploaded");
+
+    return Ok(new
+    {
+        proof,
+        imageUrl = publicPath
+    });
+}
+
+// =========================================================
+// HELPER: STATUS HISTORY
+// =========================================================
+
+private async Task AddStatusHistory(Guid orderId, string status)
     {
         var history = new StatusHistory
         {

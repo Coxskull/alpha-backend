@@ -536,5 +536,10 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Currency).HasColumnName("currency");
             entity.Property(e => e.IssuedAt).HasColumnName("issued_at");
         });
+
+        modelBuilder.Entity<Order>()
+    .HasOne<DeliveryProof>()
+    .WithOne()
+    .HasForeignKey<DeliveryProof>(x => x.OrderId);
     }
 }
