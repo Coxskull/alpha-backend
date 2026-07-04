@@ -14,7 +14,7 @@ public class DeliveryProof
     public Guid OrderId { get; set; }
 
     [Column("image_url")]
-    public string ImageUrl { get; set; }
+    public string ImageUrl { get; set; } = string.Empty;
 
     [Column("uploaded_at")]
     public DateTime UploadedAt { get; set; }
