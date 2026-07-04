@@ -666,85 +666,98 @@ public class OrdersController : ControllerBase
     // =========================================================
 
     [HttpPost("{id}/proof")]
-[RequestSizeLimit(20_000_000)]
-public async Task<IActionResult> UploadProof(
-    Guid id,
-    [FromForm] IFormFile image
-)
-{
-    var order = await _context.Orders.FindAsync(id);
+    [RequestSizeLimit(20_000_000)]
+    public async Task<IActionResult> UploadProof(Guid id, [FromForm] IFormFile image)
+    {
+        var order = await _context.Orders.FindAsync(id);
 
-    if (order == null)
-        return NotFound();
+        if (order == null)
+            return NotFound("Order not found.");
 
-    if (order.Status != OrderStatuses.Delivered)
-        return BadRequest(
-            "Order must be delivered first."
+        if (order.Status != OrderStatuses.Delivered)
+            return BadRequest("Order must be delivered first.");
+
+        if (image == null || image.Length == 0)
+            return BadRequest("Image required.");
+
+        var uploadsPath = Path.Combine(
+            Directory.GetCurrentDirectory(),
+            "wwwroot",
+            "uploads",
+            "proofs"
         );
 
-    if (image == null || image.Length == 0)
-        return BadRequest("Image required.");
-
-    var uploadsPath = Path.Combine(
-        Directory.GetCurrentDirectory(),
-        "uploads",
-        "proofs"
-    );
-
-    if (!Directory.Exists(uploadsPath))
         Directory.CreateDirectory(uploadsPath);
 
-    var extension = Path.GetExtension(image.FileName);
+        var extension = Path.GetExtension(image.FileName);
+        if (string.IsNullOrWhiteSpace(extension))
+            extension = ".jpg";
 
-    var fileName =
-        $"proof-{Guid.NewGuid()}{extension}";
+        var fileName = $"proof-{Guid.NewGuid()}{extension}";
+        var fullPath = Path.Combine(uploadsPath, fileName);
 
-    var fullPath = Path.Combine(
-        uploadsPath,
-        fileName
-    );
+        await using (var stream = new FileStream(fullPath, FileMode.Create))
+        {
+            await image.CopyToAsync(stream);
+        }
 
-    await using (var stream = new FileStream(
-        fullPath,
-        FileMode.Create
-    ))
-    {
-        await image.CopyToAsync(stream);
+        var publicPath = $"/uploads/proofs/{fileName}";
+
+        var proof = new DeliveryProof
+        {
+            Id = Guid.NewGuid(),
+            OrderId = id,
+            ImageUrl = publicPath,
+            UploadedAt = DateTime.UtcNow
+        };
+
+        _context.DeliveryProofs.Add(proof);
+
+        order.Status = OrderStatuses.ProofUploaded;
+        order.UpdatedAt = DateTime.UtcNow;
+
+        var financial = await _context.OrderFinancials
+            .FirstOrDefaultAsync(x => x.OrderId == id);
+
+        if (financial != null)
+        {
+            financial.CompletionProofUrl = publicPath;
+            financial.FinancialStatus = "verified";
+            financial.PayoutStatus = "ready_for_payout";
+            financial.SettlementStatus = "ready_for_payout";
+        }
+
+        await _context.SaveChangesAsync();
+
+        await AddStatusHistory(id, OrderStatuses.ProofUploaded);
+        await AddAuditLog(id, "Delivery Proof Uploaded");
+
+        try
+        {
+            await _settlements.VerifySettlementAfterProof(id);
+        }
+        catch (Exception settlementError)
+        {
+            await AddAuditLog(
+                id,
+                $"Proof uploaded, but settlement verification failed: {settlementError.Message}"
+            );
+        }
+
+        return Ok(new
+        {
+            proof,
+            imageUrl = publicPath,
+            status = OrderStatuses.ProofUploaded,
+            message = "Proof uploaded successfully."
+        });
     }
 
-    var publicPath = $"/uploads/proofs/{fileName}";
+    // =========================================================
+    // HELPER: STATUS HISTORY
+    // =========================================================
 
-    var proof = new DeliveryProof
-    {
-        Id = Guid.NewGuid(),
-        OrderId = id,
-        ImageUrl = publicPath,
-        UploadedAt = DateTime.UtcNow
-    };
-
-    _context.DeliveryProofs.Add(proof);
-
-    order.Status = OrderStatuses.ProofUploaded;
-    order.UpdatedAt = DateTime.UtcNow;
-
-    await _context.SaveChangesAsync();
-
-    await _settlements.VerifySettlementAfterProof(id);
-    await AddStatusHistory(id, OrderStatuses.ProofUploaded);
-    await AddAuditLog(id, "Delivery Proof Uploaded");
-
-    return Ok(new
-    {
-        proof,
-        imageUrl = publicPath
-    });
-}
-
-// =========================================================
-// HELPER: STATUS HISTORY
-// =========================================================
-
-private async Task AddStatusHistory(Guid orderId, string status)
+    private async Task AddStatusHistory(Guid orderId, string status)
     {
         var history = new StatusHistory
         {
