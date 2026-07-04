@@ -537,21 +537,6 @@ public class AppDbContext : DbContext
             entity.Property(e => e.IssuedAt).HasColumnName("issued_at");
         });
 
-        modelBuilder.Entity<Order>()
-    .HasOne<DeliveryProof>()
-    .WithOne()
-    .HasForeignKey<DeliveryProof>(x => x.OrderId);
-
-        modelBuilder.Entity<DeliveryProof>(entity =>
-        {
-            entity.ToTable("delivery_proof");
-
-            entity.HasKey(e => e.Id);
-
-            entity.Property(e => e.Id).HasColumnName("id");
-            entity.Property(e => e.OrderId).HasColumnName("order_id");
-            entity.Property(e => e.ImageUrl).HasColumnName("image_url");
-            entity.Property(e => e.UploadedAt).HasColumnName("uploaded_at");
-        });
+       
     }
 }
