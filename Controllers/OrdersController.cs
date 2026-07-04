@@ -680,34 +680,17 @@ public class OrdersController : ControllerBase
         if (image == null || image.Length == 0)
             return BadRequest("Image required.");
 
-        var uploadsPath = Path.Combine(
-            Directory.GetCurrentDirectory(),
-            "wwwroot",
-            "uploads",
-            "proofs"
-        );
+        await using var ms = new MemoryStream();
+        await image.CopyToAsync(ms);
 
-        Directory.CreateDirectory(uploadsPath);
-
-        var extension = Path.GetExtension(image.FileName);
-        if (string.IsNullOrWhiteSpace(extension))
-            extension = ".jpg";
-
-        var fileName = $"proof-{Guid.NewGuid()}{extension}";
-        var fullPath = Path.Combine(uploadsPath, fileName);
-
-        await using (var stream = new FileStream(fullPath, FileMode.Create))
-        {
-            await image.CopyToAsync(stream);
-        }
-
-        var publicPath = $"/uploads/proofs/{fileName}";
+        var base64 = Convert.ToBase64String(ms.ToArray());
+        var imageUrl = $"data:{image.ContentType};base64,{base64}";
 
         var proof = new DeliveryProof
         {
             Id = Guid.NewGuid(),
             OrderId = id,
-            ImageUrl = publicPath,
+            ImageUrl = imageUrl,
             UploadedAt = DateTime.UtcNow
         };
 
@@ -721,7 +704,7 @@ public class OrdersController : ControllerBase
 
         if (financial != null)
         {
-            financial.CompletionProofUrl = publicPath;
+            financial.CompletionProofUrl = imageUrl;
             financial.FinancialStatus = "verified";
             financial.PayoutStatus = "ready_for_payout";
             financial.SettlementStatus = "ready_for_payout";
@@ -747,7 +730,7 @@ public class OrdersController : ControllerBase
         return Ok(new
         {
             proof,
-            imageUrl = publicPath,
+            imageUrl,
             status = OrderStatuses.ProofUploaded,
             message = "Proof uploaded successfully."
         });
