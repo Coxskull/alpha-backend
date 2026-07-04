@@ -5,6 +5,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Alpha.API.Constants;
 using Alpha.API.Services;
+using System.IO;
+using Microsoft.AspNetCore.Http;
+
 namespace Alpha.API.Controllers;
 
 [ApiController]
@@ -620,11 +623,7 @@ public class OrdersController : ControllerBase
             return NotFound();
 
         if (order.Status != OrderStatuses.EnRoute)
-        {
-            return BadRequest(
-                "Order must be en route before delivery."
-            );
-        }
+            return BadRequest("Order must be en route before delivery.");
 
         order.Status = OrderStatuses.Delivered;
         order.UpdatedAt = DateTime.UtcNow;
@@ -649,17 +648,14 @@ public class OrdersController : ControllerBase
             order.Supplier.AvailabilityStatus = "available";
         }
 
-        
-            
-        }
-
         await _context.SaveChangesAsync();
 
         await AddStatusHistory(id, OrderStatuses.Delivered);
+        await AddAuditLog(id, "Order Delivered");
 
         return Ok(new
         {
-            message = "Order delivered successfully.",
+            message = "Order delivered successfully. Waiting for proof upload.",
             status = order.Status
         });
     }
