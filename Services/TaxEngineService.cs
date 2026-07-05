@@ -62,19 +62,7 @@ public class TaxEngineService
         {
             var normalizedComponent = component.Key.Trim().ToLower();
 
-            var rule = await _context.TaxRules
-                .Where(x =>
-                    x.Enabled &&
-                    x.Country.ToUpper() == normalizedCountry &&
-                    x.Component.ToLower() == normalizedComponent &&
-                    x.EffectiveFrom <= DateTime.UtcNow &&
-                    (x.ExpiresAt == null || x.ExpiresAt > DateTime.UtcNow) &&
-                    (x.Region == null || x.Region == normalizedRegion))
-                .OrderByDescending(x => x.Region != null)
-                .ThenByDescending(x => x.Version)
-                .FirstOrDefaultAsync();
-
-            rule ??= CreateDevelopmentFallbackRule(
+            var rule = await GetOrCreateTaxRule(
                 normalizedCountry,
                 normalizedRegion,
                 normalizedComponent
@@ -116,7 +104,6 @@ public class TaxEngineService
         }
 
         financial.Tax = results.Sum(x => x.TaxAmount);
-
         financial.TaxCollected = financial.Tax;
         financial.TaxWithheld = results.Sum(x => x.WithholdingAmount);
 
@@ -133,16 +120,31 @@ public class TaxEngineService
         return results;
     }
 
-    private static TaxRule CreateDevelopmentFallbackRule(
+    private async Task<TaxRule> GetOrCreateTaxRule(
         string country,
         string? region,
         string component)
     {
-        return new TaxRule
+        var rule = await _context.TaxRules
+            .Where(x =>
+                x.Enabled &&
+                x.Country.ToUpper() == country &&
+                x.Component.ToLower() == component &&
+                x.EffectiveFrom <= DateTime.UtcNow &&
+                (x.ExpiresAt == null || x.ExpiresAt > DateTime.UtcNow) &&
+                (x.Region == null || x.Region == region))
+            .OrderByDescending(x => x.Region != null)
+            .ThenByDescending(x => x.Version)
+            .FirstOrDefaultAsync();
+
+        if (rule != null)
+            return rule;
+
+        var fallbackRule = new TaxRule
         {
-            Id = Guid.Empty,
+            Id = Guid.NewGuid(),
             Country = country,
-            Region = region,
+            Region = null,
             TaxType = country == "MX" ? "IVA" : "TAX",
             TaxRate = country == "MX" ? 0.16m : 0m,
             Component = component,
@@ -162,5 +164,10 @@ public class TaxEngineService
             Enabled = true,
             Version = 1
         };
+
+        _context.TaxRules.Add(fallbackRule);
+        await _context.SaveChangesAsync();
+
+        return fallbackRule;
     }
 }
