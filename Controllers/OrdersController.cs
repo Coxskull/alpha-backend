@@ -17,12 +17,18 @@ public class OrdersController : ControllerBase
     private readonly AppDbContext _context;
     private readonly OrderWorkflowService _workflow;
     private readonly SettlementService _settlements;
+    private readonly TaxEngineService _taxEngine;
 
-    public OrdersController(AppDbContext context, OrderWorkflowService workflow, SettlementService settlements)
+    public OrdersController(
+        AppDbContext context,
+        OrderWorkflowService workflow,
+        SettlementService settlements,
+        TaxEngineService taxEngine)
     {
         _context = context;
         _workflow = workflow;
         _settlements = settlements;
+        _taxEngine = taxEngine;
     }
 
     // =========================================================
@@ -73,9 +79,9 @@ public class OrdersController : ControllerBase
 
             decimal deliveryFee = 8.00m;
             decimal serviceFee = 3.00m;
-            decimal tax = itemSubtotal * 0.08m;
+            decimal tax = 0;
             decimal discount = 0;
-            decimal totalAmount = itemSubtotal + deliveryFee + serviceFee + tax - discount;
+            decimal totalAmount = 0;
 
             decimal exchangeRate = currency == "MXN" ? 17.00m : 1.00m;
             decimal supplierEarning = itemSubtotal * 0.80m;
@@ -153,17 +159,33 @@ public class OrdersController : ControllerBase
             };
 
             _context.OrderFinancials.Add(financial);
+            await _context.SaveChangesAsync();
+
+            var country = currency == "MXN" ? "MX" : "US";
+
+            var taxBreakdown = await _taxEngine.CalculateOrderTaxes(
+                order.Id,
+                country,
+                dto.Zone,
+                currency
+            );
+
+            financial = await _context.OrderFinancials
+                .FirstAsync(x => x.OrderId == order.Id);
+
+            totalAmount = financial.TotalAmount;
+            tax = financial.Tax;
 
             var payment = new Payment
             {
                 Id = Guid.NewGuid(),
                 OrderId = order.Id,
-                Amount = totalAmount,
+                Amount = financial.TotalAmount,
                 Currency = currency,
                 PaymentMethod = dto.PaymentMethod,
                 PaymentStatus = dto.PaymentMethod == "paypal"
-                    ? "pending"
-                    : "cash_pending",
+        ? "pending"
+        : "cash_pending",
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -179,6 +201,7 @@ public class OrdersController : ControllerBase
                 order,
                 financial,
                 payment,
+                taxBreakdown,
                 items = dto.Items.Select(item =>
                 {
                     var product = products.First(x => x.Id == item.ProductId);

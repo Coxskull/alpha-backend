@@ -80,6 +80,12 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TaxLedgerEntry>()
             .Property(x => x.EntryType)
             .HasDefaultValue("calculation");
+
+        modelBuilder.Entity<TaxRule>(entity =>
+        {
+            entity.ToTable("tax_rules");
+            entity.HasKey(e => e.Id);
+        });
         // ==========================
         // ORDERS
         // ==========================

@@ -18,15 +18,16 @@ public class TaxEngineService
 
     public async Task<List<TaxCalculation>> CalculateOrderTaxes(
         Guid orderId,
-        string country = "MX",
-        string? region = null,
-        string currency = "MXN")
+        string country,
+        string? region,
+        string currency)
     {
         var existing = await _context.TaxCalculations
-            .AnyAsync(x => x.OrderId == orderId);
+            .Where(x => x.OrderId == orderId)
+            .ToListAsync();
 
-        if (existing)
-            throw new Exception("Tax already calculated for this order.");
+        if (existing.Any())
+            return existing;
 
         var financial = await _context.OrderFinancials
             .FirstOrDefaultAsync(x => x.OrderId == orderId);
@@ -38,11 +39,11 @@ public class TaxEngineService
         {
             { "product", financial.ItemSubtotal },
             { "delivery", financial.DeliveryFee },
-            { "mechanic", financial.MechanicAmount },
-            { "alpha_service_fee", financial.ServiceFee }
+            { "alpha_service_fee", financial.ServiceFee },
+            { "mechanic", financial.MechanicAmount }
         };
 
-        var calculations = new List<TaxCalculation>();
+        var results = new List<TaxCalculation>();
 
         foreach (var component in components.Where(x => x.Value > 0))
         {
@@ -59,18 +60,19 @@ public class TaxEngineService
                 .FirstOrDefaultAsync();
 
             if (rule == null)
-                throw new Exception($"No tax rule configured for {component.Key}.");
+                throw new Exception($"No tax rule found for {component.Key}.");
 
             var taxableBase = Math.Round(component.Value, 2);
+
             var taxAmount = rule.IsTaxInclusive
-                ? Math.Round(taxableBase - (taxableBase / (1 + rule.TaxRate)), 2)
+                ? Math.Round(taxableBase - taxableBase / (1 + rule.TaxRate), 2)
                 : Math.Round(taxableBase * rule.TaxRate, 2);
 
             var withholdingAmount = rule.WithholdingRequired
                 ? Math.Round(taxableBase * rule.WithholdingRate, 2)
                 : 0;
 
-            var calc = new TaxCalculation
+            var calculation = new TaxCalculation
             {
                 Id = Guid.NewGuid(),
                 OrderId = orderId,
@@ -91,31 +93,11 @@ public class TaxEngineService
                 CreatedAt = DateTime.UtcNow
             };
 
-            calculations.Add(calc);
-            _context.TaxCalculations.Add(calc);
-
-            _context.TaxLedgerEntries.Add(new TaxLedgerEntry
-            {
-                Id = Guid.NewGuid(),
-                OrderId = orderId,
-                EntryType = "calculation",
-                TaxType = calc.TaxType,
-                Component = calc.Component,
-                TaxRate = calc.TaxRate,
-                TaxableBase = calc.TaxableBase,
-                TaxCollected = calc.TaxAmount,
-                TaxWithheld = calc.WithholdingAmount,
-                ResponsibleParty = calc.TaxResponsibleParty,
-                TaxRuleVersion = calc.TaxRuleVersion,
-                Actor = "tax_engine",
-                CreatedAt = DateTime.UtcNow
-            });
+            _context.TaxCalculations.Add(calculation);
+            results.Add(calculation);
         }
 
-        financial.Tax = calculations.Sum(x => x.TaxAmount);
-        financial.TaxCollected = calculations.Sum(x => x.TaxAmount);
-        financial.TaxWithheld = calculations.Sum(x => x.WithholdingAmount);
-
+        financial.Tax = results.Sum(x => x.TaxAmount);
         financial.TotalAmount =
             financial.ItemSubtotal +
             financial.DeliveryFee +
@@ -126,6 +108,6 @@ public class TaxEngineService
 
         await _context.SaveChangesAsync();
 
-        return calculations;
+        return results;
     }
 }
