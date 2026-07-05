@@ -39,8 +39,14 @@ public class TaxEngineService
             .Where(x => x.OrderId == orderId)
             .ToListAsync();
 
-        if (existing.Any())
+        if (existing.Any() && existing.Sum(x => x.TaxAmount) > 0)
             return existing;
+
+        if (existing.Any())
+        {
+            _context.TaxCalculations.RemoveRange(existing);
+            await _context.SaveChangesAsync();
+        }
 
         var financial = await _context.OrderFinancials
             .FirstOrDefaultAsync(x => x.OrderId == orderId);
@@ -138,7 +144,19 @@ public class TaxEngineService
             .FirstOrDefaultAsync();
 
         if (rule != null)
+        {
+            if (country == "MX" && rule.TaxRate <= 0)
+            {
+                rule.TaxType = "IVA";
+                rule.TaxRate = 0.16m;
+                rule.Enabled = true;
+                rule.Version += 1;
+
+                await _context.SaveChangesAsync();
+            }
+
             return rule;
+        }
 
         var fallbackRule = new TaxRule
         {
