@@ -40,11 +40,11 @@ public class SettlementService
             throw new Exception("Financial record not found.");
 
         financial.CustomerPaid = payment.Amount;
-        financial.Currency = string.IsNullOrWhiteSpace(payment.Currency)
-            ? financial.Currency
-            : payment.Currency;
 
-        financial.ProcessingFee = payment.GatewayFee;
+        if (!string.IsNullOrWhiteSpace(payment.Currency))
+            financial.Currency = payment.Currency;
+
+        financial.ProcessingFee = 0;
         financial.FinancialStatus = "pending";
         financial.PayoutStatus = "not_ready";
         financial.SettlementStatus = "pending";
@@ -56,26 +56,21 @@ public class SettlementService
 
     public async Task<OrderFinancial> VerifySettlement(Guid orderId)
     {
-        var order = await _context.Orders
-            .FirstOrDefaultAsync(o => o.Id == orderId);
+        var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
 
         if (order == null)
             throw new Exception("Order not found.");
 
-        var payment = await _context.Payments
-            .FirstOrDefaultAsync(p => p.OrderId == orderId);
+        var payment = await _context.Payments.FirstOrDefaultAsync(p => p.OrderId == orderId);
 
-        var financial = await _context.OrderFinancials
-            .FirstOrDefaultAsync(f => f.OrderId == orderId);
+        var financial = await _context.OrderFinancials.FirstOrDefaultAsync(f => f.OrderId == orderId);
 
-        var proofUploaded = await _context.DeliveryProofs
-            .AnyAsync(p => p.OrderId == orderId);
+        var proofUploaded = await _context.DeliveryProofs.AnyAsync(p => p.OrderId == orderId);
 
         if (payment == null || financial == null)
             throw new Exception("Missing payment or financial record.");
 
         var paymentSuccessful = payment.PaymentStatus == "paid";
-
         var supplierComplete = order.SupplierId != null;
 
         var driverComplete =
@@ -100,7 +95,7 @@ public class SettlementService
         await EnsureTaxCalculated(orderId);
 
         financial.CustomerPaid = payment.Amount;
-        financial.ProcessingFee = payment.GatewayFee;
+        financial.ProcessingFee = 0;
 
         ApplyTaxAwareSettlement(financial);
 
@@ -146,11 +141,10 @@ public class SettlementService
     private void ApplyTaxAwareSettlement(OrderFinancial financial)
     {
         financial.TaxCollected = financial.Tax;
-        financial.TaxWithheld = financial.TaxWithheld;
 
         financial.SupplierNetPayable = Math.Max(
             0,
-            financial.SupplierAmount - GetSupplierTaxWithholding(financial)
+            financial.SupplierAmount - financial.TaxWithheld
         );
 
         financial.DriverNetPayable = Math.Max(
@@ -175,16 +169,6 @@ public class SettlementService
             financial.MechanicAmount +
             financial.TaxCollected -
             financial.Discount;
-
-        financial.UpdatedAt = DateTime.UtcNow;
-    }
-
-    private decimal GetSupplierTaxWithholding(OrderFinancial financial)
-    {
-        if (financial.TaxWithheld <= 0)
-            return 0;
-
-        return financial.TaxWithheld;
     }
 
     private bool Reconciles(OrderFinancial financial)
@@ -273,7 +257,7 @@ public class SettlementService
                 Id = Guid.NewGuid(),
                 OrderFinancialId = financial.Id,
                 PayeeType = "mechanic",
-                PayeeId = order.MechanicId,
+                PayeeId = null,
                 Amount = financial.MechanicNetPayable,
                 Status = "ready_for_payout",
                 CreatedAt = DateTime.UtcNow
