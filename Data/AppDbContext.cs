@@ -44,6 +44,10 @@ public class AppDbContext : DbContext
     public DbSet<Invoice> Invoices { get; set; }
 
 
+    public DbSet<TaxRule> TaxRules { get; set; }
+    public DbSet<TaxCalculation> TaxCalculations { get; set; }
+    public DbSet<TaxLedgerEntry> TaxLedgerEntries { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -67,6 +71,15 @@ public class AppDbContext : DbContext
             entity.Property(e => e.PasswordHash).HasColumnName("PasswordHash");
         });
 
+
+
+        modelBuilder.Entity<TaxCalculation>()
+    .HasIndex(x => new { x.OrderId, x.Component, x.TaxType })
+    .IsUnique();
+
+        modelBuilder.Entity<TaxLedgerEntry>()
+            .Property(x => x.EntryType)
+            .HasDefaultValue("calculation");
         // ==========================
         // ORDERS
         // ==========================

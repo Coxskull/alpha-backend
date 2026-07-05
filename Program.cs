@@ -46,6 +46,9 @@ builder.Services
                 )
             };
     });
+
+builder.Services.AddScoped<TaxEngineService>();
+builder.Services.AddScoped<SettlementService>();
 builder.Services.AddScoped<OrderWorkflowService>();
 builder.Services.AddHttpClient<Alpha.API.Services.PayPalService>();
 builder.Services.AddAuthorization();

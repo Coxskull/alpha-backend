@@ -79,4 +79,34 @@ public class OrderFinancial
 
     [Column("settlement_status")]
     public string SettlementStatus { get; set; } = "pending";
+
+    [Column("tax_collected")]
+    public decimal TaxCollected { get; set; }
+
+    [Column("tax_withheld")]
+    public decimal TaxWithheld { get; set; }
+
+    [Column("processing_fee")]
+    public decimal ProcessingFee { get; set; }
+
+    [Column("refund_amount")]
+    public decimal RefundAmount { get; set; }
+
+    [Column("dispute_reserve")]
+    public decimal DisputeReserve { get; set; }
+
+    [Column("supplier_net_payable")]
+    public decimal SupplierNetPayable { get; set; }
+
+    [Column("driver_net_payable")]
+    public decimal DriverNetPayable { get; set; }
+
+    [Column("mechanic_net_payable")]
+    public decimal MechanicNetPayable { get; set; }
+
+    [Column("alpha_net_revenue")]
+    public decimal AlphaNetRevenue { get; set; }
+
+    [Column("reconciliation_difference")]
+    public decimal ReconciliationDifference { get; set; }
 }
