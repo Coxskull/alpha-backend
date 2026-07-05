@@ -161,7 +161,7 @@ public class OrdersController : ControllerBase
             _context.OrderFinancials.Add(financial);
             await _context.SaveChangesAsync();
 
-            var country = currency == "MXN" ? "MX" : "US";
+            var country = "MX";
 
             var taxBreakdown = await _taxEngine.CalculateOrderTaxes(
                 order.Id,
