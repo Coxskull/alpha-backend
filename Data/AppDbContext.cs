@@ -48,6 +48,8 @@ public class AppDbContext : DbContext
     public DbSet<TaxCalculation> TaxCalculations { get; set; }
     public DbSet<TaxLedgerEntry> TaxLedgerEntries { get; set; }
 
+    public DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -69,9 +71,90 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Role).HasColumnName("Role");
             entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
             entity.Property(e => e.PasswordHash).HasColumnName("PasswordHash");
+            entity.Property(user => user.IsActive)
+    .HasColumnName("IsActive");
         });
 
+        modelBuilder.Entity<PasswordResetToken>(entity =>
+        {
+            entity.ToTable("password_reset_tokens");
 
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id)
+                .HasColumnName("id");
+
+            entity.Property(e => e.UserId)
+                .HasColumnName("user_id");
+
+            entity.Property(e => e.TokenHash)
+                .HasColumnName("token_hash");
+
+            entity.Property(e => e.ExpiresAt)
+                .HasColumnName("expires_at");
+
+            entity.Property(e => e.UsedAt)
+                .HasColumnName("used_at");
+
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("created_at");
+
+            entity.HasIndex(e => e.TokenHash)
+                .IsUnique();
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Driver>(entity =>
+        {
+            entity.ToTable("drivers");
+
+            entity.HasKey(driver => driver.Id);
+
+            entity.Property(driver => driver.Id)
+                .HasColumnName("Id");
+
+            entity.Property(driver => driver.UserId)
+                .HasColumnName("user_id");
+
+            entity.Property(driver => driver.FullName)
+                .HasColumnName("FullName");
+
+            entity.Property(driver => driver.Email)
+                .HasColumnName("email");
+
+            entity.Property(driver => driver.PhoneNumber)
+                .HasColumnName("PhoneNumber");
+
+            entity.Property(driver => driver.VehicleType)
+                .HasColumnName("VehicleType");
+
+            entity.Property(driver => driver.PlateNumber)
+                .HasColumnName("PlateNumber");
+
+            entity.Property(driver => driver.AvailabilityStatus)
+                .HasColumnName("AvailabilityStatus");
+
+            entity.Property(driver => driver.Territory)
+                .HasColumnName("Territory");
+
+            entity.Property(driver => driver.ActiveJobs)
+                .HasColumnName("ActiveJobs");
+
+            entity.Property(driver => driver.ResponseRate)
+                .HasColumnName("ResponseRate");
+
+            entity.Property(driver => driver.CreatedAt)
+                .HasColumnName("CreatedAt");
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(driver => driver.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
 
         modelBuilder.Entity<TaxCalculation>()
     .HasIndex(x => new { x.OrderId, x.Component, x.TaxType })
@@ -140,31 +223,6 @@ public class AppDbContext : DbContext
             entity.Property(e => e.CurrentWorkload).HasColumnName("CurrentWorkload");
             entity.Property(e => e.ResponseRate).HasColumnName("ResponseRate");
             entity.Property(e => e.UserId).HasColumnName("user_id");
-        });
-
-        // ==========================
-        // DRIVERS
-        // ==========================
-
-        modelBuilder.Entity<Driver>(entity =>
-        {
-            entity.ToTable("drivers");
-
-            entity.HasKey(e => e.Id);
-
-            entity.Property(e => e.Id).HasColumnName("Id");
-            entity.Property(e => e.FullName).HasColumnName("FullName");
-            entity.Property(e => e.PhoneNumber).HasColumnName("PhoneNumber");
-            entity.Property(e => e.VehicleType).HasColumnName("VehicleType");
-            entity.Property(e => e.PlateNumber).HasColumnName("PlateNumber");
-            entity.Property(e => e.AvailabilityStatus).HasColumnName("AvailabilityStatus");
-            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
-            entity.Property(e => e.Territory).HasColumnName("Territory");
-            entity.Property(e => e.ActiveJobs).HasColumnName("ActiveJobs");
-            entity.Property(e => e.ResponseRate).HasColumnName("ResponseRate");
-            entity.Property(e => e.LastSeenAt).HasColumnName("LastSeenAt");
-            entity.Property(e => e.Email).HasColumnName("email");
-            entity.Property(e => e.PasswordHash).HasColumnName("password_hash");
         });
 
         // ==========================

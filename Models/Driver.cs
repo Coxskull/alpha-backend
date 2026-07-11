@@ -1,4 +1,6 @@
-﻿public class Driver
+﻿
+namespace Alpha.API.Models;
+public class Driver
 {
     public Guid Id { get; set; }
 
