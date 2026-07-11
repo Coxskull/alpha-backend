@@ -278,6 +278,7 @@ public class UsersController : ControllerBase
                 _context.Drivers.Add(new Driver
                 {
                     Id = Guid.NewGuid(),
+                    UserId = user.Id,
                     FullName = user.FullName,
                     Email = user.Email,
                     PhoneNumber = dto.Phone,

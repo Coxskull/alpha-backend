@@ -123,9 +123,6 @@ public class AppDbContext : DbContext
             entity.Property(driver => driver.FullName)
                 .HasColumnName("FullName");
 
-            entity.Property(driver => driver.Email)
-                .HasColumnName("email");
-
             entity.Property(driver => driver.PhoneNumber)
                 .HasColumnName("PhoneNumber");
 
@@ -138,6 +135,9 @@ public class AppDbContext : DbContext
             entity.Property(driver => driver.AvailabilityStatus)
                 .HasColumnName("AvailabilityStatus");
 
+            entity.Property(driver => driver.CreatedAt)
+                .HasColumnName("CreatedAt");
+
             entity.Property(driver => driver.Territory)
                 .HasColumnName("Territory");
 
@@ -147,10 +147,16 @@ public class AppDbContext : DbContext
             entity.Property(driver => driver.ResponseRate)
                 .HasColumnName("ResponseRate");
 
-            entity.Property(driver => driver.CreatedAt)
-                .HasColumnName("CreatedAt");
+            entity.Property(driver => driver.LastSeenAt)
+                .HasColumnName("LastSeenAt");
 
-            entity.HasOne<User>()
+            entity.Property(driver => driver.Email)
+                .HasColumnName("email");
+
+            entity.Property(driver => driver.PasswordHash)
+                .HasColumnName("password_hash");
+
+            entity.HasOne(driver => driver.User)
                 .WithMany()
                 .HasForeignKey(driver => driver.UserId)
                 .OnDelete(DeleteBehavior.SetNull);
