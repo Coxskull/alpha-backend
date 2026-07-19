@@ -1,41 +1,154 @@
+using System;
 using System.Collections.Generic;
 
 namespace Alpha.API.DTOs;
 
 public class CommunityBuilderDashboardDto
 {
+    public Guid UserId { get; set; }
+
+    public string FullName { get; set; } = string.Empty;
+
     public string ReferralCode { get; set; } = string.Empty;
+
     public string ReferralLink { get; set; } = string.Empty;
 
-    public CommunityBuilderSummaryDto Summary { get; set; } = new();
+    public string City { get; set; } = string.Empty;
 
-    public List<CommunityBuilderMemberDto> MyNetwork { get; set; } = new();
-    public List<NetworkActivityDto> RecentActivity { get; set; } = new();
-    public List<CityNetworkDto> Cities { get; set; } = new();
-    public List<ReferralTransactionDto> RecentRewards { get; set; } = new();
-}
+    public string State { get; set; } = string.Empty;
 
-public class CommunityBuilderSummaryDto
-{
-    public int TotalNetworkMembers { get; set; }
+    public string Country { get; set; } = string.Empty;
 
-    public int ActiveRiders { get; set; }
-    public int ActiveMechanics { get; set; }
-    public int ActiveAutoPartsStores { get; set; }
-    public int ActiveCustomers { get; set; }
+    public int TotalMembers { get; set; }
+
+    public int DirectMembers { get; set; }
+
+    public int ActiveMembers { get; set; }
+
+    public int TotalRiders { get; set; }
+
+    public int TotalMechanics { get; set; }
+
+    public int TotalSuppliers { get; set; }
+
+    public int TotalCustomers { get; set; }
+
+    public int TotalCommunityBuilders { get; set; }
 
     public int CompletedOrders { get; set; }
-    public int CompletedServiceRequests { get; set; }
-    public int NetworkTransactions { get; set; }
 
-    public decimal GrossNetworkActivity { get; set; }
+    public int CompletedServices { get; set; }
+
+    public int CompletedDeliveries { get; set; }
+
+    public decimal TotalNetworkRevenue { get; set; }
 
     public decimal PendingRewards { get; set; }
+
     public decimal AvailableRewards { get; set; }
+
     public decimal PaidRewards { get; set; }
-    public decimal LifetimeRewards { get; set; }
 
-    public int CitiesConnected { get; set; }
+    public string Currency { get; set; } = "USD";
 
-    public string Currency { get; set; } = "MXN";
+    public List<CommunityBuilderMemberDto> Members { get; set; } = [];
+
+    public List<NetworkActivityDto> RecentActivities { get; set; } = [];
+
+    public List<CityNetworkDto> Cities { get; set; } = [];
+}
+
+public class CommunityBuilderMemberDto
+{
+    public Guid UserId { get; set; }
+
+    public Guid? ReferredByUserId { get; set; }
+
+    public string FullName { get; set; } = string.Empty;
+
+    public string Email { get; set; } = string.Empty;
+
+    public string? Phone { get; set; }
+
+    public string PrimaryRole { get; set; } = string.Empty;
+
+    public List<string> Roles { get; set; } = [];
+
+    public string City { get; set; } = string.Empty;
+
+    public string State { get; set; } = string.Empty;
+
+    public string Country { get; set; } = string.Empty;
+
+    public int Level { get; set; }
+
+    public bool IsDirectReferral { get; set; }
+
+    public bool IsBusinessActive { get; set; }
+
+    public int CompletedTransactions { get; set; }
+
+    public decimal TransactionValue { get; set; }
+
+    public decimal GeneratedRewards { get; set; }
+
+    public DateTime? JoinedAt { get; set; }
+
+    public DateTime? LastBusinessActivityAt { get; set; }
+}
+
+public class NetworkActivityDto
+{
+    public Guid Id { get; set; }
+
+    public Guid? UserId { get; set; }
+
+    public Guid? OrderId { get; set; }
+
+    public Guid? ServiceRequestId { get; set; }
+
+    public string MemberName { get; set; } = string.Empty;
+
+    public string ActivityType { get; set; } = string.Empty;
+
+    public string Description { get; set; } = string.Empty;
+
+    public decimal TransactionAmount { get; set; }
+
+    public decimal RewardAmount { get; set; }
+
+    public string Currency { get; set; } = "USD";
+
+    public string Status { get; set; } = string.Empty;
+
+    public DateTime CreatedAt { get; set; }
+}
+
+public class CityNetworkDto
+{
+    public string City { get; set; } = string.Empty;
+
+    public string State { get; set; } = string.Empty;
+
+    public string Country { get; set; } = string.Empty;
+
+    public int TotalMembers { get; set; }
+
+    public int ActiveMembers { get; set; }
+
+    public int Riders { get; set; }
+
+    public int Mechanics { get; set; }
+
+    public int Suppliers { get; set; }
+
+    public int Customers { get; set; }
+
+    public int CommunityBuilders { get; set; }
+
+    public int CompletedTransactions { get; set; }
+
+    public decimal TransactionValue { get; set; }
+
+    public decimal GeneratedRewards { get; set; }
 }
