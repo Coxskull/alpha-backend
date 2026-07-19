@@ -1,6 +1,7 @@
 using Alpha.API.Data;
 using Alpha.API.DTOs;
 using Alpha.API.Models;
+using Alpha.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
