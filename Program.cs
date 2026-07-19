@@ -52,7 +52,10 @@ builder.Services.AddScoped<SettlementService>();
 builder.Services.AddScoped<OrderWorkflowService>();
 builder.Services.AddHttpClient<Alpha.API.Services.PayPalService>();
 builder.Services.AddAuthorization();
-
+builder.Services.AddScoped<ReferralCodeService>();
+builder.Services.AddScoped<ReferralCommissionService>();
+builder.Services.AddScoped<ReferralNetworkService>();
+builder.Services.AddScoped<TransactionUserResolver>();
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {

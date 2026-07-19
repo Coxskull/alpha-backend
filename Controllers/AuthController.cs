@@ -21,53 +21,130 @@ public class AuthController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly IConfiguration _configuration;
+    private readonly ReferralCodeService _referralCodeService;
 
     public AuthController(
-        AppDbContext context,
-        IConfiguration configuration)
+    AppDbContext context,
+    IConfiguration configuration,
+    ReferralCodeService referralCodeService)
     {
         _context = context;
         _configuration = configuration;
+        _referralCodeService = referralCodeService;
     }
 
     [HttpPost("register")]
-    public async Task<IActionResult> Register(RegisterDto dto)
+    public async Task<IActionResult> Register(
+    RegisterDto dto,
+    CancellationToken cancellationToken)
     {
+        if (!ModelState.IsValid)
+        {
+            return ValidationProblem(ModelState);
+        }
+
         var email = dto.Email.Trim().ToLowerInvariant();
 
         var emailExists = await _context.Users
-            .AnyAsync(user => user.Email.ToLower() == email);
+            .AnyAsync(
+                user => user.Email.ToLower() == email,
+                cancellationToken
+            );
 
         if (emailExists)
         {
-            return Conflict("Email already exists.");
+            return Conflict(new
+            {
+                message = "Email already exists."
+            });
+        }
+
+        User? referrer = null;
+
+        // Validate the optional referral code.
+        if (!string.IsNullOrWhiteSpace(dto.ReferralCode))
+        {
+            var normalizedReferralCode =
+                dto.ReferralCode.Trim().ToUpperInvariant();
+
+            referrer = await _context.Users
+                .FirstOrDefaultAsync(
+                    user =>
+                        user.ReferralCode != null &&
+                        user.ReferralCode.ToUpper() ==
+                            normalizedReferralCode &&
+                        user.IsActive,
+                    cancellationToken
+                );
+
+            if (referrer == null)
+            {
+                return BadRequest(new
+                {
+                    message = "The referral code is invalid or inactive."
+                });
+            }
+
+            // Prevent referral through another account using the same email.
+            if (referrer.Email.Equals(
+                email,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new
+                {
+                    message = "You cannot use your own referral code."
+                });
+            }
         }
 
         await using var transaction =
-            await _context.Database.BeginTransactionAsync();
+            await _context.Database.BeginTransactionAsync(
+                cancellationToken
+            );
 
         try
         {
+            var generatedReferralCode =
+                await _referralCodeService.GenerateUniqueCodeAsync(
+                    dto.FullName,
+                    cancellationToken
+                );
+
+            var now = DateTime.UtcNow;
+
             var user = new User
             {
                 Id = Guid.NewGuid(),
                 FullName = dto.FullName.Trim(),
                 Email = email,
-                Phone = dto.Phone?.Trim(),
+                Phone = string.IsNullOrWhiteSpace(dto.Phone)
+                    ? null
+                    : dto.Phone.Trim(),
 
-                // Never trust a role provided by the public registration page.
+                // Never trust a role supplied by public registration.
                 Role = "customer",
 
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-                CreatedAt = DateTime.UtcNow
+                PasswordHash =
+                    BCrypt.Net.BCrypt.HashPassword(dto.Password),
+
+                CreatedAt = now,
+                IsActive = true,
+
+                // Referral information
+                ReferralCode = generatedReferralCode,
+                ReferredByUserId = referrer?.Id,
+                ReferralJoinedAt = referrer == null
+                    ? null
+                    : now
             };
 
             _context.Users.Add(user);
 
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             // Use the same ID for users and customers.
-            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"""
             INSERT INTO customers (
                 id,
                 full_name,
@@ -80,22 +157,46 @@ public class AuthController : ControllerBase
                 {user.Email},
                 {user.Phone}
             )
-            ON CONFLICT (id) DO NOTHING
-        ");
+            ON CONFLICT (id) DO UPDATE SET
+                full_name = EXCLUDED.full_name,
+                email = EXCLUDED.email,
+                phone = EXCLUDED.phone;
+            """,
+                cancellationToken
+            );
 
-            await transaction.CommitAsync();
+            await transaction.CommitAsync(cancellationToken);
 
             return Ok(new
             {
-                user.Id,
-                user.FullName,
-                user.Email,
-                user.Role
+                message = "Registration successful.",
+
+                user = new
+                {
+                    user.Id,
+                    user.FullName,
+                    user.Email,
+                    user.Phone,
+                    user.Role,
+                    user.ReferralCode,
+                    user.ReferredByUserId,
+                    user.ReferralJoinedAt
+                },
+
+                referredBy = referrer == null
+                    ? null
+                    : new
+                    {
+                        referrer.Id,
+                        referrer.FullName,
+                        referrer.Role,
+                        referrer.ReferralCode
+                    }
             });
         }
         catch
         {
-            await transaction.RollbackAsync();
+            await transaction.RollbackAsync(cancellationToken);
             throw;
         }
     }

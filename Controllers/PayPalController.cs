@@ -1,14 +1,15 @@
 // Controllers/PayPalController.cs
+using Alpha.API.Constants;
 using Alpha.API.Data;
 using Alpha.API.DTOs;
 using Alpha.API.Models;
 using Alpha.API.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Authorization;
-using Alpha.API.Constants;
 
 namespace Alpha.API.Controllers;
 
@@ -147,7 +148,16 @@ public class PayPalController : ControllerBase
 
         await _context.SaveChangesAsync();
         await _settlements.CreateOrUpdateSettlementAfterPayment(dto.OrderId);
-
+        await _referralCommissionService.GenerateOrderCommissionAsync(
+    sourceUserId: customerUserId,
+    orderId: order.Id,
+    paymentId: payment.Id,
+    grossAmount: payment.Amount,
+    currency: payment.Currency,
+    transactionType: "customer_order",
+    description: $"Completed payment for order {order.OrderNumber}",
+    cancellationToken: cancellationToken
+);
         return Ok(new
         {
             message = "Payment captured. Order ready for dispatch.",
@@ -189,7 +199,11 @@ public class PayPalController : ControllerBase
         payment.RefundedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
-
+        await _referralCommissionService.ReverseOrderCommissionsAsync(
+    order.Id,
+    "Customer payment was refunded.",
+    cancellationToken
+);
         return Ok(new
         {
             message = "Refund completed.",

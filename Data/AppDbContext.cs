@@ -49,6 +49,9 @@ public class AppDbContext : DbContext
     public DbSet<TaxLedgerEntry> TaxLedgerEntries { get; set; }
 
     public DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
+    public DbSet<ReferralTransaction> ReferralTransactions { get; set; }
+
+    public DbSet<ReferralSetting> ReferralSettings { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -62,17 +65,166 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("users");
 
-            entity.HasKey(e => e.Id);
+            entity.HasKey(user => user.Id);
 
-            entity.Property(e => e.Id).HasColumnName("Id");
-            entity.Property(e => e.FullName).HasColumnName("FullName");
-            entity.Property(e => e.Email).HasColumnName("Email");
-            entity.Property(e => e.Phone).HasColumnName("Phone");
-            entity.Property(e => e.Role).HasColumnName("Role");
-            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
-            entity.Property(e => e.PasswordHash).HasColumnName("PasswordHash");
+            entity.Property(user => user.Id)
+                .HasColumnName("Id");
+
+            entity.Property(user => user.FullName)
+                .HasColumnName("FullName");
+
+            entity.Property(user => user.Email)
+                .HasColumnName("Email");
+
+            entity.Property(user => user.Phone)
+                .HasColumnName("Phone");
+
+            entity.Property(user => user.Role)
+                .HasColumnName("Role");
+
+            entity.Property(user => user.CreatedAt)
+                .HasColumnName("CreatedAt");
+
+            entity.Property(user => user.PasswordHash)
+                .HasColumnName("PasswordHash");
+
             entity.Property(user => user.IsActive)
-    .HasColumnName("IsActive");
+                .HasColumnName("IsActive");
+
+            entity.Property(user => user.ReferralCode)
+                .HasColumnName("referral_code");
+
+            entity.Property(user => user.ReferredByUserId)
+                .HasColumnName("referred_by_user_id");
+
+            entity.Property(user => user.ReferralJoinedAt)
+                .HasColumnName("referral_joined_at");
+
+            entity.HasIndex(user => user.ReferralCode)
+                .IsUnique();
+
+            entity.HasOne(user => user.ReferredByUser)
+                .WithMany(user => user.DirectReferrals)
+                .HasForeignKey(user => user.ReferredByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ReferralTransaction>(entity =>
+        {
+            entity.ToTable("referral_transactions");
+
+            entity.HasKey(transaction => transaction.Id);
+
+            entity.Property(transaction => transaction.Id)
+                .HasColumnName("id");
+
+            entity.Property(transaction => transaction.BeneficiaryUserId)
+                .HasColumnName("beneficiary_user_id");
+
+            entity.Property(transaction => transaction.SourceUserId)
+                .HasColumnName("source_user_id");
+
+            entity.Property(transaction => transaction.OrderId)
+                .HasColumnName("order_id");
+
+            entity.Property(transaction => transaction.ServiceRequestId)
+                .HasColumnName("service_request_id");
+
+            entity.Property(transaction => transaction.PaymentId)
+                .HasColumnName("payment_id");
+
+            entity.Property(transaction => transaction.TransactionType)
+                .HasColumnName("transaction_type");
+
+            entity.Property(transaction => transaction.SourceRole)
+                .HasColumnName("source_role");
+
+            entity.Property(transaction => transaction.SourceDescription)
+                .HasColumnName("source_description");
+
+            entity.Property(transaction => transaction.GrossAmount)
+                .HasColumnName("gross_amount")
+                .HasPrecision(18, 2);
+
+            entity.Property(transaction => transaction.CommissionRate)
+                .HasColumnName("commission_rate")
+                .HasPrecision(9, 6);
+
+            entity.Property(transaction => transaction.CommissionAmount)
+                .HasColumnName("commission_amount")
+                .HasPrecision(18, 2);
+
+            entity.Property(transaction => transaction.Currency)
+                .HasColumnName("currency");
+
+            entity.Property(transaction => transaction.ReferralLevel)
+                .HasColumnName("referral_level");
+
+            entity.Property(transaction => transaction.Status)
+                .HasColumnName("status");
+
+            entity.Property(transaction => transaction.AvailableAt)
+                .HasColumnName("available_at");
+
+            entity.Property(transaction => transaction.PaidAt)
+                .HasColumnName("paid_at");
+
+            entity.Property(transaction => transaction.Metadata)
+                .HasColumnName("metadata")
+                .HasColumnType("jsonb");
+
+            entity.Property(transaction => transaction.CreatedAt)
+                .HasColumnName("created_at");
+
+            entity.HasOne(transaction => transaction.BeneficiaryUser)
+                .WithMany(user => user.ReferralEarnings)
+                .HasForeignKey(transaction => transaction.BeneficiaryUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(transaction => transaction.SourceUser)
+                .WithMany(user => user.GeneratedReferralTransactions)
+                .HasForeignKey(transaction => transaction.SourceUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(transaction => transaction.Order)
+                .WithMany()
+                .HasForeignKey(transaction => transaction.OrderId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(transaction => transaction.ServiceRequest)
+                .WithMany()
+                .HasForeignKey(transaction => transaction.ServiceRequestId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(transaction => transaction.Payment)
+                .WithMany()
+                .HasForeignKey(transaction => transaction.PaymentId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ReferralSetting>(entity =>
+        {
+            entity.ToTable("referral_settings");
+
+            entity.HasKey(setting => setting.Id);
+
+            entity.Property(setting => setting.Id)
+                .HasColumnName("id");
+
+            entity.Property(setting => setting.SettingKey)
+                .HasColumnName("setting_key");
+
+            entity.Property(setting => setting.SettingValue)
+                .HasColumnName("setting_value");
+
+            entity.Property(setting => setting.Description)
+                .HasColumnName("description");
+
+            entity.Property(setting => setting.UpdatedAt)
+                .HasColumnName("updated_at");
+
+            entity.HasIndex(setting => setting.SettingKey)
+                .IsUnique();
         });
 
         modelBuilder.Entity<PasswordResetToken>(entity =>

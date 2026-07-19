@@ -20,4 +20,21 @@ public class User
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public bool IsActive { get; set; } = true;
+
+    public string? ReferralCode { get; set; }
+
+    public Guid? ReferredByUserId { get; set; }
+
+    public DateTime? ReferralJoinedAt { get; set; }
+
+    public User? ReferredByUser { get; set; }
+
+    public ICollection<User> DirectReferrals { get; set; } =
+        new List<User>();
+
+    public ICollection<ReferralTransaction> ReferralEarnings { get; set; } =
+        new List<ReferralTransaction>();
+
+    public ICollection<ReferralTransaction> GeneratedReferralTransactions { get; set; } =
+        new List<ReferralTransaction>();
 }

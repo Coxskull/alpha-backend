@@ -749,7 +749,10 @@ public class OrdersController : ControllerBase
                 $"Proof uploaded, but settlement verification failed: {settlementError.Message}"
             );
         }
-
+        await _referralCommissionService.ReleaseOrderCommissionsAsync(
+    order.Id,
+    cancellationToken
+);
         return Ok(new
         {
             proof,
