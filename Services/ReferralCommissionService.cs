@@ -18,11 +18,6 @@ public class ReferralCommissionService
         _context = context;
     }
 
-    /// <summary>
-    /// Generates multi-level referral commissions for an order.
-    /// This uses the configured level_1_rate, level_2_rate,
-    /// level_3_rate, and maximum_referral_levels settings.
-    /// </summary>
     public async Task GenerateOrderCommissionAsync(
         Guid sourceUserId,
         Guid orderId,
@@ -35,7 +30,7 @@ public class ReferralCommissionService
     {
         if (sourceUserId == Guid.Empty ||
             orderId == Guid.Empty ||
-            grossAmount <= 0)
+            grossAmount <= 0m)
         {
             return;
         }
@@ -52,33 +47,36 @@ public class ReferralCommissionService
             return;
         }
 
-        var enabled = await GetBooleanSettingAsync(
-            "referral_enabled",
-            true,
-            cancellationToken);
+        var enabled =
+            await GetBooleanSettingAsync(
+                "referral_enabled",
+                true,
+                cancellationToken);
 
         if (!enabled)
         {
             return;
         }
 
-        var maxLevels = await GetIntegerSettingAsync(
-            "maximum_referral_levels",
-            3,
-            cancellationToken);
+        var maxLevels =
+            await GetIntegerSettingAsync(
+                "maximum_referral_levels",
+                3,
+                cancellationToken);
 
         if (maxLevels <= 0)
         {
             return;
         }
 
-        var sourceUser = await _context.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(
-                user =>
-                    user.Id == sourceUserId &&
-                    user.IsActive,
-                cancellationToken);
+        var sourceUser =
+            await _context.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    user =>
+                        user.Id == sourceUserId &&
+                        user.IsActive,
+                    cancellationToken);
 
         if (sourceUser is null)
         {
@@ -94,46 +92,47 @@ public class ReferralCommissionService
             currentReferrerId.HasValue;
             level++)
         {
-            var referrer = await _context.Users
-                .AsNoTracking()
-                .FirstOrDefaultAsync(
-                    user =>
-                        user.Id ==
-                        currentReferrerId.Value &&
-                        user.IsActive,
-                    cancellationToken);
+            var referrer =
+                await _context.Users
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(
+                        user =>
+                            user.Id ==
+                            currentReferrerId.Value &&
+                            user.IsActive,
+                        cancellationToken);
 
             if (referrer is null)
             {
                 break;
             }
 
-            var rate = await GetDecimalSettingAsync(
-                $"level_{level}_rate",
-                0m,
-                cancellationToken);
+            var rate =
+                await GetDecimalSettingAsync(
+                    $"level_{level}_rate",
+                    0m,
+                    cancellationToken);
+
+            rate = NormalizeRate(rate);
 
             if (rate > 0m)
             {
+                var eventKey =
+                    BuildOrderEventKey(
+                        orderId,
+                        normalizedTransactionType,
+                        level);
+
                 var duplicateExists =
                     await _context
                         .ReferralTransactions
                         .AsNoTracking()
                         .AnyAsync(
                             transaction =>
-                                transaction
-                                    .BeneficiaryUserId ==
-                                referrer.Id &&
-                                transaction.SourceUserId ==
-                                sourceUserId &&
-                                transaction.OrderId ==
-                                orderId &&
-                                transaction.ReferralLevel ==
-                                level &&
-                                transaction.TransactionType ==
-                                normalizedTransactionType &&
+                                transaction.EventKey ==
+                                    eventKey &&
                                 transaction.Status !=
-                                "reversed",
+                                    "reversed",
                             cancellationToken);
 
                 if (!duplicateExists)
@@ -168,10 +167,7 @@ public class ReferralCommissionService
                                         paymentId,
 
                                     EventKey =
-                                        BuildOrderEventKey(
-                                            orderId,
-                                            normalizedTransactionType,
-                                            level),
+                                        eventKey,
 
                                     TransactionType =
                                         normalizedTransactionType,
@@ -216,13 +212,10 @@ public class ReferralCommissionService
             cancellationToken);
     }
 
-    /// <summary>
-    /// Generates a direct Community Builder reward from
-    /// a completed eligible business event.
-    /// </summary>
-    public async Task GenerateFromBusinessEventAsync(
-        ReferralBusinessEvent businessEvent,
-        CancellationToken cancellationToken = default)
+    public async Task<ReferralTransaction?>
+        CreateCommissionAsync(
+            ReferralBusinessEvent businessEvent,
+            CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(
             businessEvent);
@@ -231,7 +224,7 @@ public class ReferralCommissionService
                 Guid.Empty ||
             businessEvent.EligibleAmount <= 0m)
         {
-            return;
+            return null;
         }
 
         var eventKey =
@@ -241,7 +234,7 @@ public class ReferralCommissionService
             eventKey))
         {
             throw new ArgumentException(
-                "A referral business event must have an EventKey.",
+                "EventKey is required.",
                 nameof(businessEvent));
         }
 
@@ -253,7 +246,7 @@ public class ReferralCommissionService
             transactionType))
         {
             throw new ArgumentException(
-                "A referral business event must have a TransactionType.",
+                "TransactionType is required.",
                 nameof(businessEvent));
         }
 
@@ -273,38 +266,57 @@ public class ReferralCommissionService
 
         if (!referralEnabled)
         {
-            return;
+            return null;
         }
 
-        var sourceUser = await _context.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(
-                user =>
-                    user.Id ==
-                    businessEvent.SourceUserId &&
-                    user.IsActive,
-                cancellationToken);
+        var duplicateTransaction =
+            await _context
+                .ReferralTransactions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    transaction =>
+                        transaction.EventKey ==
+                            eventKey &&
+                        transaction.Status !=
+                            "reversed",
+                    cancellationToken);
+
+        if (duplicateTransaction is not null)
+        {
+            return duplicateTransaction;
+        }
+
+        var sourceUser =
+            await _context.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    user =>
+                        user.Id ==
+                        businessEvent.SourceUserId &&
+                        user.IsActive,
+                    cancellationToken);
 
         if (sourceUser?.ReferredByUserId is null)
         {
-            return;
+            return null;
         }
 
         var beneficiaryUserId =
             sourceUser.ReferredByUserId.Value;
 
-        var beneficiary = await _context.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(
-                user =>
-                    user.Id ==
-                    beneficiaryUserId &&
-                    user.IsActive,
-                cancellationToken);
+        var beneficiary =
+            await _context.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    user =>
+                        user.Id ==
+                        beneficiaryUserId &&
+                        user.IsActive,
+                    cancellationToken);
 
         if (beneficiary is null)
         {
-            return;
+            return null;
         }
 
         var beneficiaryIsBuilder =
@@ -313,36 +325,16 @@ public class ReferralCommissionService
                 .AnyAsync(
                     role =>
                         role.UserId ==
-                        beneficiaryUserId &&
+                            beneficiaryUserId &&
                         role.RoleKey ==
-                        "community_builder" &&
+                            "community_builder" &&
                         role.Status ==
-                        "active",
+                            "active",
                     cancellationToken);
 
         if (!beneficiaryIsBuilder)
         {
-            return;
-        }
-
-        var duplicateExists =
-            await _context
-                .ReferralTransactions
-                .AsNoTracking()
-                .AnyAsync(
-                    transaction =>
-                        transaction.EventKey ==
-                            eventKey &&
-                        transaction
-                            .BeneficiaryUserId ==
-                            beneficiaryUserId &&
-                        transaction.Status !=
-                            "reversed",
-                    cancellationToken);
-
-        if (duplicateExists)
-        {
-            return;
+            return null;
         }
 
         var commissionRate =
@@ -353,22 +345,22 @@ public class ReferralCommissionService
 
         if (commissionRate <= 0m)
         {
-            return;
+            return null;
         }
 
-        var commission =
+        var commissionAmount =
             decimal.Round(
                 businessEvent.EligibleAmount *
                 commissionRate,
                 2,
                 MidpointRounding.AwayFromZero);
 
-        if (commission <= 0m)
+        if (commissionAmount <= 0m)
         {
-            return;
+            return null;
         }
 
-        _context.ReferralTransactions.Add(
+        var referralTransaction =
             new ReferralTransaction
             {
                 Id =
@@ -412,7 +404,7 @@ public class ReferralCommissionService
                     commissionRate,
 
                 CommissionAmount =
-                    commission,
+                    commissionAmount,
 
                 Currency =
                     currency,
@@ -425,16 +417,182 @@ public class ReferralCommissionService
 
                 CreatedAt =
                     DateTime.UtcNow
-            });
+            };
+
+        _context.ReferralTransactions.Add(
+            referralTransaction);
 
         await _context.SaveChangesAsync(
             cancellationToken);
+
+        return referralTransaction;
     }
 
-    /// <summary>
-    /// Marks pending referral commissions for an order
-    /// as available.
-    /// </summary>
+    public async Task GenerateFromBusinessEventAsync(
+        ReferralBusinessEvent businessEvent,
+        CancellationToken cancellationToken = default)
+    {
+        await CreateCommissionAsync(
+            businessEvent,
+            cancellationToken);
+    }
+
+    public Task<ReferralTransaction?>
+        ProcessCustomerPurchaseAsync(
+            Guid customerUserId,
+            Guid orderId,
+            Guid? paymentId,
+            decimal eligibleAmount,
+            string currency,
+            CancellationToken cancellationToken = default)
+    {
+        return CreateCommissionAsync(
+            new ReferralBusinessEvent
+            {
+                EventKey =
+                    $"order:{orderId}:customer-purchase",
+
+                TransactionType =
+                    "customer_purchase",
+
+                SourceUserId =
+                    customerUserId,
+
+                SourceRole =
+                    "customer",
+
+                OrderId =
+                    orderId,
+
+                PaymentId =
+                    paymentId,
+
+                EligibleAmount =
+                    eligibleAmount,
+
+                Currency =
+                    currency,
+
+                Description =
+                    "Reward generated from an eligible customer purchase."
+            },
+            cancellationToken);
+    }
+
+    public Task<ReferralTransaction?>
+        ProcessDriverDeliveryAsync(
+            Guid driverUserId,
+            Guid orderId,
+            decimal eligibleAmount,
+            string currency,
+            CancellationToken cancellationToken = default)
+    {
+        return CreateCommissionAsync(
+            new ReferralBusinessEvent
+            {
+                EventKey =
+                    $"order:{orderId}:driver-delivery",
+
+                TransactionType =
+                    "driver_delivery",
+
+                SourceUserId =
+                    driverUserId,
+
+                SourceRole =
+                    "driver",
+
+                OrderId =
+                    orderId,
+
+                EligibleAmount =
+                    eligibleAmount,
+
+                Currency =
+                    currency,
+
+                Description =
+                    "Reward generated from a completed delivery."
+            },
+            cancellationToken);
+    }
+
+    public Task<ReferralTransaction?>
+        ProcessSupplierFulfillmentAsync(
+            Guid supplierUserId,
+            Guid orderId,
+            decimal eligibleAmount,
+            string currency,
+            CancellationToken cancellationToken = default)
+    {
+        return CreateCommissionAsync(
+            new ReferralBusinessEvent
+            {
+                EventKey =
+                    $"order:{orderId}:supplier-fulfillment",
+
+                TransactionType =
+                    "supplier_fulfillment",
+
+                SourceUserId =
+                    supplierUserId,
+
+                SourceRole =
+                    "supplier",
+
+                OrderId =
+                    orderId,
+
+                EligibleAmount =
+                    eligibleAmount,
+
+                Currency =
+                    currency,
+
+                Description =
+                    "Reward generated from a fulfilled parts order."
+            },
+            cancellationToken);
+    }
+
+    public Task<ReferralTransaction?>
+        ProcessMechanicServiceAsync(
+            Guid mechanicUserId,
+            Guid serviceRequestId,
+            decimal eligibleAmount,
+            string currency,
+            CancellationToken cancellationToken = default)
+    {
+        return CreateCommissionAsync(
+            new ReferralBusinessEvent
+            {
+                EventKey =
+                    $"service:{serviceRequestId}:mechanic-completed",
+
+                TransactionType =
+                    "mechanic_service",
+
+                SourceUserId =
+                    mechanicUserId,
+
+                SourceRole =
+                    "mechanic",
+
+                ServiceRequestId =
+                    serviceRequestId,
+
+                EligibleAmount =
+                    eligibleAmount,
+
+                Currency =
+                    currency,
+
+                Description =
+                    "Reward generated from a completed mechanic service."
+            },
+            cancellationToken);
+    }
+
     public async Task ReleaseOrderCommissionsAsync(
         Guid orderId,
         CancellationToken cancellationToken = default)
@@ -477,10 +635,6 @@ public class ReferralCommissionService
             cancellationToken);
     }
 
-    /// <summary>
-    /// Reverses pending or available referral commissions
-    /// connected to an order.
-    /// </summary>
     public async Task ReverseOrderCommissionsAsync(
         Guid orderId,
         string reason,
@@ -537,15 +691,6 @@ public class ReferralCommissionService
             cancellationToken);
     }
 
-    /// <summary>
-    /// Resolves the commission rate for a business event.
-    ///
-    /// Resolution order:
-    /// 1. transaction_type + source_role setting
-    /// 2. transaction_type setting
-    /// 3. default_business_event_rate
-    /// 4. level_1_rate
-    /// </summary>
     private async Task<decimal> ResolveRateAsync(
         string transactionType,
         string sourceRole,
@@ -589,15 +734,15 @@ public class ReferralCommissionService
             }
         }
 
-        var defaultBusinessEventRate =
+        var defaultRate =
             await GetOptionalDecimalSettingAsync(
                 "default_business_event_rate",
                 cancellationToken);
 
-        if (defaultBusinessEventRate.HasValue)
+        if (defaultRate.HasValue)
         {
             return NormalizeRate(
-                defaultBusinessEventRate.Value);
+                defaultRate.Value);
         }
 
         var levelOneRate =
@@ -631,9 +776,10 @@ public class ReferralCommissionService
             string key,
             CancellationToken cancellationToken)
     {
-        var value = await GetSettingAsync(
-            key,
-            cancellationToken);
+        var value =
+            await GetSettingAsync(
+                key,
+                cancellationToken);
 
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -649,14 +795,11 @@ public class ReferralCommissionService
             return invariantResult;
         }
 
-        if (decimal.TryParse(
+        return decimal.TryParse(
             value,
-            out var localResult))
-        {
-            return localResult;
-        }
-
-        return null;
+            out var localResult)
+            ? localResult
+            : null;
     }
 
     private async Task<decimal>
@@ -679,9 +822,10 @@ public class ReferralCommissionService
             int fallback,
             CancellationToken cancellationToken)
     {
-        var value = await GetSettingAsync(
-            key,
-            cancellationToken);
+        var value =
+            await GetSettingAsync(
+                key,
+                cancellationToken);
 
         return int.TryParse(
             value,
@@ -698,20 +842,23 @@ public class ReferralCommissionService
             bool fallback,
             CancellationToken cancellationToken)
     {
-        var value = await GetSettingAsync(
-            key,
-            cancellationToken);
+        var value =
+            await GetSettingAsync(
+                key,
+                cancellationToken);
 
         if (bool.TryParse(
             value,
-            out var booleanResult))
+            out var boolResult))
         {
-            return booleanResult;
+            return boolResult;
         }
 
         if (int.TryParse(
-                value,
-                out var numericResult))
+            value,
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out var numericResult))
         {
             return numericResult != 0;
         }
@@ -727,9 +874,6 @@ public class ReferralCommissionService
             return 0m;
         }
 
-        // Allows both formats:
-        // 0.02 = 2%
-        // 2 = 2%
         if (rate > 1m)
         {
             rate /= 100m;
@@ -769,201 +913,5 @@ public class ReferralCommissionService
     {
         return
             $"order:{orderId}:{transactionType}:level:{level}";
-    }
-
-    public Task<ReferralTransaction?>
-    ProcessCustomerPurchaseAsync(
-        Guid customerUserId,
-        Guid orderId,
-        Guid? paymentId,
-        decimal eligibleAmount,
-        string currency,
-        CancellationToken cancellationToken = default)
-    {
-        return CreateCommissionAsync(
-            new ReferralBusinessEvent
-            {
-                EventKey =
-                    $"order:{orderId}:customer-purchase",
-
-                TransactionType =
-                    "customer_purchase",
-
-                SourceUserId =
-                    customerUserId,
-
-                SourceRole =
-                    "customer",
-
-                OrderId =
-                    orderId,
-
-                PaymentId =
-                    paymentId,
-
-                EligibleAmount =
-                    eligibleAmount,
-
-                Currency =
-                    currency,
-
-                Description =
-                    "Reward generated from an eligible customer purchase."
-            },
-            cancellationToken);
-    }
-    public Task<ReferralTransaction?>
-    ProcessCustomerPurchaseAsync(
-        Guid customerUserId,
-        Guid orderId,
-        Guid? paymentId,
-        decimal eligibleAmount,
-        string currency,
-        CancellationToken cancellationToken = default)
-    {
-        return CreateCommissionAsync(
-            new ReferralBusinessEvent
-            {
-                EventKey =
-                    $"order:{orderId}:customer-purchase",
-
-                TransactionType =
-                    "customer_purchase",
-
-                SourceUserId =
-                    customerUserId,
-
-                SourceRole =
-                    "customer",
-
-                OrderId =
-                    orderId,
-
-                PaymentId =
-                    paymentId,
-
-                EligibleAmount =
-                    eligibleAmount,
-
-                Currency =
-                    currency,
-
-                Description =
-                    "Reward generated from an eligible customer purchase."
-            },
-            cancellationToken);
-    }
-    public Task<ReferralTransaction?>
-    ProcessDriverDeliveryAsync(
-        Guid driverUserId,
-        Guid orderId,
-        decimal eligibleAmount,
-        string currency,
-        CancellationToken cancellationToken = default)
-    {
-        return CreateCommissionAsync(
-            new ReferralBusinessEvent
-            {
-                EventKey =
-                    $"order:{orderId}:driver-delivery",
-
-                TransactionType =
-                    "driver_delivery",
-
-                SourceUserId =
-                    driverUserId,
-
-                SourceRole =
-                    "driver",
-
-                OrderId =
-                    orderId,
-
-                EligibleAmount =
-                    eligibleAmount,
-
-                Currency =
-                    currency,
-
-                Description =
-                    "Reward generated from a completed delivery."
-            },
-            cancellationToken);
-    }
-
-    public Task<ReferralTransaction?>
-    ProcessSupplierFulfillmentAsync(
-        Guid supplierUserId,
-        Guid orderId,
-        decimal eligibleAmount,
-        string currency,
-        CancellationToken cancellationToken = default)
-    {
-        return CreateCommissionAsync(
-            new ReferralBusinessEvent
-            {
-                EventKey =
-                    $"order:{orderId}:supplier-fulfillment",
-
-                TransactionType =
-                    "supplier_fulfillment",
-
-                SourceUserId =
-                    supplierUserId,
-
-                SourceRole =
-                    "supplier",
-
-                OrderId =
-                    orderId,
-
-                EligibleAmount =
-                    eligibleAmount,
-
-                Currency =
-                    currency,
-
-                Description =
-                    "Reward generated from a fulfilled parts order."
-            },
-            cancellationToken);
-    }
-
-    public Task<ReferralTransaction?>
-    ProcessMechanicServiceAsync(
-        Guid mechanicUserId,
-        Guid serviceRequestId,
-        decimal eligibleAmount,
-        string currency,
-        CancellationToken cancellationToken = default)
-    {
-        return CreateCommissionAsync(
-            new ReferralBusinessEvent
-            {
-                EventKey =
-                    $"service:{serviceRequestId}:mechanic-completed",
-
-                TransactionType =
-                    "mechanic_service",
-
-                SourceUserId =
-                    mechanicUserId,
-
-                SourceRole =
-                    "mechanic",
-
-                ServiceRequestId =
-                    serviceRequestId,
-
-                EligibleAmount =
-                    eligibleAmount,
-
-                Currency =
-                    currency,
-
-                Description =
-                    "Reward generated from a completed mechanic service."
-            },
-            cancellationToken);
     }
 }
