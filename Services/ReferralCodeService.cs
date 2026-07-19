@@ -1,7 +1,7 @@
 using Alpha.API.Data;
 using Microsoft.EntityFrameworkCore;
 using System;
-using System.Security.Cryptography;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,8 +10,6 @@ namespace Alpha.API.Services;
 
 public class ReferralCodeService
 {
-    private const string Characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
     private readonly AppDbContext _context;
 
     public ReferralCodeService(AppDbContext context)
@@ -23,46 +21,73 @@ public class ReferralCodeService
         string fullName,
         CancellationToken cancellationToken = default)
     {
-        var cleanName = Regex.Replace(
-            fullName.ToUpperInvariant(),
-            "[^A-Z0-9]",
-            string.Empty
-        );
+        var prefix = CreatePrefix(fullName);
 
-        var prefix = string.IsNullOrWhiteSpace(cleanName)
-            ? "ALPHA"
-            : cleanName[..Math.Min(cleanName.Length, 6)];
+        const int maxAttempts = 20;
 
-        for (var attempt = 0; attempt < 10; attempt++)
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
         {
-            var suffix = GenerateRandomSuffix(6);
-            var code = $"{prefix}-{suffix}";
+            var randomPart = GenerateRandomPart(6);
+            var referralCode = $"{prefix}-{randomPart}";
 
             var exists = await _context.Users
                 .AnyAsync(
-                    user => user.ReferralCode == code,
+                    user => user.ReferralCode == referralCode,
                     cancellationToken
                 );
 
             if (!exists)
             {
-                return code;
+                return referralCode;
             }
         }
 
-        return $"ALPHA-{Guid.NewGuid():N}"[..18].ToUpperInvariant();
+        // Extremely unlikely fallback in case random codes collide.
+        return $"{prefix}-{Guid.NewGuid():N}"
+            .ToUpperInvariant()[..Math.Min(prefix.Length + 13, 20)];
     }
 
-    private static string GenerateRandomSuffix(int length)
+    private static string CreatePrefix(string fullName)
     {
-        var result = new char[length];
-
-        for (var index = 0; index < length; index++)
+        if (string.IsNullOrWhiteSpace(fullName))
         {
-            result[index] =
-                Characters[RandomNumberGenerator.GetInt32(Characters.Length)];
+            return "ALPHA";
         }
 
-        return new string(result);
+        var cleanedName = Regex.Replace(
+            fullName.Trim().ToUpperInvariant(),
+            @"[^A-Z0-9\s]",
+            ""
+        );
+
+        var firstName = cleanedName
+            .Split(
+                ' ',
+                StringSplitOptions.RemoveEmptyEntries
+            )
+            .FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(firstName))
+        {
+            return "ALPHA";
+        }
+
+        return firstName.Length > 8
+            ? firstName[..8]
+            : firstName;
+    }
+
+    private static string GenerateRandomPart(int length)
+    {
+        const string characters =
+            "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+        return string.Concat(
+            Enumerable.Range(0, length)
+                .Select(_ =>
+                    characters[
+                        Random.Shared.Next(characters.Length)
+                    ])
+        );
     }
 }
