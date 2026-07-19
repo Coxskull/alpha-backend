@@ -20,15 +20,21 @@ public class ReferralsController : ControllerBase
     private readonly AppDbContext _context;
     private readonly ReferralNetworkService _networkService;
     private readonly ReferralCodeService _codeService;
+    private readonly CommunityBuilderDashboardService
+    _communityBuilderDashboardService;
 
     public ReferralsController(
         AppDbContext context,
         ReferralNetworkService networkService,
-        ReferralCodeService codeService)
+        ReferralCodeService codeService,
+        CommunityBuilderDashboardService
+        communityBuilderDashboardService)
     {
         _context = context;
         _networkService = networkService;
         _codeService = codeService;
+        _communityBuilderDashboardService =
+        communityBuilderDashboardService;
     }
 
     [HttpGet("dashboard")]
@@ -222,28 +228,44 @@ public class ReferralsController : ControllerBase
         });
     }
 
-    [Authorize(Roles =
-    "community_builder,admin,dispatcher")]
-    [HttpGet("community-builder-dashboard")]
-    public async Task<ActionResult<CommunityBuilderDashboardDto>>
-    GetCommunityBuilderDashboard(
-        CancellationToken cancellationToken)
+    [Authorize]
+    [HttpGet("community-builder/dashboard")]
+    public async Task<ActionResult<
+     CommunityBuilderDashboardDto>>
+     GetCommunityBuilderDashboard(
+         CancellationToken cancellationToken)
     {
-        var userIdValue = User.FindFirstValue(
-            ClaimTypes.NameIdentifier
-        );
+        var userIdValue =
+            User.FindFirstValue(
+                ClaimTypes.NameIdentifier);
 
-        if (!Guid.TryParse(userIdValue, out var userId))
+        if (!Guid.TryParse(
+            userIdValue,
+            out var userId))
         {
-            return Unauthorized();
+            return Unauthorized(
+                new
+                {
+                    message =
+                        "Invalid authenticated user."
+                });
         }
 
         var dashboard =
             await _communityBuilderDashboardService
                 .GetDashboardAsync(
                     userId,
-                    cancellationToken
-                );
+                    cancellationToken);
+
+        if (dashboard is null)
+        {
+            return NotFound(
+                new
+                {
+                    message =
+                        "Community Builder dashboard not found."
+                });
+        }
 
         return Ok(dashboard);
     }

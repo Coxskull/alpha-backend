@@ -1,55 +1,44 @@
 using System;
-using System.Text.Json;
 
 namespace Alpha.API.Models;
 
 public class ReferralTransaction
 {
-	public Guid Id { get; set; }
+    public Guid Id { get; set; } = Guid.NewGuid();
 
-	public Guid BeneficiaryUserId { get; set; }
+    public Guid ReferrerId { get; set; }
 
-	public Guid SourceUserId { get; set; }
+    public Guid ReferredUserId { get; set; }
 
-	public Guid? OrderId { get; set; }
+    public Guid? OrderId { get; set; }
 
-	public Guid? ServiceRequestId { get; set; }
+    public Guid? ServiceRequestId { get; set; }
 
-	public Guid? PaymentId { get; set; }
+    public Guid? PaymentId { get; set; }
 
-	public string TransactionType { get; set; } = string.Empty;
+    public Guid? SourceUserId { get; set; }
 
-	public string? SourceRole { get; set; }
+    public string EventKey { get; set; } = string.Empty;
 
-	public string? SourceDescription { get; set; }
+    public string TransactionType { get; set; } = string.Empty;
 
-	public decimal GrossAmount { get; set; }
+    public string SourceRole { get; set; } = string.Empty;
 
-	public decimal CommissionRate { get; set; }
+    public string Description { get; set; } = string.Empty;
 
-	public decimal CommissionAmount { get; set; }
+    public decimal EligibleAmount { get; set; }
 
-	public string Currency { get; set; } = "MXN";
+    public decimal CommissionRate { get; set; }
 
-	public int ReferralLevel { get; set; } = 1;
+    public decimal Amount { get; set; }
 
-	public string Status { get; set; } = "pending";
+    public string Currency { get; set; } = "USD";
 
-	public DateTime? AvailableAt { get; set; }
+    public string Status { get; set; } = "pending";
 
-	public DateTime? PaidAt { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-	public JsonDocument? Metadata { get; set; }
+    public DateTime? ApprovedAt { get; set; }
 
-	public DateTime CreatedAt { get; set; }
-
-	public User BeneficiaryUser { get; set; } = null!;
-
-	public User SourceUser { get; set; } = null!;
-
-	public Order? Order { get; set; }
-
-	public ServiceRequest? ServiceRequest { get; set; }
-
-	public Payment? Payment { get; set; }
+    public DateTime? PaidAt { get; set; }
 }

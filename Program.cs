@@ -56,6 +56,11 @@ builder.Services.AddScoped<ReferralCodeService>();
 builder.Services.AddScoped<ReferralCommissionService>();
 builder.Services.AddScoped<ReferralNetworkService>();
 builder.Services.AddScoped<TransactionUserResolver>();
+builder.Services.AddScoped<
+    CommunityBuilderDashboardService>();
+
+builder.Services.AddScoped<
+    MemberBusinessActivityService>();
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {

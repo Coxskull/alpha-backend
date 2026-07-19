@@ -13,35 +13,9 @@ public class CommunityBuilderDashboardDto
 
     public string ReferralLink { get; set; } = string.Empty;
 
-    public string City { get; set; } = string.Empty;
-
-    public string State { get; set; } = string.Empty;
-
-    public string Country { get; set; } = string.Empty;
-
-    public int TotalMembers { get; set; }
-
     public int DirectMembers { get; set; }
 
     public int ActiveMembers { get; set; }
-
-    public int TotalRiders { get; set; }
-
-    public int TotalMechanics { get; set; }
-
-    public int TotalSuppliers { get; set; }
-
-    public int TotalCustomers { get; set; }
-
-    public int TotalCommunityBuilders { get; set; }
-
-    public int CompletedOrders { get; set; }
-
-    public int CompletedServices { get; set; }
-
-    public int CompletedDeliveries { get; set; }
-
-    public decimal TotalNetworkRevenue { get; set; }
 
     public decimal PendingRewards { get; set; }
 
@@ -51,104 +25,73 @@ public class CommunityBuilderDashboardDto
 
     public string Currency { get; set; } = "USD";
 
-    public List<CommunityBuilderMemberDto> Members { get; set; } = [];
+    public List<CommunityBuilderMemberDto>
+        Members
+    { get; set; } = [];
 
-    public List<NetworkActivityDto> RecentActivities { get; set; } = [];
+    public List<NetworkActivityDto>
+        RecentActivities
+    { get; set; } = [];
 
-    public List<CityNetworkDto> Cities { get; set; } = [];
+    public List<CityNetworkDto>
+        Cities
+    { get; set; } = [];
 }
 
 public class CommunityBuilderMemberDto
 {
     public Guid UserId { get; set; }
 
-    public Guid? ReferredByUserId { get; set; }
+    public string FullName { get; set; } =
+        string.Empty;
 
-    public string FullName { get; set; } = string.Empty;
+    public string PrimaryRole { get; set; } =
+        string.Empty;
 
-    public string Email { get; set; } = string.Empty;
-
-    public string? Phone { get; set; }
-
-    public string PrimaryRole { get; set; } = string.Empty;
-
-    public List<string> Roles { get; set; } = [];
-
-    public string City { get; set; } = string.Empty;
-
-    public string State { get; set; } = string.Empty;
-
-    public string Country { get; set; } = string.Empty;
-
-    public int Level { get; set; }
-
-    public bool IsDirectReferral { get; set; }
+    public string City { get; set; } =
+        string.Empty;
 
     public bool IsBusinessActive { get; set; }
-
-    public int CompletedTransactions { get; set; }
-
-    public decimal TransactionValue { get; set; }
 
     public decimal GeneratedRewards { get; set; }
 
     public DateTime? JoinedAt { get; set; }
-
-    public DateTime? LastBusinessActivityAt { get; set; }
 }
 
 public class NetworkActivityDto
 {
     public Guid Id { get; set; }
 
-    public Guid? UserId { get; set; }
+    public string MemberName { get; set; } =
+        string.Empty;
 
-    public Guid? OrderId { get; set; }
+    public string TransactionType { get; set; } =
+        string.Empty;
 
-    public Guid? ServiceRequestId { get; set; }
+    public string Description { get; set; } =
+        string.Empty;
 
-    public string MemberName { get; set; } = string.Empty;
-
-    public string ActivityType { get; set; } = string.Empty;
-
-    public string Description { get; set; } = string.Empty;
-
-    public decimal TransactionAmount { get; set; }
+    public decimal EligibleAmount { get; set; }
 
     public decimal RewardAmount { get; set; }
 
-    public string Currency { get; set; } = "USD";
+    public string Currency { get; set; } =
+        "USD";
 
-    public string Status { get; set; } = string.Empty;
+    public string Status { get; set; } =
+        string.Empty;
 
     public DateTime CreatedAt { get; set; }
 }
 
 public class CityNetworkDto
 {
-    public string City { get; set; } = string.Empty;
-
-    public string State { get; set; } = string.Empty;
-
-    public string Country { get; set; } = string.Empty;
+    public string City { get; set; } =
+        string.Empty;
 
     public int TotalMembers { get; set; }
 
     public int ActiveMembers { get; set; }
-
-    public int Riders { get; set; }
-
-    public int Mechanics { get; set; }
-
-    public int Suppliers { get; set; }
-
-    public int Customers { get; set; }
-
-    public int CommunityBuilders { get; set; }
-
-    public int CompletedTransactions { get; set; }
-
-    public decimal TransactionValue { get; set; }
 
     public decimal GeneratedRewards { get; set; }
 }
