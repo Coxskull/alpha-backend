@@ -359,6 +359,14 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(o => o.DriverId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            entity.Property(x => x.CustomerId)
+        .HasColumnName("customer_id");
+
+            entity.HasOne(x => x.CustomerUser)
+                .WithMany()
+                .HasForeignKey(x => x.CustomerId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         // ==========================

@@ -46,4 +46,8 @@ public class Order
 
     public Driver? Driver { get; set; }
     public DeliveryProof? DeliveryProof { get; set; }
+
+    public Guid? CustomerId { get; set; }
+
+    public User? CustomerUser { get; set; }
 }

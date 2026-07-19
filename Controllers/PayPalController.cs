@@ -1,4 +1,3 @@
-// Controllers/PayPalController.cs
 using Alpha.API.Constants;
 using Alpha.API.Data;
 using Alpha.API.DTOs;
@@ -20,60 +19,155 @@ public class PayPalController : ControllerBase
     private readonly AppDbContext _context;
     private readonly PayPalService _paypal;
     private readonly SettlementService _settlements;
+    private readonly ReferralCommissionService _referralCommissionService;
 
     public PayPalController(
-    AppDbContext context,
-    PayPalService paypal,
-    SettlementService settlements)
+        AppDbContext context,
+        PayPalService payPalService,
+        SettlementService settlementService,
+        ReferralCommissionService referralCommissionService)
     {
         _context = context;
-        _paypal = paypal;
-        _settlements = settlements;
+        _paypal = payPalService;
+        _settlements = settlementService;
+        _referralCommissionService = referralCommissionService;
     }
+
+    // =====================================================
+    // CREATE PAYPAL ORDER
+    // =====================================================
 
     [HttpPost("create-order")]
-    public async Task<IActionResult> CreatePayPalOrder(CreatePayPalOrderDto dto)
+    public async Task<IActionResult> CreatePayPalOrder(
+        CreatePayPalOrderDto dto,
+        CancellationToken cancellationToken)
     {
-        var order = await _context.Orders.FindAsync(dto.OrderId);
-        if (order == null) return NotFound("Order not found.");
+        var order = await _context.Orders
+            .FirstOrDefaultAsync(
+                x => x.Id == dto.OrderId,
+                cancellationToken
+            );
 
-        if (order.Status != "payment_pending")
-            return BadRequest($"Order is not waiting for payment. Current status: {order.Status}");
+        if (order == null)
+        {
+            return NotFound(new
+            {
+                message = "Order not found."
+            });
+        }
+
+        if (order.Status != OrderStatuses.PaymentPending &&
+            order.Status != "payment_pending")
+        {
+            return BadRequest(new
+            {
+                message =
+                    $"Order is not waiting for payment. Current status: {order.Status}"
+            });
+        }
 
         var financial = await _context.OrderFinancials
-            .FirstOrDefaultAsync(x => x.OrderId == dto.OrderId);
+            .FirstOrDefaultAsync(
+                x => x.OrderId == dto.OrderId,
+                cancellationToken
+            );
 
-        if (financial == null) return NotFound("Financial record not found.");
+        if (financial == null)
+        {
+            return NotFound(new
+            {
+                message = "Financial record not found."
+            });
+        }
 
         var payment = await _context.Payments
-            .FirstOrDefaultAsync(x => x.OrderId == dto.OrderId);
+            .FirstOrDefaultAsync(
+                x => x.OrderId == dto.OrderId,
+                cancellationToken
+            );
 
-        if (payment == null) return NotFound("Payment record not found.");
+        if (payment == null)
+        {
+            return NotFound(new
+            {
+                message = "Payment record not found."
+            });
+        }
 
         if (payment.PaymentStatus == "paid")
-            return BadRequest("This order is already paid.");
+        {
+            return BadRequest(new
+            {
+                message = "This order is already paid."
+            });
+        }
 
-        var paypalOrderId = await _paypal.CreateOrder(order, financial);
+        try
+        {
+            var paypalOrderId = await _paypal.CreateOrder(
+                order,
+                financial
+            );
 
-        payment.PaymentMethod = "paypal";
-        payment.PaymentStatus = "paypal_created";
-        payment.TransactionReference = paypalOrderId;
+            payment.PaymentMethod = "paypal";
+            payment.PaymentStatus = "paypal_created";
+            payment.TransactionReference = paypalOrderId;
 
-        await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
-        return Ok(new { id = paypalOrderId });
+            return Ok(new
+            {
+                id = paypalOrderId,
+                orderId = order.Id,
+                paymentStatus = payment.PaymentStatus
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new
+            {
+                message = "Unable to create PayPal order.",
+                error = ex.Message
+            });
+        }
     }
 
+    // =====================================================
+    // CAPTURE PAYPAL ORDER
+    // =====================================================
+
     [HttpPost("capture-order")]
-    public async Task<IActionResult> CapturePayPalOrder(CapturePayPalOrderDto dto)
+    public async Task<IActionResult> CapturePayPalOrder(
+        CapturePayPalOrderDto dto,
+        CancellationToken cancellationToken)
     {
-        var order = await _context.Orders.FindAsync(dto.OrderId);
-        if (order == null) return NotFound("Order not found.");
+        var order = await _context.Orders
+            .FirstOrDefaultAsync(
+                x => x.Id == dto.OrderId,
+                cancellationToken
+            );
+
+        if (order == null)
+        {
+            return NotFound(new
+            {
+                message = "Order not found."
+            });
+        }
 
         var payment = await _context.Payments
-            .FirstOrDefaultAsync(x => x.OrderId == dto.OrderId);
+            .FirstOrDefaultAsync(
+                x => x.OrderId == dto.OrderId,
+                cancellationToken
+            );
 
-        if (payment == null) return NotFound("Payment record not found.");
+        if (payment == null)
+        {
+            return NotFound(new
+            {
+                message = "Payment record not found."
+            });
+        }
 
         if (payment.PaymentStatus == "paid")
         {
@@ -81,155 +175,498 @@ public class PayPalController : ControllerBase
             {
                 message = "Payment already captured.",
                 orderStatus = order.Status,
-                paymentStatus = payment.PaymentStatus
+                paymentStatus = payment.PaymentStatus,
+                transactionReference =
+                    payment.TransactionReference
             });
         }
 
-        if (payment.TransactionReference != dto.PayPalOrderId)
-            return BadRequest("PayPal order does not match this Alpha order.");
-
-        var capture = await _paypal.CaptureOrder(dto.PayPalOrderId);
-        var root = capture.RootElement;
-        var status = root.GetProperty("status").GetString();
-
-        if (status != "COMPLETED")
-            return BadRequest($"PayPal payment not completed. Status: {status}");
-
-        var captureId = root
-            .GetProperty("purchase_units")[0]
-            .GetProperty("payments")
-            .GetProperty("captures")[0]
-            .GetProperty("id")
-            .GetString();
-
-        var financial = await _context.OrderFinancials
-            .FirstOrDefaultAsync(x => x.OrderId == dto.OrderId);
-
-        if (financial == null) return NotFound("Financial record not found.");
-
-        payment.PaymentStatus = "paid";
-        payment.PaymentMethod = "paypal";
-        payment.TransactionReference = captureId ?? dto.PayPalOrderId;
-        payment.PaidAt = DateTime.UtcNow;
-
-        financial.CustomerPaid = financial.TotalAmount;
-        financial.FinancialStatus = "paid_pending_dispatch";
-        financial.PayoutStatus = "not_ready";
-
-        order.Status = OrderStatuses.WaitingForSupplier;
-        order.UpdatedAt = DateTime.UtcNow;
-
-        _context.StatusHistory.Add(new StatusHistory
+        if (string.IsNullOrWhiteSpace(
+                payment.TransactionReference))
         {
-            Id = Guid.NewGuid(),
-            OrderId = order.Id,
-            Status = OrderStatuses.PaymentPaid,
-            Notes = "PayPal payment captured.",
-            CreatedAt = DateTime.UtcNow
-        });
+            return BadRequest(new
+            {
+                message =
+                    "No PayPal order reference was found for this payment."
+            });
+        }
 
-        _context.StatusHistory.Add(new StatusHistory
+        if (!string.Equals(
+                payment.TransactionReference,
+                dto.PayPalOrderId,
+                StringComparison.OrdinalIgnoreCase))
         {
-            Id = Guid.NewGuid(),
-            OrderId = order.Id,
-            Status = OrderStatuses.WaitingForSupplier,
-            Notes = "Order moved to supplier assignment queue.",
-            CreatedAt = DateTime.UtcNow
-        });
+            return BadRequest(new
+            {
+                message =
+                    "PayPal order does not match this Alpha order."
+            });
+        }
 
-        _context.AuditLogs.Add(new AuditLog
+        try
         {
-            Id = Guid.NewGuid(),
-            OrderId = order.Id,
-            Action = "PayPal Payment Captured",
-            PerformedBy = "paypal",
-            CreatedAt = DateTime.UtcNow
-        });
+            var capture = await _paypal.CaptureOrder(
+                dto.PayPalOrderId
+            );
 
-        await _context.SaveChangesAsync();
-        await _settlements.CreateOrUpdateSettlementAfterPayment(dto.OrderId);
-        await _referralCommissionService.GenerateOrderCommissionAsync(
-    sourceUserId: customerUserId,
-    orderId: order.Id,
-    paymentId: payment.Id,
-    grossAmount: payment.Amount,
-    currency: payment.Currency,
-    transactionType: "customer_order",
-    description: $"Completed payment for order {order.OrderNumber}",
-    cancellationToken: cancellationToken
-);
-        return Ok(new
+            var root = capture.RootElement;
+
+            if (!root.TryGetProperty(
+                    "status",
+                    out var statusElement))
+            {
+                return BadRequest(new
+                {
+                    message =
+                        "PayPal did not return a valid payment status."
+                });
+            }
+
+            var status = statusElement.GetString();
+
+            if (!string.Equals(
+                    status,
+                    "COMPLETED",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new
+                {
+                    message =
+                        $"PayPal payment was not completed. Status: {status}"
+                });
+            }
+
+            string? captureId = null;
+
+            try
+            {
+                captureId = root
+                    .GetProperty("purchase_units")[0]
+                    .GetProperty("payments")
+                    .GetProperty("captures")[0]
+                    .GetProperty("id")
+                    .GetString();
+            }
+            catch
+            {
+                // Use the PayPal order ID as fallback when the
+                // nested capture ID is not available.
+                captureId = dto.PayPalOrderId;
+            }
+
+            var financial = await _context.OrderFinancials
+                .FirstOrDefaultAsync(
+                    x => x.OrderId == dto.OrderId,
+                    cancellationToken
+                );
+
+            if (financial == null)
+            {
+                return NotFound(new
+                {
+                    message = "Financial record not found."
+                });
+            }
+
+            /*
+             * The orders table should contain customer_id.
+             *
+             * Order.cs:
+             * public Guid? CustomerId { get; set; }
+             */
+            if (!order.CustomerId.HasValue)
+            {
+                return BadRequest(new
+                {
+                    message =
+                        "The order is not connected to a registered customer. " +
+                        "Set orders.customer_id when creating the order."
+                });
+            }
+
+            var customerUserId = order.CustomerId.Value;
+            var now = DateTime.UtcNow;
+
+            await using var databaseTransaction =
+                await _context.Database.BeginTransactionAsync(
+                    cancellationToken
+                );
+
+            try
+            {
+                payment.PaymentStatus = "paid";
+                payment.PaymentMethod = "paypal";
+                payment.TransactionReference =
+                    captureId ?? dto.PayPalOrderId;
+                payment.PaidAt = now;
+
+                financial.CustomerPaid =
+                    financial.TotalAmount;
+
+                financial.FinancialStatus =
+                    "paid_pending_dispatch";
+
+                financial.PayoutStatus = "not_ready";
+
+                order.Status =
+                    OrderStatuses.WaitingForSupplier;
+
+                order.UpdatedAt = now;
+
+                _context.StatusHistory.Add(
+                    new StatusHistory
+                    {
+                        Id = Guid.NewGuid(),
+                        OrderId = order.Id,
+                        Status = OrderStatuses.PaymentPaid,
+                        Notes = "PayPal payment captured.",
+                        CreatedAt = now
+                    }
+                );
+
+                _context.StatusHistory.Add(
+                    new StatusHistory
+                    {
+                        Id = Guid.NewGuid(),
+                        OrderId = order.Id,
+                        Status =
+                            OrderStatuses.WaitingForSupplier,
+                        Notes =
+                            "Order moved to the supplier assignment queue.",
+                        CreatedAt = now
+                    }
+                );
+
+                _context.AuditLogs.Add(
+                    new AuditLog
+                    {
+                        Id = Guid.NewGuid(),
+                        OrderId = order.Id,
+                        Action =
+                            "PayPal Payment Captured",
+                        PerformedBy = "paypal",
+                        CreatedAt = now
+                    }
+                );
+
+                await _context.SaveChangesAsync(
+                    cancellationToken
+                );
+
+                await _settlements
+                    .CreateOrUpdateSettlementAfterPayment(
+                        order.Id
+                    );
+
+                await _referralCommissionService
+                    .GenerateOrderCommissionAsync(
+                        sourceUserId: customerUserId,
+                        orderId: order.Id,
+                        paymentId: payment.Id,
+                        grossAmount: payment.Amount,
+                        currency: payment.Currency,
+                        transactionType: "customer_order",
+                        description:
+                            $"Completed payment for order {order.OrderNumber}",
+                        cancellationToken:
+                            cancellationToken
+                    );
+
+                await databaseTransaction.CommitAsync(
+                    cancellationToken
+                );
+            }
+            catch
+            {
+                await databaseTransaction.RollbackAsync(
+                    cancellationToken
+                );
+
+                throw;
+            }
+
+            return Ok(new
+            {
+                message =
+                    "Payment captured. Order is ready for dispatch.",
+                orderId = order.Id,
+                orderNumber = order.OrderNumber,
+                orderStatus = order.Status,
+                paymentStatus = payment.PaymentStatus,
+                captureId
+            });
+        }
+        catch (Exception ex)
         {
-            message = "Payment captured. Order ready for dispatch.",
-            orderStatus = order.Status,
-            paymentStatus = payment.PaymentStatus,
-            captureId
-        });
+            return BadRequest(new
+            {
+                message =
+                    "PayPal payment capture failed.",
+                error = ex.Message
+            });
+        }
     }
+
+    // =====================================================
+    // REFUND PAYPAL PAYMENT
+    // =====================================================
 
     [HttpPost("refund")]
-    public async Task<IActionResult> Refund(RefundPaymentDto dto)
+    public async Task<IActionResult> Refund(
+        RefundPaymentDto dto,
+        CancellationToken cancellationToken)
     {
-        var payment = await _context.Payments
-            .FirstOrDefaultAsync(x => x.OrderId == dto.OrderId);
+        var order = await _context.Orders
+            .FirstOrDefaultAsync(
+                x => x.Id == dto.OrderId,
+                cancellationToken
+            );
 
-        if (payment == null) return NotFound("Payment not found.");
+        if (order == null)
+        {
+            return NotFound(new
+            {
+                message = "Order not found."
+            });
+        }
+
+        var payment = await _context.Payments
+            .FirstOrDefaultAsync(
+                x => x.OrderId == dto.OrderId,
+                cancellationToken
+            );
+
+        if (payment == null)
+        {
+            return NotFound(new
+            {
+                message = "Payment not found."
+            });
+        }
 
         if (payment.PaymentStatus != "paid")
-            return BadRequest("Only paid payments can be refunded.");
-
-        if (string.IsNullOrWhiteSpace(payment.TransactionReference))
-            return BadRequest("Missing PayPal capture reference.");
-
-        if (dto.Amount <= 0 || dto.Amount > payment.Amount)
-            return BadRequest("Invalid refund amount.");
-
-        var refund = await _paypal.RefundCapture(
-            payment.TransactionReference,
-            dto.Amount,
-            payment.Currency
-        );
-
-        var refundId = refund.RootElement.GetProperty("id").GetString();
-
-        payment.RefundedAmount += dto.Amount;
-        payment.RefundStatus =
-            payment.RefundedAmount >= payment.Amount ? "fully_refunded" : "partially_refunded";
-        payment.RefundReference = refundId;
-        payment.RefundedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
-        await _referralCommissionService.ReverseOrderCommissionsAsync(
-    order.Id,
-    "Customer payment was refunded.",
-    cancellationToken
-);
-        return Ok(new
         {
-            message = "Refund completed.",
-            refundId,
-            payment
-        });
+            return BadRequest(new
+            {
+                message =
+                    "Only paid payments can be refunded."
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(
+                payment.TransactionReference))
+        {
+            return BadRequest(new
+            {
+                message =
+                    "The PayPal capture reference is missing."
+            });
+        }
+
+        var remainingRefundableAmount =
+            payment.Amount - payment.RefundedAmount;
+
+        if (dto.Amount <= 0)
+        {
+            return BadRequest(new
+            {
+                message =
+                    "The refund amount must be greater than zero."
+            });
+        }
+
+        if (dto.Amount > remainingRefundableAmount)
+        {
+            return BadRequest(new
+            {
+                message =
+                    $"The maximum refundable amount is {remainingRefundableAmount} {payment.Currency}."
+            });
+        }
+
+        try
+        {
+            var refund = await _paypal.RefundCapture(
+                payment.TransactionReference,
+                dto.Amount,
+                payment.Currency
+            );
+
+            var refundRoot = refund.RootElement;
+
+            string? refundId = null;
+
+            if (refundRoot.TryGetProperty(
+                    "id",
+                    out var refundIdElement))
+            {
+                refundId =
+                    refundIdElement.GetString();
+            }
+
+            var now = DateTime.UtcNow;
+
+            await using var databaseTransaction =
+                await _context.Database.BeginTransactionAsync(
+                    cancellationToken
+                );
+
+            try
+            {
+                payment.RefundedAmount += dto.Amount;
+
+                var isFullyRefunded =
+                    payment.RefundedAmount >=
+                    payment.Amount;
+
+                payment.RefundStatus =
+                    isFullyRefunded
+                        ? "fully_refunded"
+                        : "partially_refunded";
+
+                payment.RefundReference = refundId;
+                payment.RefundedAt = now;
+
+                if (isFullyRefunded)
+                {
+                    payment.PaymentStatus = "refunded";
+                    order.Status = "refunded";
+                    order.UpdatedAt = now;
+                }
+
+                _context.StatusHistory.Add(
+                    new StatusHistory
+                    {
+                        Id = Guid.NewGuid(),
+                        OrderId = order.Id,
+                        Status = isFullyRefunded
+                            ? "fully_refunded"
+                            : "partially_refunded",
+                        Notes =
+                            $"PayPal refund processed: {dto.Amount} {payment.Currency}.",
+                        CreatedAt = now
+                    }
+                );
+
+                _context.AuditLogs.Add(
+                    new AuditLog
+                    {
+                        Id = Guid.NewGuid(),
+                        OrderId = order.Id,
+                        Action = isFullyRefunded
+                            ? "PayPal Payment Fully Refunded"
+                            : "PayPal Payment Partially Refunded",
+                        PerformedBy = "paypal",
+                        CreatedAt = now
+                    }
+                );
+
+                await _context.SaveChangesAsync(
+                    cancellationToken
+                );
+
+                /*
+                 * This reverses the referral commissions
+                 * generated from the original order.
+                 *
+                 * For partial refunds, your referral service
+                 * should either prorate the reversal or avoid
+                 * reversing everything until fully refunded.
+                 */
+                if (isFullyRefunded)
+                {
+                    await _referralCommissionService
+                        .ReverseOrderCommissionsAsync(
+                            order.Id,
+                            "Customer payment was fully refunded.",
+                            cancellationToken
+                        );
+                }
+
+                await databaseTransaction.CommitAsync(
+                    cancellationToken
+                );
+            }
+            catch
+            {
+                await databaseTransaction.RollbackAsync(
+                    cancellationToken
+                );
+
+                throw;
+            }
+
+            return Ok(new
+            {
+                message = payment.RefundStatus ==
+                          "fully_refunded"
+                    ? "Full refund completed."
+                    : "Partial refund completed.",
+                refundId,
+                refundedAmount =
+                    payment.RefundedAmount,
+                remainingRefundableAmount =
+                    payment.Amount -
+                    payment.RefundedAmount,
+                refundStatus =
+                    payment.RefundStatus,
+                paymentStatus =
+                    payment.PaymentStatus,
+                orderStatus = order.Status
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new
+            {
+                message =
+                    "PayPal refund failed.",
+                error = ex.Message
+            });
+        }
     }
 
-    [HttpPost("orders/{orderId}/verify-settlement")]
+    // =====================================================
+    // VERIFY SETTLEMENT
+    // =====================================================
+
+    [HttpPost("orders/{orderId:guid}/verify-settlement")]
     [Authorize(Roles = "admin,dispatcher")]
     public async Task<IActionResult> VerifySettlement(
-    Guid orderId,
-    [FromServices] SettlementService settlementService)
+        Guid orderId,
+        CancellationToken cancellationToken)
     {
         try
         {
-            var result = await settlementService.VerifySettlement(orderId);
+            var orderExists =
+                await _context.Orders.AnyAsync(
+                    x => x.Id == orderId,
+                    cancellationToken
+                );
+
+            if (!orderExists)
+            {
+                return NotFound(new
+                {
+                    message = "Order not found."
+                });
+            }
+
+            var result =
+                await _settlements.VerifySettlement(
+                    orderId
+                );
+
             return Ok(result);
         }
         catch (Exception ex)
         {
-            return BadRequest(ex.Message);
+            return BadRequest(new
+            {
+                message =
+                    "Settlement verification failed.",
+                error = ex.Message
+            });
         }
     }
-
-
-
-
 }

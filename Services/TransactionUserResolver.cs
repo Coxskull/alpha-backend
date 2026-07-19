@@ -1,6 +1,7 @@
 using Alpha.API.Data;
 using Microsoft.EntityFrameworkCore;
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -15,55 +16,55 @@ public class TransactionUserResolver
         _context = context;
     }
 
-    public async Task<Guid?> ResolveOrderActorAsync(
+    public async Task<List<Guid>> ResolveOrderUserIdsAsync(
         Guid orderId,
-        string actorType,
         CancellationToken cancellationToken = default)
     {
         var order = await _context.Orders
             .AsNoTracking()
-            .Where(item => item.Id == orderId)
-            .Select(item => new
-            {
-                item.Id,
-                item.SupplierId,
-                item.DriverId,
-                item.MechanicId
-            })
-            .FirstOrDefaultAsync(cancellationToken);
+            .FirstOrDefaultAsync(
+                x => x.Id == orderId,
+                cancellationToken
+            );
 
         if (order == null)
         {
-            return null;
+            return new List<Guid>();
         }
 
-        return actorType.ToLowerInvariant() switch
+        var userIds = new HashSet<Guid>();
+
+        if (order.CustomerId.HasValue)
         {
-            "supplier" or "provider" =>
-                order.SupplierId == null
-                    ? null
-                    : await _context.Suppliers
-                        .Where(item => item.Id == order.SupplierId)
-                        .Select(item => item.UserId)
-                        .FirstOrDefaultAsync(cancellationToken),
+            userIds.Add(order.CustomerId.Value);
+        }
 
-            "driver" =>
-                order.DriverId == null
-                    ? null
-                    : await _context.Drivers
-                        .Where(item => item.Id == order.DriverId)
-                        .Select(item => item.UserId)
-                        .FirstOrDefaultAsync(cancellationToken),
+        if (order.SupplierId.HasValue)
+        {
+            var supplierUserId = await _context.Suppliers
+                .Where(x => x.Id == order.SupplierId.Value)
+                .Select(x => (Guid?)x.UserId)
+                .FirstOrDefaultAsync(cancellationToken);
 
-            "mechanic" =>
-                order.MechanicId == null
-                    ? null
-                    : await _context.Mechanics
-                        .Where(item => item.Id == order.MechanicId)
-                        .Select(item => item.UserId)
-                        .FirstOrDefaultAsync(cancellationToken),
+            if (supplierUserId.HasValue)
+            {
+                userIds.Add(supplierUserId.Value);
+            }
+        }
 
-            _ => null
-        };
+        if (order.DriverId.HasValue)
+        {
+            var driverUserId = await _context.Drivers
+                .Where(x => x.Id == order.DriverId.Value)
+                .Select(x => (Guid?)x.UserId)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (driverUserId.HasValue)
+            {
+                userIds.Add(driverUserId.Value);
+            }
+        }
+
+        return userIds.ToList();
     }
 }

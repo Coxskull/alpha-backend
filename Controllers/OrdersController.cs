@@ -18,17 +18,20 @@ public class OrdersController : ControllerBase
     private readonly OrderWorkflowService _workflow;
     private readonly SettlementService _settlements;
     private readonly TaxEngineService _taxEngine;
+    private readonly ReferralCommissionService _referralCommissionService;
 
     public OrdersController(
         AppDbContext context,
         OrderWorkflowService workflow,
         SettlementService settlements,
-        TaxEngineService taxEngine)
+        TaxEngineService taxEngine,
+        ReferralCommissionService referralCommissionService)
     {
         _context = context;
         _workflow = workflow;
         _settlements = settlements;
         _taxEngine = taxEngine;
+        _referralCommissionService = referralCommissionService;
     }
 
     // =========================================================
@@ -690,7 +693,7 @@ public class OrdersController : ControllerBase
 
     [HttpPost("{id}/proof")]
     [RequestSizeLimit(20_000_000)]
-    public async Task<IActionResult> UploadProof(Guid id, [FromForm] IFormFile image)
+    public async Task<IActionResult> UploadProof(Guid id, [FromForm] IFormFile image, CancellationToken cancellationToken)
     {
         var order = await _context.Orders.FindAsync(id);
 
@@ -749,9 +752,11 @@ public class OrdersController : ControllerBase
                 $"Proof uploaded, but settlement verification failed: {settlementError.Message}"
             );
         }
-        await _referralCommissionService.ReleaseOrderCommissionsAsync(
-    order.Id,
-    cancellationToken
+        await _referralCommissionService
+    .ReleaseOrderCommissionsAsync(
+        order.Id,
+        cancellationToken
+    );
 );
         return Ok(new
         {
