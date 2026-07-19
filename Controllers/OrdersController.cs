@@ -757,7 +757,6 @@ public class OrdersController : ControllerBase
         order.Id,
         cancellationToken
     );
-);
         return Ok(new
         {
             proof,
