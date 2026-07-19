@@ -219,4 +219,30 @@ public class ReferralsController : ControllerBase
             topReferrers
         });
     }
+
+    [Authorize(Roles =
+    "community_builder,admin,dispatcher")]
+    [HttpGet("community-builder-dashboard")]
+    public async Task<ActionResult<CommunityBuilderDashboardDto>>
+    GetCommunityBuilderDashboard(
+        CancellationToken cancellationToken)
+    {
+        var userIdValue = User.FindFirstValue(
+            ClaimTypes.NameIdentifier
+        );
+
+        if (!Guid.TryParse(userIdValue, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var dashboard =
+            await _communityBuilderDashboardService
+                .GetDashboardAsync(
+                    userId,
+                    cancellationToken
+                );
+
+        return Ok(dashboard);
+    }
 }

@@ -9,4 +9,5 @@ public static class AppRoles
     public const string Driver = "driver";
     public const string Mechanic = "mechanic";
     public const string Customer = "customer";
+    public const string CommunityBuilder = "community_builder";
 }

@@ -230,4 +230,97 @@ public class ReferralCommissionService
             ? result
             : fallback;
     }
+
+    public async Task GenerateFromBusinessEventAsync(
+    ReferralBusinessEvent businessEvent,
+    CancellationToken cancellationToken = default)
+    {
+        if (businessEvent.EligibleAmount <= 0)
+            return;
+
+        var sourceUser = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                user =>
+                    user.Id == businessEvent.SourceUserId &&
+                    user.IsActive,
+                cancellationToken
+            );
+
+        if (sourceUser?.ReferredByUserId == null)
+            return;
+
+        var beneficiaryIsBuilder = await _context.UserRoles
+            .AsNoTracking()
+            .AnyAsync(
+                role =>
+                    role.UserId == sourceUser.ReferredByUserId &&
+                    role.RoleKey == "community_builder" &&
+                    role.Status == "active",
+                cancellationToken
+            );
+
+        if (!beneficiaryIsBuilder)
+            return;
+
+        var duplicateExists = await _context.ReferralTransactions
+            .AsNoTracking()
+            .AnyAsync(
+                transaction =>
+                    transaction.BeneficiaryUserId ==
+                        sourceUser.ReferredByUserId &&
+                    transaction.SourceUserId ==
+                        businessEvent.SourceUserId &&
+                    transaction.EventKey ==
+                        businessEvent.EventKey,
+                cancellationToken
+            );
+
+        if (duplicateExists)
+            return;
+
+        var commissionRate = await ResolveRateAsync(
+            businessEvent.TransactionType,
+            cancellationToken
+        );
+
+        var commission = decimal.Round(
+            businessEvent.EligibleAmount * commissionRate,
+            2,
+            MidpointRounding.AwayFromZero
+        );
+
+        if (commission <= 0)
+            return;
+
+        _context.ReferralTransactions.Add(
+            new ReferralTransaction
+            {
+                Id = Guid.NewGuid(),
+                BeneficiaryUserId =
+                    sourceUser.ReferredByUserId.Value,
+                SourceUserId = sourceUser.Id,
+                OrderId = businessEvent.OrderId,
+                ServiceRequestId =
+                    businessEvent.ServiceRequestId,
+                PaymentId = businessEvent.PaymentId,
+                EventKey = businessEvent.EventKey,
+                TransactionType =
+                    businessEvent.TransactionType,
+                SourceRole = businessEvent.SourceRole,
+                SourceDescription =
+                    businessEvent.Description,
+                GrossAmount =
+                    businessEvent.EligibleAmount,
+                CommissionRate = commissionRate,
+                CommissionAmount = commission,
+                Currency = businessEvent.Currency,
+                ReferralLevel = 1,
+                Status = "pending",
+                CreatedAt = DateTime.UtcNow
+            }
+        );
+
+        await _context.SaveChangesAsync(cancellationToken);
+    }
 }

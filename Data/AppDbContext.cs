@@ -52,6 +52,9 @@ public class AppDbContext : DbContext
     public DbSet<ReferralTransaction> ReferralTransactions { get; set; }
 
     public DbSet<ReferralSetting> ReferralSettings { get; set; }
+    public DbSet<EntrepreneurRole> EntrepreneurRoles { get; set; }
+    public DbSet<UserRole> UserRoles { get; set; }
+    public DbSet<EntrepreneurProfile> EntrepreneurProfiles { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -108,7 +111,21 @@ public class AppDbContext : DbContext
                 .HasForeignKey(user => user.ReferredByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
+        modelBuilder.Entity<UserRole>()
+    .HasIndex(x => new { x.UserId, x.RoleKey })
+    .IsUnique();
 
+        modelBuilder.Entity<UserRole>()
+            .HasOne(x => x.User)
+            .WithMany()
+            .HasForeignKey(x => x.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<UserRole>()
+            .HasOne(x => x.Role)
+            .WithMany()
+            .HasForeignKey(x => x.RoleKey)
+            .HasPrincipalKey(x => x.RoleKey);
         modelBuilder.Entity<ReferralTransaction>(entity =>
         {
             entity.ToTable("referral_transactions");

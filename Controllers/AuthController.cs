@@ -13,6 +13,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
 using System.Security.Cryptography;
+using Alpha.API.Security;
 
 namespace Alpha.API.Controllers;
 
@@ -34,19 +35,148 @@ public class AuthController : ControllerBase
         _referralCodeService = referralCodeService;
     }
 
+    [AllowAnonymous]
     [HttpPost("register")]
     public async Task<IActionResult> Register(
-    RegisterDto dto,
-    CancellationToken cancellationToken)
+     [FromBody] RegisterDto dto,
+     CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid)
         {
             return ValidationProblem(ModelState);
         }
 
-        var email = dto.Email.Trim().ToLowerInvariant();
+        // ---------------------------------------------------------
+        // 1. Normalize basic registration information
+        // ---------------------------------------------------------
+
+        var fullName = dto.FullName?.Trim() ?? string.Empty;
+        var email = dto.Email?.Trim().ToLowerInvariant() ?? string.Empty;
+        var phone = string.IsNullOrWhiteSpace(dto.Phone)
+            ? null
+            : dto.Phone.Trim();
+
+        var city = dto.City?.Trim() ?? string.Empty;
+
+        var state = string.IsNullOrWhiteSpace(dto.State)
+            ? null
+            : dto.State.Trim();
+
+        var country = string.IsNullOrWhiteSpace(dto.Country)
+            ? "MX"
+            : dto.Country.Trim().ToUpperInvariant();
+
+        var preferredLanguage =
+            string.IsNullOrWhiteSpace(dto.PreferredLanguage)
+                ? "es"
+                : dto.PreferredLanguage.Trim().ToLowerInvariant();
+
+        var businessName =
+            string.IsNullOrWhiteSpace(dto.BusinessName)
+                ? null
+                : dto.BusinessName.Trim();
+
+        var entrepreneurialGoal =
+            string.IsNullOrWhiteSpace(dto.EntrepreneurialGoal)
+                ? null
+                : dto.EntrepreneurialGoal.Trim();
+
+        if (string.IsNullOrWhiteSpace(fullName))
+        {
+            return BadRequest(new
+            {
+                message = "Full name is required."
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return BadRequest(new
+            {
+                message = "Email is required."
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(city))
+        {
+            return BadRequest(new
+            {
+                message =
+                    "Enter the city where you will build your Alpha network."
+            });
+        }
+
+        if (country.Length != 2)
+        {
+            return BadRequest(new
+            {
+                message =
+                    "Country must use a valid two-letter country code, such as MX."
+            });
+        }
+
+        // ---------------------------------------------------------
+        // 2. Normalize and validate selected roles
+        // ---------------------------------------------------------
+
+        var selectedRoles = (dto.SelectedRoles ?? new List<string>())
+            .Where(role => !string.IsNullOrWhiteSpace(role))
+            .Select(NormalizeEntrepreneurRole)
+            .Where(role => !string.IsNullOrWhiteSpace(role))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (selectedRoles.Count == 0)
+        {
+            return BadRequest(new
+            {
+                message = "Choose at least one Alpha entrepreneur role."
+            });
+        }
+
+        var invalidRoles = selectedRoles
+            .Where(role =>
+                !EntrepreneurRoles.PublicRegistrationRoles.Contains(role))
+            .ToList();
+
+        if (invalidRoles.Count > 0)
+        {
+            return BadRequest(new
+            {
+                message = "One or more selected roles are invalid.",
+                invalidRoles
+            });
+        }
+
+        if (!dto.AcceptTerms)
+        {
+            return BadRequest(new
+            {
+                message =
+                    "You must accept the Alpha terms and conditions."
+            });
+        }
+
+        if (!dto.AcceptRewardsPolicy)
+        {
+            return BadRequest(new
+            {
+                message =
+                    "You must accept the transaction-based rewards policy."
+            });
+        }
+
+        var primaryRole = ResolvePrimaryRole(
+            selectedRoles,
+            dto.PrimaryRole
+        );
+
+        // ---------------------------------------------------------
+        // 3. Validate email uniqueness
+        // ---------------------------------------------------------
 
         var emailExists = await _context.Users
+            .AsNoTracking()
             .AnyAsync(
                 user => user.Email.ToLower() == email,
                 cancellationToken
@@ -60,15 +190,19 @@ public class AuthController : ControllerBase
             });
         }
 
+        // ---------------------------------------------------------
+        // 4. Validate optional referral code
+        // ---------------------------------------------------------
+
         User? referrer = null;
 
-        // Validate the optional referral code.
         if (!string.IsNullOrWhiteSpace(dto.ReferralCode))
         {
             var normalizedReferralCode =
                 dto.ReferralCode.Trim().ToUpperInvariant();
 
             referrer = await _context.Users
+                .AsNoTracking()
                 .FirstOrDefaultAsync(
                     user =>
                         user.ReferralCode != null &&
@@ -82,21 +216,42 @@ public class AuthController : ControllerBase
             {
                 return BadRequest(new
                 {
-                    message = "The referral code is invalid or inactive."
+                    message =
+                        "The referral code is invalid or inactive."
                 });
             }
 
-            // Prevent referral through another account using the same email.
             if (referrer.Email.Equals(
                 email,
                 StringComparison.OrdinalIgnoreCase))
             {
                 return BadRequest(new
                 {
-                    message = "You cannot use your own referral code."
+                    message =
+                        "You cannot use your own referral code."
                 });
             }
         }
+
+        // ---------------------------------------------------------
+        // 5. Validate role-specific information
+        // ---------------------------------------------------------
+
+        if (selectedRoles.Contains(
+                EntrepreneurRoles.Supplier,
+                StringComparer.OrdinalIgnoreCase) &&
+            string.IsNullOrWhiteSpace(businessName))
+        {
+            return BadRequest(new
+            {
+                message =
+                    "A business or store name is required when registering as an Auto Parts Store."
+            });
+        }
+
+        // ---------------------------------------------------------
+        // 6. Begin registration transaction
+        // ---------------------------------------------------------
 
         await using var transaction =
             await _context.Database.BeginTransactionAsync(
@@ -105,25 +260,27 @@ public class AuthController : ControllerBase
 
         try
         {
+            var now = DateTime.UtcNow;
+
             var generatedReferralCode =
                 await _referralCodeService.GenerateUniqueCodeAsync(
-                    dto.FullName,
+                    fullName,
                     cancellationToken
                 );
 
-            var now = DateTime.UtcNow;
+            // -----------------------------------------------------
+            // 7. Create the main user
+            // -----------------------------------------------------
 
             var user = new User
             {
                 Id = Guid.NewGuid(),
-                FullName = dto.FullName.Trim(),
+                FullName = fullName,
                 Email = email,
-                Phone = string.IsNullOrWhiteSpace(dto.Phone)
-                    ? null
-                    : dto.Phone.Trim(),
+                Phone = phone,
 
-                // Never trust a role supplied by public registration.
-                Role = "customer",
+                // Keep one primary role for backward compatibility.
+                Role = primaryRole,
 
                 PasswordHash =
                     BCrypt.Net.BCrypt.HashPassword(dto.Password),
@@ -131,7 +288,6 @@ public class AuthController : ControllerBase
                 CreatedAt = now,
                 IsActive = true,
 
-                // Referral information
                 ReferralCode = generatedReferralCode,
                 ReferredByUserId = referrer?.Id,
                 ReferralJoinedAt = referrer == null
@@ -143,34 +299,394 @@ public class AuthController : ControllerBase
 
             await _context.SaveChangesAsync(cancellationToken);
 
-            // Use the same ID for users and customers.
+            // -----------------------------------------------------
+            // 8. Create entrepreneur profile
+            // -----------------------------------------------------
+
             await _context.Database.ExecuteSqlInterpolatedAsync(
                 $"""
-            INSERT INTO customers (
+            INSERT INTO entrepreneur_profiles (
                 id,
-                full_name,
-                email,
-                phone
+                user_id,
+                city,
+                state,
+                country,
+                preferred_language,
+                business_name,
+                entrepreneurial_goal,
+                onboarding_status,
+                terms_accepted_at,
+                rewards_policy_accepted_at,
+                created_at,
+                updated_at
             )
             VALUES (
+                {Guid.NewGuid()},
                 {user.Id},
-                {user.FullName},
-                {user.Email},
-                {user.Phone}
+                {city},
+                {state},
+                {country},
+                {preferredLanguage},
+                {businessName},
+                {entrepreneurialGoal},
+                {"roles_selected"},
+                {now},
+                {now},
+                {now},
+                {now}
             )
-            ON CONFLICT (id) DO UPDATE SET
-                full_name = EXCLUDED.full_name,
-                email = EXCLUDED.email,
-                phone = EXCLUDED.phone;
+            ON CONFLICT (user_id) DO UPDATE SET
+                city = EXCLUDED.city,
+                state = EXCLUDED.state,
+                country = EXCLUDED.country,
+                preferred_language = EXCLUDED.preferred_language,
+                business_name = EXCLUDED.business_name,
+                entrepreneurial_goal =
+                    EXCLUDED.entrepreneurial_goal,
+                onboarding_status =
+                    EXCLUDED.onboarding_status,
+                terms_accepted_at =
+                    EXCLUDED.terms_accepted_at,
+                rewards_policy_accepted_at =
+                    EXCLUDED.rewards_policy_accepted_at,
+                updated_at = EXCLUDED.updated_at;
             """,
                 cancellationToken
             );
 
+            // -----------------------------------------------------
+            // 9. Create every selected role
+            // -----------------------------------------------------
+
+            foreach (var role in selectedRoles)
+            {
+                var roleStatus = GetInitialRoleStatus(role);
+
+                var isPrimary = role.Equals(
+                    primaryRole,
+                    StringComparison.OrdinalIgnoreCase
+                );
+
+                DateTime? activatedAt =
+                    roleStatus == "active"
+                        ? now
+                        : null;
+
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"""
+                INSERT INTO user_roles (
+                    id,
+                    user_id,
+                    role_key,
+                    status,
+                    is_primary,
+                    activated_at,
+                    created_at
+                )
+                VALUES (
+                    {Guid.NewGuid()},
+                    {user.Id},
+                    {role},
+                    {roleStatus},
+                    {isPrimary},
+                    {activatedAt},
+                    {now}
+                )
+                ON CONFLICT (user_id, role_key)
+                DO UPDATE SET
+                    status = EXCLUDED.status,
+                    is_primary = EXCLUDED.is_primary,
+                    activated_at = EXCLUDED.activated_at;
+                """,
+                    cancellationToken
+                );
+            }
+
+            // -----------------------------------------------------
+            // 10. Create Vehicle Owner / Customer profile
+            // -----------------------------------------------------
+
+            if (selectedRoles.Contains(
+                EntrepreneurRoles.Customer,
+                StringComparer.OrdinalIgnoreCase))
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"""
+                INSERT INTO customers (
+                    id,
+                    full_name,
+                    email,
+                    phone
+                )
+                VALUES (
+                    {user.Id},
+                    {user.FullName},
+                    {user.Email},
+                    {user.Phone}
+                )
+                ON CONFLICT (id) DO UPDATE SET
+                    full_name = EXCLUDED.full_name,
+                    email = EXCLUDED.email,
+                    phone = EXCLUDED.phone;
+                """,
+                    cancellationToken
+                );
+            }
+
+            // -----------------------------------------------------
+            // 11. Create Motorcycle Rider profile
+            // -----------------------------------------------------
+
+            if (selectedRoles.Contains(
+                EntrepreneurRoles.Driver,
+                StringComparer.OrdinalIgnoreCase))
+            {
+                var existingDriver = await _context.Drivers
+                    .AnyAsync(
+                        driver => driver.UserId == user.Id,
+                        cancellationToken
+                    );
+
+                if (!existingDriver)
+                {
+                    var driver = new Driver
+                    {
+                        Id = Guid.NewGuid(),
+                        UserId = user.Id,
+                        FullName = user.FullName,
+                        PhoneNumber = user.Phone,
+                        Email = user.Email,
+
+                        // The rider must complete the operational profile
+                        // before receiving delivery jobs.
+                        AvailabilityStatus = "profile_incomplete",
+
+                        Territory = city,
+                        VehicleType = null,
+                        PlateNumber = null,
+                        ActiveJobs = 0,
+                        ResponseRate = 100,
+                        CreatedAt = now,
+                        LastSeenAt = null
+                    };
+
+                    _context.Drivers.Add(driver);
+                }
+            }
+
+            // -----------------------------------------------------
+            // 12. Create Mechanic profile
+            // -----------------------------------------------------
+
+            if (selectedRoles.Contains(
+                EntrepreneurRoles.Mechanic,
+                StringComparer.OrdinalIgnoreCase))
+            {
+                var existingMechanic = await _context.Mechanics
+                    .AnyAsync(
+                        mechanic => mechanic.UserId == user.Id,
+                        cancellationToken
+                    );
+
+                if (!existingMechanic)
+                {
+                    var mechanic = new Mechanic
+                    {
+                        Id = Guid.NewGuid(),
+                        UserId = user.Id,
+                        FullName = user.FullName,
+                        Email = user.Email,
+                        Phone = user.Phone,
+                        ServiceArea = city,
+
+                        // Mechanic onboarding must be completed first.
+                        AvailabilityStatus = "profile_incomplete",
+
+                        Latitude = null,
+                        Longitude = null,
+                        ServiceRadiusKm = 10,
+                        ActiveJobs = 0,
+                        ResponseRate = 100,
+                        CreatedAt = now
+                    };
+
+                    _context.Mechanics.Add(mechanic);
+                }
+            }
+
+            // -----------------------------------------------------
+            // 13. Create Auto Parts Store / Supplier profile
+            // -----------------------------------------------------
+
+            if (selectedRoles.Contains(
+                EntrepreneurRoles.Supplier,
+                StringComparer.OrdinalIgnoreCase))
+            {
+                var existingSupplier = await _context.Suppliers
+                    .AnyAsync(
+                        supplier => supplier.UserId == user.Id,
+                        cancellationToken
+                    );
+
+                if (!existingSupplier)
+                {
+                    var supplier = new Supplier
+                    {
+                        Id = Guid.NewGuid(),
+                        UserId = user.Id,
+                        Name = businessName ?? user.FullName,
+                        ContactNumber = user.Phone,
+                        Address = null,
+
+                        // Store profile and inventory must be completed first.
+                        AvailabilityStatus = "profile_incomplete",
+
+                        Territory = city,
+                        CurrentWorkload = 0,
+                        ResponseRate = 100,
+                        CreatedAt = now
+                    };
+
+                    _context.Suppliers.Add(supplier);
+                }
+            }
+
+            // -----------------------------------------------------
+            // 14. Create Community Builder profile
+            // -----------------------------------------------------
+
+            if (selectedRoles.Contains(
+                EntrepreneurRoles.CommunityBuilder,
+                StringComparer.OrdinalIgnoreCase))
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"""
+                INSERT INTO community_builder_profiles (
+                    id,
+                    user_id,
+                    home_city,
+                    home_state,
+                    country,
+                    builder_status,
+                    total_cities_connected,
+                    approved_at,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    {Guid.NewGuid()},
+                    {user.Id},
+                    {city},
+                    {state},
+                    {country},
+                    {"active"},
+                    {1},
+                    {now},
+                    {now},
+                    {now}
+                )
+                ON CONFLICT (user_id) DO UPDATE SET
+                    home_city = EXCLUDED.home_city,
+                    home_state = EXCLUDED.home_state,
+                    country = EXCLUDED.country,
+                    builder_status = EXCLUDED.builder_status,
+                    updated_at = EXCLUDED.updated_at;
+                """,
+                    cancellationToken
+                );
+
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"""
+                INSERT INTO community_builder_cities (
+                    id,
+                    builder_user_id,
+                    city,
+                    state,
+                    country,
+                    member_count,
+                    active_member_count,
+                    completed_transaction_count,
+                    connected_at
+                )
+                VALUES (
+                    {Guid.NewGuid()},
+                    {user.Id},
+                    {city},
+                    {state},
+                    {country},
+                    {0},
+                    {0},
+                    {0},
+                    {now}
+                )
+                ON CONFLICT (
+                    builder_user_id,
+                    city,
+                    state,
+                    country
+                )
+                DO NOTHING;
+                """,
+                    cancellationToken
+                );
+            }
+
+            // -----------------------------------------------------
+            // 15. Create empty business activity record
+            // -----------------------------------------------------
+
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+            INSERT INTO member_business_activity (
+                id,
+                user_id,
+                completed_orders,
+                completed_service_requests,
+                completed_deliveries,
+                fulfilled_parts_orders,
+                customer_purchases,
+                gross_transaction_value,
+                first_business_activity_at,
+                last_business_activity_at,
+                is_business_active,
+                updated_at
+            )
+            VALUES (
+                {Guid.NewGuid()},
+                {user.Id},
+                {0},
+                {0},
+                {0},
+                {0},
+                {0},
+                {0m},
+                {null},
+                {null},
+                {false},
+                {now}
+            )
+            ON CONFLICT (user_id) DO NOTHING;
+            """,
+                cancellationToken
+            );
+
+            // Save Driver, Mechanic, and Supplier entities.
+            await _context.SaveChangesAsync(cancellationToken);
+
+            // -----------------------------------------------------
+            // 16. Commit registration
+            // -----------------------------------------------------
+
             await transaction.CommitAsync(cancellationToken);
+
+            // -----------------------------------------------------
+            // 17. Return registration result
+            // -----------------------------------------------------
 
             return Ok(new
             {
-                message = "Registration successful.",
+                message =
+                    "Welcome to the Alpha Entrepreneur Network.",
 
                 user = new
                 {
@@ -178,10 +694,30 @@ public class AuthController : ControllerBase
                     user.FullName,
                     user.Email,
                     user.Phone,
-                    user.Role,
+
+                    role = user.Role,
+                    primaryRole = user.Role,
+                    roles = selectedRoles,
+
+                    city,
+                    state,
+                    country,
+                    businessName,
+
                     user.ReferralCode,
                     user.ReferredByUserId,
-                    user.ReferralJoinedAt
+                    user.ReferralJoinedAt,
+
+                    isCommunityBuilder =
+                        selectedRoles.Contains(
+                            EntrepreneurRoles.CommunityBuilder,
+                            StringComparer.OrdinalIgnoreCase
+                        ),
+
+                    onboardingRequired = selectedRoles
+                        .Where(role =>
+                            GetInitialRoleStatus(role) != "active")
+                        .ToList()
                 },
 
                 referredBy = referrer == null
@@ -192,14 +728,173 @@ public class AuthController : ControllerBase
                         referrer.FullName,
                         referrer.Role,
                         referrer.ReferralCode
-                    }
+                    },
+
+                nextStep = selectedRoles.Count > 1
+                    ? "/select-workspace"
+                    : GetDashboardRoute(primaryRole)
             });
         }
-        catch
+        catch (DbUpdateException exception)
         {
             await transaction.RollbackAsync(cancellationToken);
-            throw;
+
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message =
+                        "Registration could not be completed because the account data could not be saved.",
+                    detail = exception.InnerException?.Message ??
+                             exception.Message
+                }
+            );
         }
+        catch (Exception exception)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message =
+                        "An unexpected error occurred during registration.",
+                    detail = exception.Message
+                }
+            );
+        }
+    }
+
+    private static string NormalizeEntrepreneurRole(string role)
+    {
+        var normalized = role
+            .Trim()
+            .ToLowerInvariant()
+            .Replace("-", "_")
+            .Replace(" ", "_");
+
+        return normalized switch
+        {
+            // Motorcycle Rider aliases
+            "rider" => EntrepreneurRoles.Driver,
+            "motorcycle_rider" => EntrepreneurRoles.Driver,
+            "delivery_rider" => EntrepreneurRoles.Driver,
+
+            // Mechanic aliases
+            "automotive_mechanic" => EntrepreneurRoles.Mechanic,
+
+            // Auto Parts Store aliases
+            "provider" => EntrepreneurRoles.Supplier,
+            "store" => EntrepreneurRoles.Supplier,
+            "auto_parts_store" => EntrepreneurRoles.Supplier,
+            "auto_part_store" => EntrepreneurRoles.Supplier,
+            "parts_store" => EntrepreneurRoles.Supplier,
+
+            // Vehicle Owner aliases
+            "vehicle_owner" => EntrepreneurRoles.Customer,
+            "car_owner" => EntrepreneurRoles.Customer,
+
+            // Community Builder aliases
+            "communitybuilder" =>
+                EntrepreneurRoles.CommunityBuilder,
+
+            "builder" =>
+                EntrepreneurRoles.CommunityBuilder,
+
+            _ => normalized
+        };
+    }
+
+    private static string ResolvePrimaryRole(
+    IReadOnlyCollection<string> selectedRoles,
+    string? requestedPrimaryRole)
+    {
+        var normalizedRequestedRole =
+            string.IsNullOrWhiteSpace(requestedPrimaryRole)
+                ? null
+                : NormalizeEntrepreneurRole(requestedPrimaryRole);
+
+        if (normalizedRequestedRole != null &&
+            selectedRoles.Contains(
+                normalizedRequestedRole,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            return normalizedRequestedRole;
+        }
+
+        // Community Builder becomes the preferred dashboard
+        // when no valid primary role was explicitly selected.
+        if (selectedRoles.Contains(
+            EntrepreneurRoles.CommunityBuilder,
+            StringComparer.OrdinalIgnoreCase))
+        {
+            return EntrepreneurRoles.CommunityBuilder;
+        }
+
+        if (selectedRoles.Contains(
+            EntrepreneurRoles.Supplier,
+            StringComparer.OrdinalIgnoreCase))
+        {
+            return EntrepreneurRoles.Supplier;
+        }
+
+        if (selectedRoles.Contains(
+            EntrepreneurRoles.Mechanic,
+            StringComparer.OrdinalIgnoreCase))
+        {
+            return EntrepreneurRoles.Mechanic;
+        }
+
+        if (selectedRoles.Contains(
+            EntrepreneurRoles.Driver,
+            StringComparer.OrdinalIgnoreCase))
+        {
+            return EntrepreneurRoles.Driver;
+        }
+
+        return EntrepreneurRoles.Customer;
+    }
+
+    private static string GetInitialRoleStatus(string role)
+    {
+        return role switch
+        {
+            // These roles can be used immediately.
+            EntrepreneurRoles.Customer => "active",
+            EntrepreneurRoles.CommunityBuilder => "active",
+
+            // These require additional operational information
+            // and potentially admin verification.
+            EntrepreneurRoles.Driver => "profile_incomplete",
+            EntrepreneurRoles.Mechanic => "profile_incomplete",
+            EntrepreneurRoles.Supplier => "profile_incomplete",
+
+            _ => "pending"
+        };
+    }
+
+    private static string GetDashboardRoute(string primaryRole)
+    {
+        return primaryRole switch
+        {
+            EntrepreneurRoles.CommunityBuilder =>
+                "/entrepreneur/dashboard",
+
+            EntrepreneurRoles.Driver =>
+                "/driver/dashboard",
+
+            EntrepreneurRoles.Mechanic =>
+                "/mechanic/dashboard",
+
+            EntrepreneurRoles.Supplier =>
+                "/provider/dashboard",
+
+            EntrepreneurRoles.Customer =>
+                "/customer",
+
+            _ => "/"
+        };
     }
 
     [HttpPost("login")]
@@ -232,6 +927,15 @@ public class AuthController : ControllerBase
                 .FirstOrDefaultAsync();
         }
 
+        var selectedRoles = await _context.UserRoles
+    .AsNoTracking()
+    .Where(role =>
+        role.UserId == user.Id &&
+        role.Status != "rejected" &&
+        role.Status != "suspended")
+    .Select(role => role.RoleKey)
+    .ToListAsync();
+
         return Ok(new
         {
             token,
@@ -240,8 +944,11 @@ public class AuthController : ControllerBase
                 user.Id,
                 user.FullName,
                 user.Email,
-                user.Role,
-                SupplierId = supplierId
+                user.Phone,
+                role = user.Role,
+                primaryRole = user.Role,
+                roles = selectedRoles,
+                user.ReferralCode
             }
         });
     }
@@ -273,13 +980,27 @@ public class AuthController : ControllerBase
             SecurityAlgorithms.HmacSha256
         );
 
-        var claims = new[]
+        var claims = new List<Claim>
+{
+    new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+    new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+    new(ClaimTypes.Name, user.FullName),
+    new(ClaimTypes.Email, user.Email),
+
+    // Primary role for old routes.
+    new(ClaimTypes.Role, user.Role),
+    new("primary_role", user.Role)
+};
+
+        foreach (var role in selectedRoles.Distinct())
         {
-            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new Claim(ClaimTypes.Email, user.Email),
-            new Claim(ClaimTypes.Role, user.Role),
-            new Claim("fullName", user.FullName)
-        };
+            if (!claims.Any(claim =>
+                claim.Type == ClaimTypes.Role &&
+                claim.Value == role))
+            {
+                claims.Add(new Claim(ClaimTypes.Role, role));
+            }
+        }
 
         var token = new JwtSecurityToken(
             issuer: _configuration["Jwt:Issuer"],
