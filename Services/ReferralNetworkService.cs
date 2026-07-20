@@ -106,7 +106,7 @@ public class ReferralNetworkService
 
         var frontendUrl =
             _configuration["Frontend:BaseUrl"] ??
-            "http://localhost:3000";
+            "https://alpha-auto-mvp.vercel.app";
 
         var referralCode =
             currentUser.ReferralCode ??
