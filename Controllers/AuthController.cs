@@ -898,13 +898,13 @@ public class AuthController : ControllerBase
     }
 
 
-[AllowAnonymous]
-[HttpPost("login")]
-public async Task<IActionResult> Login(
-    [FromBody] LoginDto dto,
-    CancellationToken cancellationToken)
+    [AllowAnonymous]
+    [HttpPost("login")]
+    public async Task<IActionResult> Login(
+        [FromBody] LoginDto dto,
+        CancellationToken cancellationToken)
     {
-        if (dto is null ||
+        if (dto == null ||
             string.IsNullOrWhiteSpace(dto.Email) ||
             string.IsNullOrWhiteSpace(dto.Password))
         {
@@ -926,7 +926,7 @@ public async Task<IActionResult> Login(
                     existingUser.IsActive,
                 cancellationToken);
 
-        if (user is null)
+        if (user == null)
         {
             return Unauthorized(new
             {
@@ -957,8 +957,8 @@ public async Task<IActionResult> Login(
             .Distinct()
             .ToListAsync(cancellationToken);
 
-        // Backward compatibility for accounts created
-        // before the user_roles table was introduced.
+        // Support older accounts that do not yet have
+        // records in the user_roles table.
         if (selectedRoles.Count == 0 &&
             !string.IsNullOrWhiteSpace(user.Role))
         {
@@ -990,8 +990,7 @@ public async Task<IActionResult> Login(
                     supplier.UserId == user.Id)
                 .Select(supplier =>
                     (Guid?)supplier.Id)
-                .FirstOrDefaultAsync(
-                    cancellationToken);
+                .FirstOrDefaultAsync(cancellationToken);
         }
 
         if (selectedRoles.Contains(
@@ -1004,8 +1003,7 @@ public async Task<IActionResult> Login(
                     driver.UserId == user.Id)
                 .Select(driver =>
                     (Guid?)driver.Id)
-                .FirstOrDefaultAsync(
-                    cancellationToken);
+                .FirstOrDefaultAsync(cancellationToken);
         }
 
         if (selectedRoles.Contains(
@@ -1018,8 +1016,7 @@ public async Task<IActionResult> Login(
                     mechanic.UserId == user.Id)
                 .Select(mechanic =>
                     (Guid?)mechanic.Id)
-                .FirstOrDefaultAsync(
-                    cancellationToken);
+                .FirstOrDefaultAsync(cancellationToken);
         }
 
         return Ok(new
@@ -1052,8 +1049,8 @@ public async Task<IActionResult> Login(
     }
 
     private string GenerateToken(
-        User user,
-        IReadOnlyCollection<string> selectedRoles)
+    User user,
+    IReadOnlyCollection<string> selectedRoles)
     {
         var jwtKey =
             _configuration["Jwt:Key"] ??
@@ -1070,55 +1067,54 @@ public async Task<IActionResult> Login(
 
         var claims = new List<Claim>
     {
-        new(
+        new Claim(
             JwtRegisteredClaimNames.Sub,
             user.Id.ToString()),
 
-        new(
+        new Claim(
             ClaimTypes.NameIdentifier,
             user.Id.ToString()),
 
-        new(
+        new Claim(
             ClaimTypes.Name,
             user.FullName),
 
-        new(
+        new Claim(
             ClaimTypes.Email,
             user.Email),
 
-        new(
+        new Claim(
             ClaimTypes.Role,
             user.Role),
 
-        new(
+        new Claim(
             "primary_role",
             user.Role)
     };
 
-        foreach (var role in selectedRoles
+        foreach (var selectedRole in selectedRoles
             .Where(role =>
                 !string.IsNullOrWhiteSpace(role))
             .Distinct(
                 StringComparer.OrdinalIgnoreCase))
         {
-            var alreadyExists =
+            var roleAlreadyAdded =
                 claims.Any(claim =>
-                    claim.Type ==
-                        ClaimTypes.Role &&
+                    claim.Type == ClaimTypes.Role &&
                     claim.Value.Equals(
-                        role,
+                        selectedRole,
                         StringComparison.OrdinalIgnoreCase));
 
-            if (!alreadyExists)
+            if (!roleAlreadyAdded)
             {
                 claims.Add(
                     new Claim(
                         ClaimTypes.Role,
-                        role));
+                        selectedRole));
             }
         }
 
-        var token =
+        var jwtToken =
             new JwtSecurityToken(
                 issuer:
                     _configuration["Jwt:Issuer"],
@@ -1136,7 +1132,7 @@ public async Task<IActionResult> Login(
                     credentials);
 
         return new JwtSecurityTokenHandler()
-            .WriteToken(token);
+            .WriteToken(jwtToken);
     }
 
     [Authorize]

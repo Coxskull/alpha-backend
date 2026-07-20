@@ -20,10 +20,9 @@ public class CommunityBuilderDashboardService
         _configuration = configuration;
     }
 
-    public async Task<CommunityBuilderDashboardDto?>
-        GetDashboardAsync(
-            Guid userId,
-            CancellationToken cancellationToken = default)
+    public async Task<CommunityBuilderDashboardDto?> GetDashboardAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
     {
         var user = await _context.Users
             .AsNoTracking()
@@ -31,119 +30,92 @@ public class CommunityBuilderDashboardService
                 x => x.Id == userId,
                 cancellationToken);
 
-        if (user is null)
-        {
+        if (user == null)
             return null;
-        }
 
         var directMembers = await _context.Users
             .AsNoTracking()
-            .Where(x =>
-                x.ReferredByUserId == userId)
+            .Where(x => x.ReferredByUserId == userId)
             .ToListAsync(cancellationToken);
 
-        var directMemberIds =
-            directMembers
-                .Select(x => x.Id)
-                .ToList();
-
-        var transactions =
-            await _context.ReferralTransactions
-                .AsNoTracking()
-                .Where(x =>
-                    x.ReferrerId == userId)
-                .OrderByDescending(x =>
-                    x.CreatedAt)
-                .ToListAsync(cancellationToken);
+        var transactions = await _context.ReferralTransactions
+            .AsNoTracking()
+            .Where(x => x.BeneficiaryUserId == userId)
+            .OrderByDescending(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
 
         var frontendUrl =
-            _configuration[
-                "FrontendUrl"]
-            ?? "http://localhost:3000";
+            _configuration["FrontendUrl"] ??
+            "http://localhost:3000";
 
-        var referralCode =
-            user.ReferralCode ??
-            string.Empty;
+        var referralCode = user.ReferralCode ?? string.Empty;
 
         return new CommunityBuilderDashboardDto
         {
             UserId = user.Id,
 
-            FullName =
-                user.FullName ??
-                string.Empty,
+            FullName = user.FullName,
 
-            ReferralCode =
-                referralCode,
+            ReferralCode = referralCode,
 
-            ReferralLink =
-                string.IsNullOrWhiteSpace(
-                    referralCode)
-                    ? string.Empty
-                    : $"{frontendUrl.TrimEnd('/')}/register?ref={Uri.EscapeDataString(referralCode)}",
+            ReferralLink = string.IsNullOrWhiteSpace(referralCode)
+                ? string.Empty
+                : $"{frontendUrl.TrimEnd('/')}/register?ref={Uri.EscapeDataString(referralCode)}",
 
-            DirectMembers =
-                directMembers.Count,
+            DirectMembers = directMembers.Count,
 
             ActiveMembers =
-                directMembers.Count,
+                directMembers.Count(member =>
+                    transactions.Any(transaction =>
+                        transaction.SourceUserId == member.Id)),
 
             PendingRewards =
                 transactions
-                    .Where(x =>
-                        x.Status == "pending")
-                    .Sum(x => x.Amount),
+                    .Where(x => x.Status == "pending")
+                    .Sum(x => x.CommissionAmount),
 
             AvailableRewards =
                 transactions
                     .Where(x =>
+                        x.Status == "available" ||
                         x.Status == "approved")
-                    .Sum(x => x.Amount),
+                    .Sum(x => x.CommissionAmount),
 
             PaidRewards =
                 transactions
-                    .Where(x =>
-                        x.Status == "paid")
-                    .Sum(x => x.Amount),
+                    .Where(x => x.Status == "paid")
+                    .Sum(x => x.CommissionAmount),
 
             Currency =
                 transactions
                     .Select(x => x.Currency)
-                    .FirstOrDefault()
-                ?? "USD",
+                    .FirstOrDefault() ??
+                "USD",
 
             Members =
                 directMembers
                     .Select(member =>
                         new CommunityBuilderMemberDto
                         {
-                            UserId =
-                                member.Id,
+                            UserId = member.Id,
 
-                            FullName =
-                                member.FullName ??
-                                string.Empty,
+                            FullName = member.FullName,
 
-                            PrimaryRole =
-                                member.Role ??
-                                string.Empty,
+                            PrimaryRole = member.Role,
 
-                            City =
-                                member.City ??
-                                string.Empty,
+                            // City will come from entrepreneur_profiles later
+                            City = "Unspecified",
 
                             IsBusinessActive =
                                 transactions.Any(x =>
-                                    x.SourceUserId ==
-                                    member.Id),
+                                    x.SourceUserId == member.Id),
 
                             GeneratedRewards =
                                 transactions
                                     .Where(x =>
-                                        x.SourceUserId ==
-                                        member.Id)
+                                        x.SourceUserId == member.Id)
                                     .Sum(x =>
-                                        x.Amount),
+                                        x.CommissionAmount),
 
                             JoinedAt =
                                 member.CreatedAt
@@ -156,28 +128,29 @@ public class CommunityBuilderDashboardService
                     .Select(transaction =>
                         new NetworkActivityDto
                         {
-                            Id =
-                                transaction.Id,
+                            Id = transaction.Id,
 
                             MemberName =
                                 directMembers
-                                    .FirstOrDefault(x =>
-                                        x.Id ==
+                                    .FirstOrDefault(member =>
+                                        member.Id ==
                                         transaction.SourceUserId)
-                                    ?.FullName
-                                ?? "Alpha member",
+                                    ?.FullName ??
+                                "Alpha member",
 
                             TransactionType =
                                 transaction.TransactionType,
 
                             Description =
-                                transaction.Description,
+                                transaction.Description ??
+                                transaction.SourceDescription ??
+                                string.Empty,
 
                             EligibleAmount =
                                 transaction.EligibleAmount,
 
                             RewardAmount =
-                                transaction.Amount,
+                                transaction.CommissionAmount,
 
                             Currency =
                                 transaction.Currency,
@@ -192,24 +165,18 @@ public class CommunityBuilderDashboardService
 
             Cities =
                 directMembers
-                    .GroupBy(x =>
-                        string.IsNullOrWhiteSpace(
-                            x.City)
-                            ? "Unspecified"
-                            : x.City)
+                    .GroupBy(_ => "Unspecified")
                     .Select(group =>
                         new CityNetworkDto
                         {
-                            City =
-                                group.Key,
+                            City = group.Key,
 
-                            TotalMembers =
-                                group.Count(),
+                            TotalMembers = group.Count(),
 
                             ActiveMembers =
                                 group.Count(member =>
-                                    transactions.Any(x =>
-                                        x.SourceUserId ==
+                                    transactions.Any(transaction =>
+                                        transaction.SourceUserId ==
                                         member.Id)),
 
                             GeneratedRewards =
@@ -219,10 +186,8 @@ public class CommunityBuilderDashboardService
                                             member.Id ==
                                             transaction.SourceUserId))
                                     .Sum(transaction =>
-                                        transaction.Amount)
+                                        transaction.CommissionAmount)
                         })
-                    .OrderByDescending(x =>
-                        x.TotalMembers)
                     .ToList()
         };
     }
