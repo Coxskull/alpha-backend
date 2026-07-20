@@ -178,69 +178,110 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("referral_transactions");
 
-            entity.HasKey(x => x.Id);
+            entity.HasKey(transaction => transaction.Id);
 
-            entity.Property(x => x.Id)
+            entity.Property(transaction => transaction.Id)
                 .HasColumnName("id");
 
-            entity.Property(x => x.ReferrerId)
-                .HasColumnName("referrer_id");
+            entity.Property(transaction => transaction.BeneficiaryUserId)
+                .HasColumnName("beneficiary_user_id")
+                .IsRequired();
 
-            entity.Property(x => x.ReferredUserId)
-                .HasColumnName("referred_user_id");
+            entity.Property(transaction => transaction.SourceUserId)
+                .HasColumnName("source_user_id")
+                .IsRequired();
 
-            entity.Property(x => x.SourceUserId)
-                .HasColumnName("source_user_id");
-
-            entity.Property(x => x.OrderId)
+            entity.Property(transaction => transaction.OrderId)
                 .HasColumnName("order_id");
 
-            entity.Property(x => x.ServiceRequestId)
+            entity.Property(transaction => transaction.ServiceRequestId)
                 .HasColumnName("service_request_id");
 
-            entity.Property(x => x.PaymentId)
+            entity.Property(transaction => transaction.PaymentId)
                 .HasColumnName("payment_id");
 
-            entity.Property(x => x.EventKey)
-                .HasColumnName("event_key");
+            entity.Property(transaction => transaction.TransactionType)
+                .HasColumnName("transaction_type")
+                .IsRequired();
 
-            entity.Property(x => x.TransactionType)
-                .HasColumnName("transaction_type");
-
-            entity.Property(x => x.SourceRole)
+            entity.Property(transaction => transaction.SourceRole)
                 .HasColumnName("source_role");
 
-            entity.Property(x => x.Description)
-                .HasColumnName("description");
+            entity.Property(transaction => transaction.SourceDescription)
+                .HasColumnName("source_description");
 
-            entity.Property(x => x.EligibleAmount)
-                .HasColumnName("eligible_amount")
-                .HasPrecision(18, 2);
+            entity.Property(transaction => transaction.GrossAmount)
+                .HasColumnName("gross_amount")
+                .HasPrecision(18, 2)
+                .IsRequired();
 
-            entity.Property(x => x.CommissionRate)
+            entity.Property(transaction => transaction.CommissionRate)
                 .HasColumnName("commission_rate")
-                .HasPrecision(10, 6);
+                .HasPrecision(10, 6)
+                .IsRequired();
 
-            entity.Property(x => x.Amount)
-                .HasColumnName("amount")
-                .HasPrecision(18, 2);
+            entity.Property(transaction => transaction.CommissionAmount)
+                .HasColumnName("commission_amount")
+                .HasPrecision(18, 2)
+                .IsRequired();
 
-            entity.Property(x => x.Currency)
-                .HasColumnName("currency");
+            entity.Property(transaction => transaction.Currency)
+                .HasColumnName("currency")
+                .IsRequired();
 
-            entity.Property(x => x.Status)
-                .HasColumnName("status");
+            entity.Property(transaction => transaction.ReferralLevel)
+                .HasColumnName("referral_level")
+                .IsRequired();
 
-            entity.Property(x => x.CreatedAt)
-                .HasColumnName("created_at");
+            entity.Property(transaction => transaction.Status)
+                .HasColumnName("status")
+                .IsRequired();
 
-            entity.Property(x => x.ApprovedAt)
-                .HasColumnName("approved_at");
+            entity.Property(transaction => transaction.AvailableAt)
+                .HasColumnName("available_at");
 
-            entity.Property(x => x.PaidAt)
+            entity.Property(transaction => transaction.PaidAt)
                 .HasColumnName("paid_at");
 
-            entity.HasIndex(x => x.EventKey)
+            entity.Property(transaction => transaction.Metadata)
+                .HasColumnName("metadata")
+                .HasColumnType("jsonb");
+
+            entity.Property(transaction => transaction.CreatedAt)
+                .HasColumnName("created_at")
+                .IsRequired();
+
+            entity.Property(transaction => transaction.EventKey)
+                .HasColumnName("event_key");
+
+            entity.Property(transaction => transaction.Description)
+                .HasColumnName("description");
+
+            entity.Property(transaction => transaction.EligibleAmount)
+                .HasColumnName("eligible_amount")
+                .HasPrecision(18, 2)
+                .IsRequired();
+
+            entity.Property(transaction => transaction.ApprovedAt)
+                .HasColumnName("approved_at");
+
+            entity.HasOne(transaction => transaction.BeneficiaryUser)
+                .WithMany(user => user.ReferralEarnings)
+                .HasForeignKey(transaction => transaction.BeneficiaryUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(transaction => transaction.SourceUser)
+                .WithMany(user => user.GeneratedReferralTransactions)
+                .HasForeignKey(transaction => transaction.SourceUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(transaction => transaction.BeneficiaryUserId);
+
+            entity.HasIndex(transaction => transaction.SourceUserId);
+
+            entity.HasIndex(transaction => transaction.OrderId);
+
+            entity.HasIndex(transaction => transaction.EventKey)
                 .IsUnique();
         });
 
@@ -268,6 +309,78 @@ public class AppDbContext : DbContext
             entity.HasIndex(setting => setting.SettingKey)
                 .IsUnique();
         });
+
+        modelBuilder.Entity<EntrepreneurProfile>(
+    entity =>
+    {
+        entity.ToTable(
+            "entrepreneur_profiles");
+
+        entity.HasKey(profile =>
+            profile.Id);
+
+        entity.Property(profile =>
+                profile.Id)
+            .HasColumnName("id");
+
+        entity.Property(profile =>
+                profile.UserId)
+            .HasColumnName("user_id");
+
+        entity.Property(profile =>
+                profile.City)
+            .HasColumnName("city");
+
+        entity.Property(profile =>
+                profile.State)
+            .HasColumnName("state");
+
+        entity.Property(profile =>
+                profile.Country)
+            .HasColumnName("country");
+
+        entity.Property(profile =>
+                profile.PreferredLanguage)
+            .HasColumnName(
+                "preferred_language");
+
+        entity.Property(profile =>
+                profile.BusinessName)
+            .HasColumnName(
+                "business_name");
+
+        entity.Property(profile =>
+                profile.EntrepreneurialGoal)
+            .HasColumnName(
+                "entrepreneurial_goal");
+
+        entity.Property(profile =>
+                profile.OnboardingStatus)
+            .HasColumnName(
+                "onboarding_status");
+
+        entity.Property(profile =>
+                profile.TermsAcceptedAt)
+            .HasColumnName(
+                "terms_accepted_at");
+
+        entity.Property(profile =>
+                profile.RewardsPolicyAcceptedAt)
+            .HasColumnName(
+                "rewards_policy_accepted_at");
+
+        entity.Property(profile =>
+                profile.CreatedAt)
+            .HasColumnName("created_at");
+
+        entity.Property(profile =>
+                profile.UpdatedAt)
+            .HasColumnName("updated_at");
+
+        entity.HasIndex(profile =>
+                profile.UserId)
+            .IsUnique();
+    });
 
         modelBuilder.Entity<PasswordResetToken>(entity =>
         {

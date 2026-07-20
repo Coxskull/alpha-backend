@@ -120,11 +120,11 @@ public class ReferralNetworkService
 
             Summary = new ReferralSummaryDto
             {
-                DirectMembers = directMembers.Count,
-                TotalNetworkMembers = networkMembers.Count,
+                DirectMembers = directMembers.Count(),
+                TotalNetworkMembers = networkMembers.Count(),
                 ActiveNetworkMembers =
                     networkMembers.Count(member => member.IsActive),
-                NetworkTransactions = transactions.Count,
+                NetworkTransactions = transactions.Count(),
                 PendingEarnings = pending,
                 AvailableEarnings = available,
                 PaidEarnings = paid,

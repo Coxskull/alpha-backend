@@ -897,60 +897,246 @@ public class AuthController : ControllerBase
         };
     }
 
-    [HttpPost("login")]
-    public async Task<IActionResult> Login(LoginDto dto)
-    {
-        var user = await _context.Users
-    .FirstOrDefaultAsync(user =>
-        user.Email.ToLower() ==
-            dto.Email.Trim().ToLower() &&
-        user.IsActive);
 
-        if (user == null)
-            return Unauthorized("Invalid email or password.");
+[AllowAnonymous]
+[HttpPost("login")]
+public async Task<IActionResult> Login(
+    [FromBody] LoginDto dto,
+    CancellationToken cancellationToken)
+    {
+        if (dto is null ||
+            string.IsNullOrWhiteSpace(dto.Email) ||
+            string.IsNullOrWhiteSpace(dto.Password))
+        {
+            return BadRequest(new
+            {
+                message = "Email and password are required."
+            });
+        }
+
+        var normalizedEmail =
+            dto.Email.Trim().ToLowerInvariant();
+
+        var user = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                existingUser =>
+                    existingUser.Email.ToLower() ==
+                        normalizedEmail &&
+                    existingUser.IsActive,
+                cancellationToken);
+
+        if (user is null)
+        {
+            return Unauthorized(new
+            {
+                message = "Invalid email or password."
+            });
+        }
 
         var validPassword =
-            BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash);
+            BCrypt.Net.BCrypt.Verify(
+                dto.Password,
+                user.PasswordHash);
 
         if (!validPassword)
-            return Unauthorized("Invalid email or password.");
-
-        var token = GenerateToken(user);
-
-        Guid? supplierId = null;
-
-        if (user.Role == "supplier" || user.Role == "provider")
         {
-            supplierId = await _context.Suppliers
-                .Where(s => s.UserId == user.Id)
-                .Select(s => (Guid?)s.Id)
-                .FirstOrDefaultAsync();
+            return Unauthorized(new
+            {
+                message = "Invalid email or password."
+            });
         }
 
         var selectedRoles = await _context.UserRoles
-    .AsNoTracking()
-    .Where(role =>
-        role.UserId == user.Id &&
-        role.Status != "rejected" &&
-        role.Status != "suspended")
-    .Select(role => role.RoleKey)
-    .ToListAsync();
+            .AsNoTracking()
+            .Where(role =>
+                role.UserId == user.Id &&
+                role.Status != "rejected" &&
+                role.Status != "suspended")
+            .Select(role => role.RoleKey)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        // Backward compatibility for accounts created
+        // before the user_roles table was introduced.
+        if (selectedRoles.Count == 0 &&
+            !string.IsNullOrWhiteSpace(user.Role))
+        {
+            selectedRoles.Add(user.Role);
+        }
+
+        if (!selectedRoles.Contains(
+            user.Role,
+            StringComparer.OrdinalIgnoreCase))
+        {
+            selectedRoles.Insert(0, user.Role);
+        }
+
+        var token = GenerateToken(
+            user,
+            selectedRoles);
+
+        Guid? supplierId = null;
+        Guid? driverId = null;
+        Guid? mechanicId = null;
+
+        if (selectedRoles.Contains(
+            EntrepreneurRoles.Supplier,
+            StringComparer.OrdinalIgnoreCase))
+        {
+            supplierId = await _context.Suppliers
+                .AsNoTracking()
+                .Where(supplier =>
+                    supplier.UserId == user.Id)
+                .Select(supplier =>
+                    (Guid?)supplier.Id)
+                .FirstOrDefaultAsync(
+                    cancellationToken);
+        }
+
+        if (selectedRoles.Contains(
+            EntrepreneurRoles.Driver,
+            StringComparer.OrdinalIgnoreCase))
+        {
+            driverId = await _context.Drivers
+                .AsNoTracking()
+                .Where(driver =>
+                    driver.UserId == user.Id)
+                .Select(driver =>
+                    (Guid?)driver.Id)
+                .FirstOrDefaultAsync(
+                    cancellationToken);
+        }
+
+        if (selectedRoles.Contains(
+            EntrepreneurRoles.Mechanic,
+            StringComparer.OrdinalIgnoreCase))
+        {
+            mechanicId = await _context.Mechanics
+                .AsNoTracking()
+                .Where(mechanic =>
+                    mechanic.UserId == user.Id)
+                .Select(mechanic =>
+                    (Guid?)mechanic.Id)
+                .FirstOrDefaultAsync(
+                    cancellationToken);
+        }
 
         return Ok(new
         {
             token,
+
             user = new
             {
                 user.Id,
                 user.FullName,
                 user.Email,
                 user.Phone,
+
                 role = user.Role,
                 primaryRole = user.Role,
                 roles = selectedRoles,
-                user.ReferralCode
+
+                user.ReferralCode,
+                user.ReferredByUserId,
+
+                supplierId,
+                driverId,
+                mechanicId,
+
+                nextStep = selectedRoles.Count > 1
+                    ? "/select-workspace"
+                    : GetDashboardRoute(user.Role)
             }
         });
+    }
+
+    private string GenerateToken(
+        User user,
+        IReadOnlyCollection<string> selectedRoles)
+    {
+        var jwtKey =
+            _configuration["Jwt:Key"] ??
+            throw new InvalidOperationException(
+                "JWT key is missing.");
+
+        var key = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(jwtKey));
+
+        var credentials =
+            new SigningCredentials(
+                key,
+                SecurityAlgorithms.HmacSha256);
+
+        var claims = new List<Claim>
+    {
+        new(
+            JwtRegisteredClaimNames.Sub,
+            user.Id.ToString()),
+
+        new(
+            ClaimTypes.NameIdentifier,
+            user.Id.ToString()),
+
+        new(
+            ClaimTypes.Name,
+            user.FullName),
+
+        new(
+            ClaimTypes.Email,
+            user.Email),
+
+        new(
+            ClaimTypes.Role,
+            user.Role),
+
+        new(
+            "primary_role",
+            user.Role)
+    };
+
+        foreach (var role in selectedRoles
+            .Where(role =>
+                !string.IsNullOrWhiteSpace(role))
+            .Distinct(
+                StringComparer.OrdinalIgnoreCase))
+        {
+            var alreadyExists =
+                claims.Any(claim =>
+                    claim.Type ==
+                        ClaimTypes.Role &&
+                    claim.Value.Equals(
+                        role,
+                        StringComparison.OrdinalIgnoreCase));
+
+            if (!alreadyExists)
+            {
+                claims.Add(
+                    new Claim(
+                        ClaimTypes.Role,
+                        role));
+            }
+        }
+
+        var token =
+            new JwtSecurityToken(
+                issuer:
+                    _configuration["Jwt:Issuer"],
+
+                audience:
+                    _configuration["Jwt:Audience"],
+
+                claims:
+                    claims,
+
+                expires:
+                    DateTime.UtcNow.AddDays(7),
+
+                signingCredentials:
+                    credentials);
+
+        return new JwtSecurityTokenHandler()
+            .WriteToken(token);
     }
 
     [Authorize]

@@ -360,64 +360,48 @@ public class ReferralCommissionService
             return null;
         }
 
-        var referralTransaction =
-            new ReferralTransaction
-            {
-                Id =
-                    Guid.NewGuid(),
+        var referralTransaction = new ReferralTransaction
+        {
+            Id = Guid.NewGuid(),
 
-                BeneficiaryUserId =
-                    beneficiaryUserId,
+            BeneficiaryUserId = beneficiaryUserId,
 
-                SourceUserId =
-                    sourceUser.Id,
+            SourceUserId = sourceUser.Id,
 
-                OrderId =
-                    businessEvent.OrderId,
+            OrderId = businessEvent.OrderId,
 
-                ServiceRequestId =
-                    businessEvent.ServiceRequestId,
+            ServiceRequestId = businessEvent.ServiceRequestId,
 
-                PaymentId =
-                    businessEvent.PaymentId,
+            PaymentId = businessEvent.PaymentId,
 
-                EventKey =
-                    eventKey,
+            EventKey = eventKey,
 
-                TransactionType =
-                    transactionType,
+            TransactionType = transactionType,
 
-                SourceRole =
-                    string.IsNullOrWhiteSpace(
-                        sourceRole)
-                        ? NormalizeValue(
-                            sourceUser.Role)
-                        : sourceRole,
+            SourceRole = string.IsNullOrWhiteSpace(sourceRole)
+        ? NormalizeValue(sourceUser.Role)
+        : sourceRole,
 
-                SourceDescription =
-                    businessEvent.Description,
+            SourceDescription = businessEvent.Description,
 
-                GrossAmount =
-                    businessEvent.EligibleAmount,
+            Description = businessEvent.Description,
 
-                CommissionRate =
-                    commissionRate,
+            GrossAmount = businessEvent.EligibleAmount,
 
-                CommissionAmount =
-                    commissionAmount,
+            EligibleAmount = businessEvent.EligibleAmount,
 
-                Currency =
-                    currency,
+            CommissionRate = commissionRate,
 
-                ReferralLevel =
-                    1,
+            CommissionAmount = commissionAmount,
 
-                Status =
-                    "pending",
+            Currency = currency,
 
-                CreatedAt =
-                    DateTime.UtcNow
-            };
+            ReferralLevel = 1,
+
+            Status = "pending",
+
+            CreatedAt = DateTime.UtcNow
+        };
 
         _context.ReferralTransactions.Add(
             referralTransaction);
