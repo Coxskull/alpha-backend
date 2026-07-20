@@ -970,9 +970,9 @@ public class AuthController : ControllerBase
             selectedRoles.Insert(0, user.Role);
         }
 
-        var token = GenerateToken(
-            user,
-            selectedRoles);
+        var token = await GenerateTokenAsync(
+    user,
+    cancellationToken);
 
         Guid? supplierId = null;
         Guid? driverId = null;
@@ -1049,86 +1049,115 @@ public class AuthController : ControllerBase
         });
     }
 
-    private string GenerateToken(
+    private async Task<string> GenerateTokenAsync(
     User user,
-    IReadOnlyCollection<string> selectedRoles)
+    CancellationToken cancellationToken = default)
     {
         var jwtKey =
             _configuration["Jwt:Key"] ??
             throw new InvalidOperationException(
                 "JWT key is missing.");
 
-        var key = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(jwtKey));
+        var selectedRoles = await _context.UserRoles
+            .AsNoTracking()
+            .Where(role =>
+                role.UserId == user.Id &&
+                role.Status != "rejected" &&
+                role.Status != "suspended")
+            .Select(role => role.RoleKey)
+            .Distinct()
+            .ToListAsync(cancellationToken);
 
-        var credentials = new SigningCredentials(
-            key,
-            SecurityAlgorithms.HmacSha256);
+        // Support accounts created before user_roles existed.
+        if (selectedRoles.Count == 0 &&
+            !string.IsNullOrWhiteSpace(user.Role))
+        {
+            selectedRoles.Add(user.Role);
+        }
 
-        var claims = new List<Claim>
-    {
-        new Claim(
-            JwtRegisteredClaimNames.Sub,
-            user.Id.ToString()),
+        if (!string.IsNullOrWhiteSpace(user.Role) &&
+            !selectedRoles.Contains(
+                user.Role,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            selectedRoles.Insert(0, user.Role);
+        }
 
-        new Claim(
-            ClaimTypes.NameIdentifier,
-            user.Id.ToString()),
+        var securityKey =
+            new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(jwtKey));
 
-        new Claim(
-            ClaimTypes.Name,
-            user.FullName),
+        var credentials =
+            new SigningCredentials(
+                securityKey,
+                SecurityAlgorithms.HmacSha256);
 
-        new Claim(
-            ClaimTypes.Email,
-            user.Email),
+        var claims =
+            new List<System.Security.Claims.Claim>
+            {
+            new System.Security.Claims.Claim(
+                JwtRegisteredClaimNames.Sub,
+                user.Id.ToString()),
 
-        new Claim(
-            ClaimTypes.Role,
-            user.Role),
+            new System.Security.Claims.Claim(
+                ClaimTypes.NameIdentifier,
+                user.Id.ToString()),
 
-        new Claim(
-            "primary_role",
-            user.Role)
-    };
+            new System.Security.Claims.Claim(
+                ClaimTypes.Name,
+                user.FullName),
 
-        foreach (var role in selectedRoles
+            new System.Security.Claims.Claim(
+                ClaimTypes.Email,
+                user.Email),
+
+            new System.Security.Claims.Claim(
+                ClaimTypes.Role,
+                user.Role),
+
+            new System.Security.Claims.Claim(
+                "primary_role",
+                user.Role)
+            };
+
+        foreach (var selectedRole in selectedRoles
             .Where(role =>
                 !string.IsNullOrWhiteSpace(role))
             .Distinct(
                 StringComparer.OrdinalIgnoreCase))
         {
-            var alreadyAdded =
+            var roleAlreadyIncluded =
                 claims.Any(claim =>
                     claim.Type == ClaimTypes.Role &&
                     claim.Value.Equals(
-                        role,
+                        selectedRole,
                         StringComparison.OrdinalIgnoreCase));
 
-            if (!alreadyAdded)
+            if (!roleAlreadyIncluded)
             {
                 claims.Add(
-                    new Claim(
+                    new System.Security.Claims.Claim(
                         ClaimTypes.Role,
-                        role));
+                        selectedRole));
             }
         }
 
-        var jwtToken = new JwtSecurityToken(
-            issuer:
-                _configuration["Jwt:Issuer"],
+        var jwtToken =
+            new JwtSecurityToken(
+                issuer:
+                    _configuration["Jwt:Issuer"],
 
-            audience:
-                _configuration["Jwt:Audience"],
+                audience:
+                    _configuration["Jwt:Audience"],
 
-            claims:
-                claims,
+                claims:
+                    claims,
 
-            expires:
-                DateTime.UtcNow.AddDays(7),
+                expires:
+                    DateTime.UtcNow.AddDays(7),
 
-            signingCredentials:
-                credentials);
+                signingCredentials:
+                    credentials);
 
         return new JwtSecurityTokenHandler()
             .WriteToken(jwtToken);
@@ -1146,53 +1175,7 @@ public class AuthController : ControllerBase
         });
     }
 
-    private string GenerateToken(User user)
-    {
-        var jwtKey =
-            _configuration["Jwt:Key"] ??
-            throw new Exception("JWT key is missing.");
-
-        var key = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(jwtKey)
-        );
-
-        var credentials = new SigningCredentials(
-            key,
-            SecurityAlgorithms.HmacSha256
-        );
-
-        var claims = new List<Claim>
-{
-    new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-    new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-    new(ClaimTypes.Name, user.FullName),
-    new(ClaimTypes.Email, user.Email),
-
-    // Primary role for old routes.
-    new(ClaimTypes.Role, user.Role),
-    new("primary_role", user.Role)
-};
-
-        foreach (var role in selectedRoles.Distinct())
-        {
-            if (!claims.Any(claim =>
-                claim.Type == ClaimTypes.Role &&
-                claim.Value == role))
-            {
-                claims.Add(new Claim(ClaimTypes.Role, role));
-            }
-        }
-
-        var token = new JwtSecurityToken(
-            issuer: _configuration["Jwt:Issuer"],
-            audience: _configuration["Jwt:Audience"],
-            claims: claims,
-            expires: DateTime.UtcNow.AddDays(7),
-            signingCredentials: credentials
-        );
-
-        return new JwtSecurityTokenHandler().WriteToken(token);
-    }
+   
 
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword(
