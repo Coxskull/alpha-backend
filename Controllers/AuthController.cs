@@ -901,8 +901,8 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     [HttpPost("login")]
     public async Task<IActionResult> Login(
-        [FromBody] LoginDto dto,
-        CancellationToken cancellationToken)
+    [FromBody] LoginDto dto,
+    CancellationToken cancellationToken)
     {
         if (dto == null ||
             string.IsNullOrWhiteSpace(dto.Email) ||
@@ -957,8 +957,6 @@ public class AuthController : ControllerBase
             .Distinct()
             .ToListAsync(cancellationToken);
 
-        // Support older accounts that do not yet have
-        // records in the user_roles table.
         if (selectedRoles.Count == 0 &&
             !string.IsNullOrWhiteSpace(user.Role))
         {
@@ -990,7 +988,8 @@ public class AuthController : ControllerBase
                     supplier.UserId == user.Id)
                 .Select(supplier =>
                     (Guid?)supplier.Id)
-                .FirstOrDefaultAsync(cancellationToken);
+                .FirstOrDefaultAsync(
+                    cancellationToken);
         }
 
         if (selectedRoles.Contains(
@@ -1003,7 +1002,8 @@ public class AuthController : ControllerBase
                     driver.UserId == user.Id)
                 .Select(driver =>
                     (Guid?)driver.Id)
-                .FirstOrDefaultAsync(cancellationToken);
+                .FirstOrDefaultAsync(
+                    cancellationToken);
         }
 
         if (selectedRoles.Contains(
@@ -1016,7 +1016,8 @@ public class AuthController : ControllerBase
                     mechanic.UserId == user.Id)
                 .Select(mechanic =>
                     (Guid?)mechanic.Id)
-                .FirstOrDefaultAsync(cancellationToken);
+                .FirstOrDefaultAsync(
+                    cancellationToken);
         }
 
         return Ok(new
@@ -1060,10 +1061,9 @@ public class AuthController : ControllerBase
         var key = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes(jwtKey));
 
-        var credentials =
-            new SigningCredentials(
-                key,
-                SecurityAlgorithms.HmacSha256);
+        var credentials = new SigningCredentials(
+            key,
+            SecurityAlgorithms.HmacSha256);
 
         var claims = new List<Claim>
     {
@@ -1092,44 +1092,43 @@ public class AuthController : ControllerBase
             user.Role)
     };
 
-        foreach (var selectedRole in selectedRoles
+        foreach (var role in selectedRoles
             .Where(role =>
                 !string.IsNullOrWhiteSpace(role))
             .Distinct(
                 StringComparer.OrdinalIgnoreCase))
         {
-            var roleAlreadyAdded =
+            var alreadyAdded =
                 claims.Any(claim =>
                     claim.Type == ClaimTypes.Role &&
                     claim.Value.Equals(
-                        selectedRole,
+                        role,
                         StringComparison.OrdinalIgnoreCase));
 
-            if (!roleAlreadyAdded)
+            if (!alreadyAdded)
             {
                 claims.Add(
                     new Claim(
                         ClaimTypes.Role,
-                        selectedRole));
+                        role));
             }
         }
 
-        var jwtToken =
-            new JwtSecurityToken(
-                issuer:
-                    _configuration["Jwt:Issuer"],
+        var jwtToken = new JwtSecurityToken(
+            issuer:
+                _configuration["Jwt:Issuer"],
 
-                audience:
-                    _configuration["Jwt:Audience"],
+            audience:
+                _configuration["Jwt:Audience"],
 
-                claims:
-                    claims,
+            claims:
+                claims,
 
-                expires:
-                    DateTime.UtcNow.AddDays(7),
+            expires:
+                DateTime.UtcNow.AddDays(7),
 
-                signingCredentials:
-                    credentials);
+            signingCredentials:
+                credentials);
 
         return new JwtSecurityTokenHandler()
             .WriteToken(jwtToken);
