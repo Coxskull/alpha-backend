@@ -7,8 +7,10 @@ public class CreateOrderDto
     public string DeliveryAddress { get; set; } = string.Empty;
     public string ItemDescription { get; set; } = string.Empty;
     public string Zone { get; set; } = string.Empty;
+
+    public string CountryCode { get; set; } = "MX";
     public string PaymentMethod { get; set; } = "cash";
-    public string Currency { get; set; } = "USD";
+    public string Currency { get; set; } = "MXN";
 
     public List<CreateOrderItemDto> Items { get; set; } = new();
 }

@@ -50,4 +50,10 @@ public class Order
     public Guid? CustomerId { get; set; }
 
     public User? CustomerUser { get; set; }
+
+    [Column("country_code")]
+    public string CountryCode { get; set; } = "MX";
+
+    [Column("currency")]
+    public string Currency { get; set; } = "MXN";
 }

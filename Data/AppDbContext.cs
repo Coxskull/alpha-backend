@@ -59,6 +59,8 @@ public class AppDbContext : DbContext
 
     public DbSet<ReferralCommissionRate> ReferralCommissionRates =>
     Set<ReferralCommissionRate>();
+    public DbSet<PaymentWebhookEvent> PaymentWebhookEvents =>
+    Set<PaymentWebhookEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -173,6 +175,14 @@ public class AppDbContext : DbContext
                 x.Currency
             });
         });
+
+        modelBuilder.Entity<PaymentWebhookEvent>()
+    .HasIndex(x => new
+    {
+        x.Gateway,
+        x.GatewayEventId
+    })
+    .IsUnique();
 
         modelBuilder.Entity<ReferralTransaction>(entity =>
         {

@@ -669,4 +669,32 @@ public class PayPalController : ControllerBase
             });
         }
     }
+    [HttpGet("order/{orderId:guid}")]
+    public async Task<IActionResult> GetByOrder(
+    Guid orderId,
+    CancellationToken cancellationToken)
+    {
+        var payment = await _context.Payments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                x => x.OrderId == orderId,
+                cancellationToken);
+
+        if (payment == null)
+            return NotFound();
+
+        return Ok(new
+        {
+            payment.Id,
+            payment.OrderId,
+            payment.Amount,
+            payment.Currency,
+            payment.PaymentMethod,
+            payment.PaymentGateway,
+            payment.PaymentStatus,
+            payment.TransactionReference,
+            payment.PaidAt,
+            payment.FailureReason
+        });
+    }
 }

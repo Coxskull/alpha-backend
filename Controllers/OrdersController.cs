@@ -19,19 +19,22 @@ public class OrdersController : ControllerBase
     private readonly SettlementService _settlements;
     private readonly TaxEngineService _taxEngine;
     private readonly ReferralCommissionService _referralCommissionService;
+    private readonly CountryCurrencyService _countryCurrencyService;
 
     public OrdersController(
         AppDbContext context,
         OrderWorkflowService workflow,
         SettlementService settlements,
         TaxEngineService taxEngine,
-        ReferralCommissionService referralCommissionService)
+        ReferralCommissionService referralCommissionService,
+        CountryCurrencyService countryCurrencyService)
     {
         _context = context;
         _workflow = workflow;
         _settlements = settlements;
         _taxEngine = taxEngine;
         _referralCommissionService = referralCommissionService;
+        _countryCurrencyService = countryCurrencyService;
     }
 
     // =========================================================
@@ -40,110 +43,499 @@ public class OrdersController : ControllerBase
     // =========================================================
 
     [HttpPost]
-    public async Task<IActionResult> CreateOrder(CreateOrderDto dto)
+    public async Task<IActionResult> CreateOrder(
+    CreateOrderDto dto,
+    CancellationToken cancellationToken)
     {
+        await using var databaseTransaction =
+            await _context.Database.BeginTransactionAsync(cancellationToken);
+
         try
         {
-            var currency = string.IsNullOrWhiteSpace(dto.Currency)
-                ? "USD"
-                : dto.Currency.ToUpper();
+            // ---------------------------------------------------------
+            // 1. Validate request
+            // ---------------------------------------------------------
 
-            if (currency != "USD" && currency != "MXN")
-                return BadRequest("Currency must be USD or MXN.");
-
-            if (dto.Items == null || !dto.Items.Any())
-                return BadRequest("Cart is empty.");
-
-            var productIds = dto.Items.Select(x => x.ProductId).ToList();
-
-            var products = await _context.Products
-                .Where(x => productIds.Contains(x.Id) && x.IsActive)
-                .ToListAsync();
-
-            if (products.Count != productIds.Count)
-                return BadRequest("One or more products are invalid.");
-
-            foreach (var item in dto.Items)
+            if (dto == null)
             {
-                var product = products.First(x => x.Id == item.ProductId);
-
-                if (item.Quantity <= 0)
-                    return BadRequest("Quantity must be greater than 0.");
-
-                if (product.QuantityAvailable < item.Quantity)
-                    return BadRequest($"{product.Name} does not have enough stock.");
+                return BadRequest(new
+                {
+                    message = "Order information is required."
+                });
             }
 
-            decimal itemSubtotal = dto.Items.Sum(item =>
+            if (string.IsNullOrWhiteSpace(dto.CustomerName))
             {
-                var product = products.First(x => x.Id == item.ProductId);
+                return BadRequest(new
+                {
+                    message = "Customer name is required."
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(dto.DeliveryAddress))
+            {
+                return BadRequest(new
+                {
+                    message = "Delivery address is required."
+                });
+            }
+
+            if (dto.Items == null || dto.Items.Count == 0)
+            {
+                return BadRequest(new
+                {
+                    message = "Cart is empty."
+                });
+            }
+
+            if (dto.Items.Any(x => x.Quantity <= 0))
+            {
+                return BadRequest(new
+                {
+                    message = "Every item quantity must be greater than zero."
+                });
+            }
+
+            // ---------------------------------------------------------
+            // 2. Resolve country and currency
+            // ---------------------------------------------------------
+
+            var countryCode = string.IsNullOrWhiteSpace(dto.CountryCode)
+                ? "MX"
+                : dto.CountryCode.Trim().ToUpperInvariant();
+
+            var allowedCountries = new[]
+            {
+            "PH",
+            "MX",
+            "US"
+        };
+
+            if (!allowedCountries.Contains(countryCode))
+            {
+                return BadRequest(new
+                {
+                    message = "Country must be PH, MX, or US."
+                });
+            }
+
+            var requiredCurrency = countryCode switch
+            {
+                "PH" => "PHP",
+                "MX" => "MXN",
+                "US" => "USD",
+                _ => throw new InvalidOperationException(
+                    "Unable to determine currency.")
+            };
+
+            var currency = string.IsNullOrWhiteSpace(dto.Currency)
+                ? requiredCurrency
+                : dto.Currency.Trim().ToUpperInvariant();
+
+            var allowedCurrencies = new[]
+            {
+            "PHP",
+            "MXN",
+            "USD"
+        };
+
+            if (!allowedCurrencies.Contains(currency))
+            {
+                return BadRequest(new
+                {
+                    message = "Currency must be PHP, MXN, or USD."
+                });
+            }
+
+            if (currency != requiredCurrency)
+            {
+                return BadRequest(new
+                {
+                    message =
+                        $"Orders from {countryCode} must use {requiredCurrency}."
+                });
+            }
+
+            // ---------------------------------------------------------
+            // 3. Validate payment method
+            // ---------------------------------------------------------
+
+            var paymentMethod = string.IsNullOrWhiteSpace(dto.PaymentMethod)
+                ? "cash"
+                : dto.PaymentMethod.Trim().ToLowerInvariant();
+
+            var allowedPaymentMethods = new[]
+            {
+            "cash",
+            "paypal",
+            "paymongo_gcash"
+        };
+
+            if (!allowedPaymentMethods.Contains(paymentMethod))
+            {
+                return BadRequest(new
+                {
+                    message =
+                        "Payment method must be cash, paypal, or paymongo_gcash."
+                });
+            }
+
+            if (paymentMethod == "paymongo_gcash" &&
+                countryCode != "PH")
+            {
+                return BadRequest(new
+                {
+                    message =
+                        "GCash through PayMongo is available only for Philippine orders."
+                });
+            }
+
+            if (paymentMethod == "paymongo_gcash" &&
+                currency != "PHP")
+            {
+                return BadRequest(new
+                {
+                    message =
+                        "GCash through PayMongo requires Philippine Peso or PHP."
+                });
+            }
+
+            if (paymentMethod == "paypal" &&
+                countryCode == "PH")
+            {
+                return BadRequest(new
+                {
+                    message =
+                        "Use PayMongo GCash or cash for Philippine orders."
+                });
+            }
+
+            // ---------------------------------------------------------
+            // 4. Combine duplicate cart items
+            // ---------------------------------------------------------
+
+            var normalizedItems = dto.Items
+                .GroupBy(x => x.ProductId)
+                .Select(group => new
+                {
+                    ProductId = group.Key,
+                    Quantity = group.Sum(x => x.Quantity)
+                })
+                .ToList();
+
+            var productIds = normalizedItems
+                .Select(x => x.ProductId)
+                .Distinct()
+                .ToList();
+
+            // ---------------------------------------------------------
+            // 5. Load products
+            // ---------------------------------------------------------
+
+            var products = await _context.Products
+                .Where(x =>
+                    productIds.Contains(x.Id) &&
+                    x.IsActive)
+                .ToListAsync(cancellationToken);
+
+            if (products.Count != productIds.Count)
+            {
+                var foundProductIds = products
+                    .Select(x => x.Id)
+                    .ToHashSet();
+
+                var missingProductIds = productIds
+                    .Where(x => !foundProductIds.Contains(x))
+                    .ToList();
+
+                return BadRequest(new
+                {
+                    message =
+                        "One or more products are invalid or inactive.",
+                    missingProductIds
+                });
+            }
+
+            // ---------------------------------------------------------
+            // 6. Validate product currency, country, and stock
+            // ---------------------------------------------------------
+
+            foreach (var item in normalizedItems)
+            {
+                var product = products.First(
+                    x => x.Id == item.ProductId);
+
+                if (item.Quantity <= 0)
+                {
+                    return BadRequest(new
+                    {
+                        message =
+                            $"Quantity for {product.Name} must be greater than zero."
+                    });
+                }
+
+                /*
+                 * These validations require Product.Currency and
+                 * Product.CountryCode properties.
+                 *
+                 * Remove these two blocks temporarily if those columns
+                 * have not yet been added to your Product model.
+                 */
+
+                if (!string.IsNullOrWhiteSpace(product.Currency) &&
+                    !string.Equals(
+                        product.Currency,
+                        currency,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return BadRequest(new
+                    {
+                        message =
+                            $"{product.Name} is priced in {product.Currency}, " +
+                            $"but the order uses {currency}."
+                    });
+                }
+
+                if (!string.IsNullOrWhiteSpace(product.CountryCode) &&
+                    !string.Equals(
+                        product.CountryCode,
+                        countryCode,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return BadRequest(new
+                    {
+                        message =
+                            $"{product.Name} is not available for country {countryCode}."
+                    });
+                }
+
+                if (product.QuantityAvailable < item.Quantity)
+                {
+                    return BadRequest(new
+                    {
+                        message =
+                            $"{product.Name} does not have enough stock.",
+                        requestedQuantity = item.Quantity,
+                        availableQuantity = product.QuantityAvailable
+                    });
+                }
+            }
+
+            // ---------------------------------------------------------
+            // 7. Calculate product subtotal
+            // ---------------------------------------------------------
+
+            decimal itemSubtotal = normalizedItems.Sum(item =>
+            {
+                var product = products.First(
+                    x => x.Id == item.ProductId);
+
                 return product.Price * item.Quantity;
             });
 
-            decimal deliveryFee = 8.00m;
-            decimal serviceFee = 3.00m;
-            decimal tax = 0;
-            decimal discount = 0;
-            decimal totalAmount = 0;
+            itemSubtotal = Math.Round(
+                itemSubtotal,
+                2,
+                MidpointRounding.AwayFromZero);
 
-            decimal exchangeRate = currency == "MXN" ? 17.00m : 1.00m;
-            decimal supplierEarning = itemSubtotal * 0.80m;
-            decimal driverEarning = deliveryFee * 0.70m;
-            decimal companyRevenue =
+            // ---------------------------------------------------------
+            // 8. Apply country-specific fees
+            // ---------------------------------------------------------
+
+            decimal deliveryFee = countryCode switch
+            {
+                "PH" => 100.00m,
+                "MX" => 8.00m,
+                "US" => 8.00m,
+                _ => 0.00m
+            };
+
+            decimal serviceFee = countryCode switch
+            {
+                "PH" => 50.00m,
+                "MX" => 3.00m,
+                "US" => 3.00m,
+                _ => 0.00m
+            };
+
+            decimal discount = 0.00m;
+            decimal tax = 0.00m;
+            decimal totalAmount = 0.00m;
+
+            /*
+             * The order values are stored directly in their selected
+             * currency. Do not use a hard-coded exchange rate here.
+             */
+            decimal exchangeRate = 1.00m;
+
+            // ---------------------------------------------------------
+            // 9. Calculate preliminary earnings
+            // ---------------------------------------------------------
+
+            decimal supplierEarning = Math.Round(
+                itemSubtotal * 0.80m,
+                2,
+                MidpointRounding.AwayFromZero);
+
+            decimal driverEarning = Math.Round(
+                deliveryFee * 0.70m,
+                2,
+                MidpointRounding.AwayFromZero);
+
+            decimal companyRevenue = Math.Round(
                 serviceFee +
                 (itemSubtotal * 0.20m) +
-                (deliveryFee * 0.30m);
+                (deliveryFee * 0.30m),
+                2,
+                MidpointRounding.AwayFromZero);
+
+            // ---------------------------------------------------------
+            // 10. Get customer ID from authenticated user
+            // ---------------------------------------------------------
+
+            Guid? customerId = null;
+
+            var userIdClaim =
+                User.FindFirst(
+                    System.Security.Claims.ClaimTypes.NameIdentifier)
+                    ?.Value;
+
+            if (string.IsNullOrWhiteSpace(userIdClaim))
+            {
+                userIdClaim =
+                    User.FindFirst("sub")?.Value;
+            }
+
+            if (string.IsNullOrWhiteSpace(userIdClaim))
+            {
+                userIdClaim =
+                    User.FindFirst("userId")?.Value;
+            }
+
+            if (Guid.TryParse(userIdClaim, out var authenticatedUserId))
+            {
+                var customerExists = await _context.Customers
+                    .AnyAsync(
+                        x => x.Id == authenticatedUserId,
+                        cancellationToken);
+
+                if (customerExists)
+                {
+                    customerId = authenticatedUserId;
+                }
+            }
+
+            // ---------------------------------------------------------
+            // 11. Create order
+            // ---------------------------------------------------------
+
+            var now = DateTime.UtcNow;
 
             var order = new Order
             {
                 Id = Guid.NewGuid(),
-                CustomerName = dto.CustomerName,
-                PickupAddress = dto.PickupAddress,
-                DeliveryAddress = dto.DeliveryAddress,
-                ItemDescription = dto.ItemDescription,
-                Zone = dto.Zone,
-                OrderNumber = $"ALPHA-{DateTime.UtcNow.Ticks}",
+
+                CustomerId = customerId,
+
+                CustomerName = dto.CustomerName.Trim(),
+
+                PickupAddress =
+                    string.IsNullOrWhiteSpace(dto.PickupAddress)
+                        ? dto.DeliveryAddress.Trim()
+                        : dto.PickupAddress.Trim(),
+
+                DeliveryAddress = dto.DeliveryAddress.Trim(),
+
+                ItemDescription =
+                    string.IsNullOrWhiteSpace(dto.ItemDescription)
+                        ? string.Join(
+                            ", ",
+                            normalizedItems.Select(item =>
+                            {
+                                var product = products.First(
+                                    x => x.Id == item.ProductId);
+
+                                return $"{product.Name} x{item.Quantity}";
+                            }))
+                        : dto.ItemDescription.Trim(),
+
+                Zone = string.IsNullOrWhiteSpace(dto.Zone)
+                    ? countryCode
+                    : dto.Zone.Trim(),
+
+                CountryCode = countryCode,
+                Currency = currency,
+
+                OrderNumber =
+                    $"ALPHA-{now:yyyyMMddHHmmssfff}",
+
                 Status = OrderStatuses.PaymentPending,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+
+                CreatedAt = now,
+                UpdatedAt = now
             };
 
             _context.Orders.Add(order);
 
-            // Save order first so order_financials.order_id has a valid parent order.
-            await _context.SaveChangesAsync();
+            /*
+             * Save the order first because order_items and
+             * order_financials reference orders.id.
+             */
+            await _context.SaveChangesAsync(cancellationToken);
 
-            foreach (var item in dto.Items)
+            // ---------------------------------------------------------
+            // 12. Create order items and deduct stock
+            // ---------------------------------------------------------
+
+            foreach (var item in normalizedItems)
             {
-                var product = products.First(x => x.Id == item.ProductId);
+                var product = products.First(
+                    x => x.Id == item.ProductId);
 
-                _context.OrderItems.Add(new OrderItem
+                var orderItem = new OrderItem
                 {
                     Id = Guid.NewGuid(),
                     OrderId = order.Id,
                     ProductId = product.Id,
                     Quantity = item.Quantity,
                     UnitPrice = product.Price
-                });
+                };
+
+                _context.OrderItems.Add(orderItem);
 
                 product.QuantityAvailable -= item.Quantity;
             }
+
+            // ---------------------------------------------------------
+            // 13. Create preliminary financial record
+            // ---------------------------------------------------------
+
+            var financialStatus =
+                paymentMethod is "paypal" or "paymongo_gcash"
+                    ? "awaiting_payment"
+                    : "pending_review";
 
             var financial = new OrderFinancial
             {
                 Id = Guid.NewGuid(),
                 OrderId = order.Id,
+
                 Currency = currency,
                 ExchangeRate = exchangeRate,
 
                 ItemSubtotal = itemSubtotal,
                 DeliveryFee = deliveryFee,
                 ServiceFee = serviceFee,
+
                 Tax = tax,
+                TaxCollected = 0,
+                TaxWithheld = 0,
+
                 Discount = discount,
                 TotalAmount = totalAmount,
 
                 CustomerPaid = 0,
+
                 SupplierAmount = supplierEarning,
                 DriverAmount = driverEarning,
                 MechanicAmount = 0,
@@ -153,61 +545,208 @@ public class OrdersController : ControllerBase
                 DriverEarning = driverEarning,
                 CompanyRevenue = companyRevenue,
 
-                FinancialStatus = dto.PaymentMethod == "paypal"
-                    ? "awaiting_payment"
-                    : "pending_review",
+                SupplierNetPayable = supplierEarning,
+                DriverNetPayable = driverEarning,
+                MechanicNetPayable = 0,
+                AlphaNetRevenue = companyRevenue,
 
+                ProcessingFee = 0,
+                RefundAmount = 0,
+                DisputeReserve = 0,
+                ReconciliationDifference = 0,
+
+                FinancialStatus = financialStatus,
                 PayoutStatus = "not_ready",
-                CreatedAt = DateTime.UtcNow
+                SettlementStatus = "pending",
+
+                CreatedAt = now
             };
 
             _context.OrderFinancials.Add(financial);
-            await _context.SaveChangesAsync();
 
-            var country = "MX";
+            await _context.SaveChangesAsync(cancellationToken);
 
-            var taxBreakdown = await _taxEngine.CalculateOrderTaxes(
-                order.Id,
-                country,
-                dto.Zone,
-                currency
-            );
+            // ---------------------------------------------------------
+            // 14. Calculate taxes
+            // ---------------------------------------------------------
 
+            /*
+             * The tax engine should contain:
+             *
+             * PH = 12% VAT
+             * MX = applicable IVA rate
+             * US = rules based on the configured region
+             *
+             * Tax is calculated using the same order currency.
+             */
+            var taxBreakdown =
+                await _taxEngine.CalculateOrderTaxes(
+                    order.Id,
+                    countryCode,
+                    dto.Zone,
+                    currency);
+
+            // Reload because TaxEngineService updates this record.
             financial = await _context.OrderFinancials
-                .FirstAsync(x => x.OrderId == order.Id);
+                .FirstAsync(
+                    x => x.OrderId == order.Id,
+                    cancellationToken);
 
             totalAmount = financial.TotalAmount;
             tax = financial.Tax;
+
+            if (financial.TotalAmount <= 0)
+            {
+                throw new InvalidOperationException(
+                    "The calculated order total must be greater than zero.");
+            }
+
+            // ---------------------------------------------------------
+            // 15. Create payment record
+            // ---------------------------------------------------------
+
+            var paymentGateway = paymentMethod switch
+            {
+                "paypal" => "paypal",
+                "paymongo_gcash" => "paymongo",
+                _ => null
+            };
+
+            var paymentStatus = paymentMethod switch
+            {
+                "paypal" => "pending",
+                "paymongo_gcash" => "pending",
+                "cash" => "cash_pending",
+                _ => "pending"
+            };
 
             var payment = new Payment
             {
                 Id = Guid.NewGuid(),
                 OrderId = order.Id,
+
                 Amount = financial.TotalAmount,
                 Currency = currency,
-                PaymentMethod = dto.PaymentMethod,
-                PaymentStatus = dto.PaymentMethod == "paypal"
-        ? "pending"
-        : "cash_pending",
-                CreatedAt = DateTime.UtcNow
+
+                PaymentMethod = paymentMethod,
+                PaymentGateway = paymentGateway,
+                PaymentStatus = paymentStatus,
+
+                TransactionReference = null,
+                GatewayCheckoutSessionId = null,
+                GatewayPaymentId = null,
+                CheckoutUrl = null,
+                FailureReason = null,
+
+                RefundedAmount = 0,
+                RefundStatus = "none",
+                GatewayFee = 0,
+
+                CreatedAt = now
             };
 
             _context.Payments.Add(payment);
 
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
-            await AddStatusHistory(order.Id, OrderStatuses.PaymentPending);
-            await AddAuditLog(order.Id, "Order Created with Financials");
+            // ---------------------------------------------------------
+            // 16. Add status history and audit log
+            // ---------------------------------------------------------
+
+            await AddStatusHistory(
+                order.Id,
+                OrderStatuses.PaymentPending);
+
+            await AddAuditLog(
+                order.Id,
+                paymentMethod == "paymongo_gcash"
+                    ? "Order Created - Awaiting PayMongo GCash Payment"
+                    : paymentMethod == "paypal"
+                        ? "Order Created - Awaiting PayPal Payment"
+                        : "Order Created - Cash Payment Pending");
+
+            // ---------------------------------------------------------
+            // 17. Commit transaction
+            // ---------------------------------------------------------
+
+            await databaseTransaction.CommitAsync(
+                cancellationToken);
+
+            // ---------------------------------------------------------
+            // 18. Return result
+            // ---------------------------------------------------------
 
             return Ok(new
             {
-                order,
-                financial,
-                payment,
-                taxBreakdown,
-                items = dto.Items.Select(item =>
+                message = "Order created successfully.",
+
+                order = new
                 {
-                    var product = products.First(x => x.Id == item.ProductId);
+                    order.Id,
+                    order.OrderNumber,
+                    order.CustomerId,
+                    order.CustomerName,
+                    order.PickupAddress,
+                    order.DeliveryAddress,
+                    order.ItemDescription,
+                    order.Zone,
+                    order.CountryCode,
+                    order.Currency,
+                    order.Status,
+                    order.CreatedAt,
+                    order.UpdatedAt
+                },
+
+                financial = new
+                {
+                    financial.Id,
+                    financial.OrderId,
+                    financial.Currency,
+                    financial.ExchangeRate,
+
+                    financial.ItemSubtotal,
+                    financial.DeliveryFee,
+                    financial.ServiceFee,
+                    tax = financial.Tax,
+                    financial.Discount,
+                    financial.TotalAmount,
+
+                    financial.SupplierAmount,
+                    financial.DriverAmount,
+                    financial.MechanicAmount,
+                    financial.AlphaPlatformFee,
+
+                    financial.SupplierEarning,
+                    financial.DriverEarning,
+                    financial.CompanyRevenue,
+
+                    financial.FinancialStatus,
+                    financial.PayoutStatus,
+                    financial.SettlementStatus
+                },
+
+                payment = new
+                {
+                    payment.Id,
+                    payment.OrderId,
+                    payment.Amount,
+                    payment.Currency,
+                    payment.PaymentMethod,
+                    payment.PaymentGateway,
+                    payment.PaymentStatus,
+
+                    requiresRedirect =
+                        paymentMethod is "paypal" or "paymongo_gcash",
+
+                    paymentProvider = paymentGateway
+                },
+
+                taxBreakdown,
+
+                items = normalizedItems.Select(item =>
+                {
+                    var product = products.First(
+                        x => x.Id == item.ProductId);
 
                     return new
                     {
@@ -215,14 +754,69 @@ public class OrdersController : ControllerBase
                         productName = product.Name,
                         quantity = item.Quantity,
                         unitPrice = product.Price,
-                        lineTotal = product.Price * item.Quantity
+                        currency,
+                        lineTotal = Math.Round(
+                            product.Price * item.Quantity,
+                            2,
+                            MidpointRounding.AwayFromZero)
                     };
                 })
             });
         }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            await databaseTransaction.RollbackAsync(
+                cancellationToken);
+
+            return Conflict(new
+            {
+                message =
+                    "The product inventory changed while the order was being created. Please refresh your cart and try again.",
+                error = ex.Message
+            });
+        }
+        catch (DbUpdateException ex)
+        {
+            await databaseTransaction.RollbackAsync(
+                cancellationToken);
+
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message =
+                        "A database error occurred while creating the order.",
+                    error =
+                        ex.InnerException?.Message ??
+                        ex.Message
+                });
+        }
+        catch (OperationCanceledException)
+        {
+            await databaseTransaction.RollbackAsync(
+                CancellationToken.None);
+
+            return StatusCode(
+                StatusCodes.Status408RequestTimeout,
+                new
+                {
+                    message =
+                        "The order request was cancelled or timed out."
+                });
+        }
         catch (Exception ex)
         {
-            return StatusCode(500, ex.ToString());
+            await databaseTransaction.RollbackAsync(
+                CancellationToken.None);
+
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message =
+                        "An unexpected error occurred while creating the order.",
+                    error = ex.Message
+                });
         }
     }
 

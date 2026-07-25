@@ -43,4 +43,22 @@ public class Product
 
     [Column("image_base64")]
     public string? ImageBase64 { get; set; }
+
+    [Column("payment_gateway")]
+    public string? PaymentGateway { get; set; }
+
+    [Column("checkout_url")]
+    public string? CheckoutUrl { get; set; }
+
+    [Column("gateway_payment_id")]
+    public string? GatewayPaymentId { get; set; }
+
+    [Column("gateway_checkout_session_id")]
+    public string? GatewayCheckoutSessionId { get; set; }
+
+    [Column("failure_reason")]
+    public string? FailureReason { get; set; }
+
+    [Column("expires_at")]
+    public DateTime? ExpiresAt { get; set; }
 }

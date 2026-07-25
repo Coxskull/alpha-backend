@@ -58,7 +58,9 @@ builder.Services.AddScoped<ReferralNetworkService>();
 builder.Services.AddScoped<TransactionUserResolver>();
 builder.Services.AddScoped<
     CommunityBuilderDashboardService>();
-
+builder.Services.AddScoped<CountryCurrencyService>();
+builder.Services.AddHttpClient<PayMongoService>();
+builder.Services.AddScoped<PaymentCompletionService>();
 builder.Services.AddScoped<
     MemberBusinessActivityService>();
 builder.Services.AddControllers()

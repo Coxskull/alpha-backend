@@ -39,6 +39,9 @@ public class TaxEngineService
             .Where(x => x.OrderId == orderId)
             .ToListAsync();
 
+        decimal exclusiveTaxTotal = 0;
+        decimal inclusiveTaxTotal = 0;
+
         if (existing.Any() && existing.Sum(x => x.TaxAmount) > 0)
             return existing;
 
@@ -109,17 +112,29 @@ public class TaxEngineService
             results.Add(calculation);
         }
 
-        financial.Tax = results.Sum(x => x.TaxAmount);
-        financial.TaxCollected = financial.Tax;
-        financial.TaxWithheld = results.Sum(x => x.WithholdingAmount);
+        if (rule.IsTaxInclusive)
+        {
+            inclusiveTaxTotal += taxAmount;
+        }
+        else
+        {
+            exclusiveTaxTotal += taxAmount;
+        }
 
-        financial.TotalAmount =
+        financial.Tax = Math.Round(
+    exclusiveTaxTotal + inclusiveTaxTotal,
+    2);
+
+        financial.TaxCollected = financial.Tax;
+
+        financial.TotalAmount = Math.Round(
             financial.ItemSubtotal +
             financial.DeliveryFee +
             financial.ServiceFee +
             financial.MechanicAmount +
-            financial.Tax -
-            financial.Discount;
+            exclusiveTaxTotal -
+            financial.Discount,
+            2);
 
         await _context.SaveChangesAsync();
 
@@ -127,9 +142,9 @@ public class TaxEngineService
     }
 
     private async Task<TaxRule> GetOrCreateTaxRule(
-        string country,
-        string? region,
-        string component)
+     string country,
+     string? region,
+     string component)
     {
         var rule = await _context.TaxRules
             .Where(x =>
@@ -137,34 +152,37 @@ public class TaxEngineService
                 x.Country.ToUpper() == country &&
                 x.Component.ToLower() == component &&
                 x.EffectiveFrom <= DateTime.UtcNow &&
-                (x.ExpiresAt == null || x.ExpiresAt > DateTime.UtcNow) &&
+                (x.ExpiresAt == null ||
+                 x.ExpiresAt > DateTime.UtcNow) &&
                 (x.Region == null || x.Region == region))
             .OrderByDescending(x => x.Region != null)
             .ThenByDescending(x => x.Version)
             .FirstOrDefaultAsync();
 
         if (rule != null)
-        {
-            if (country == "MX" && rule.TaxRate <= 0)
-            {
-                rule.TaxType = "IVA";
-                rule.TaxRate = 0.16m;
-                rule.Enabled = true;
-                rule.Version += 1;
-
-                await _context.SaveChangesAsync();
-            }
-
             return rule;
-        }
+
+        var defaultRate = country switch
+        {
+            "MX" => 0.16m,
+            "PH" => 0.12m,
+            _ => 0m
+        };
+
+        var defaultTaxType = country switch
+        {
+            "MX" => "IVA",
+            "PH" => "VAT",
+            _ => "TAX"
+        };
 
         var fallbackRule = new TaxRule
         {
             Id = Guid.NewGuid(),
             Country = country,
             Region = null,
-            TaxType = country == "MX" ? "IVA" : "TAX",
-            TaxRate = country == "MX" ? 0.16m : 0m,
+            TaxType = defaultTaxType,
+            TaxRate = defaultRate,
             Component = component,
             ResponsibleParty = component switch
             {
