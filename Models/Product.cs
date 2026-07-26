@@ -61,4 +61,8 @@ public class Product
 
     [Column("expires_at")]
     public DateTime? ExpiresAt { get; set; }
+
+    public string Currency { get; set; } = "USD";
+
+    public string CountryCode { get; set; } = "US";
 }
