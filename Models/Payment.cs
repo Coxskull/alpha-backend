@@ -29,6 +29,30 @@ public class Payment
     [Column("transaction_reference")]
     public string? TransactionReference { get; set; }
 
+    [Column("payment_gateway")]
+    public string? PaymentGateway { get; set; }
+
+    [Column("gateway_checkout_session_id")]
+    public string? GatewayCheckoutSessionId { get; set; }
+
+    [Column("gateway_payment_id")]
+    public string? GatewayPaymentId { get; set; }
+
+    [Column("checkout_url")]
+    public string? CheckoutUrl { get; set; }
+
+    [Column("failure_reason")]
+    public string? FailureReason { get; set; }
+
+    [Column("gateway_fee")]
+    public decimal GatewayFee { get; set; }
+
+    [Column("gateway_response")]
+    public string? GatewayResponse { get; set; }
+
+    [Column("expires_at")]
+    public DateTime? ExpiresAt { get; set; }
+
     [Column("paid_at")]
     public DateTime? PaidAt { get; set; }
 
