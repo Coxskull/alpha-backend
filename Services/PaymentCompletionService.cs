@@ -13,8 +13,7 @@ public class PaymentCompletionService
 {
     private readonly AppDbContext _context;
     private readonly SettlementService _settlements;
-    private readonly ReferralCommissionService
-        _referralCommissionService;
+    private readonly ReferralCommissionService _referralCommissionService;
 
     public PaymentCompletionService(
         AppDbContext context,
@@ -23,8 +22,7 @@ public class PaymentCompletionService
     {
         _context = context;
         _settlements = settlements;
-        _referralCommissionService =
-            referralCommissionService;
+        _referralCommissionService = referralCommissionService;
     }
 
     public async Task CompleteOrderPaymentAsync(
@@ -35,8 +33,40 @@ public class PaymentCompletionService
         string? gatewayPaymentId,
         string rawGatewayResponse,
         decimal? gatewayFee,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
+        if (orderId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "A valid order ID is required.",
+                nameof(orderId));
+        }
+
+        if (string.IsNullOrWhiteSpace(gateway))
+        {
+            throw new ArgumentException(
+                "Payment gateway is required.",
+                nameof(gateway));
+        }
+
+        if (string.IsNullOrWhiteSpace(paymentMethod))
+        {
+            throw new ArgumentException(
+                "Payment method is required.",
+                nameof(paymentMethod));
+        }
+
+        if (string.IsNullOrWhiteSpace(transactionReference))
+        {
+            throw new ArgumentException(
+                "Transaction reference is required.",
+                nameof(transactionReference));
+        }
+
+        var normalizedGateway = gateway.Trim().ToLowerInvariant();
+        var normalizedPaymentMethod =
+            paymentMethod.Trim().ToLowerInvariant();
+
         var order = await _context.Orders
             .FirstOrDefaultAsync(
                 x => x.Id == orderId,
@@ -58,8 +88,17 @@ public class PaymentCompletionService
             ?? throw new InvalidOperationException(
                 "Financial record not found.");
 
-        if (payment.PaymentStatus == "paid")
+        /*
+         * Makes the payment completion operation idempotent.
+         * Webhooks may be delivered more than once.
+         */
+        if (string.Equals(
+                payment.PaymentStatus,
+                "paid",
+                StringComparison.OrdinalIgnoreCase))
+        {
             return;
+        }
 
         if (!order.CustomerId.HasValue)
         {
@@ -70,7 +109,8 @@ public class PaymentCompletionService
         if (payment.Amount != financial.TotalAmount)
         {
             throw new InvalidOperationException(
-                "Payment and financial totals do not match.");
+                $"Payment amount {payment.Amount} does not match " +
+                $"the financial total {financial.TotalAmount}.");
         }
 
         if (!string.Equals(
@@ -82,7 +122,21 @@ public class PaymentCompletionService
                 "Payment and financial currencies do not match.");
         }
 
+        if (gatewayFee.HasValue && gatewayFee.Value < 0)
+        {
+            throw new InvalidOperationException(
+                "Gateway fee cannot be negative.");
+        }
+
         var now = DateTime.UtcNow;
+
+        /*
+         * The response is already supplied to this method as a string.
+         * Normalize valid JSON when possible, but retain the original
+         * response if the gateway returned non-JSON content.
+         */
+        var storedGatewayResponse =
+            NormalizeGatewayResponse(rawGatewayResponse);
 
         await using var transaction =
             await _context.Database.BeginTransactionAsync(
@@ -91,29 +145,38 @@ public class PaymentCompletionService
         try
         {
             payment.PaymentStatus = "paid";
-            payment.PaymentMethod = paymentMethod;
-            payment.PaymentGateway = gateway;
+            payment.PaymentMethod = normalizedPaymentMethod;
+            payment.PaymentGateway = normalizedGateway;
+
             payment.TransactionReference =
-                transactionReference;
+                transactionReference.Trim();
+
             payment.GatewayPaymentId =
-                gatewayPaymentId;
+                string.IsNullOrWhiteSpace(gatewayPaymentId)
+                    ? null
+                    : gatewayPaymentId.Trim();
+
             payment.PaidAt = now;
-            payment.GatewayFee = gatewayFee ?? 0;
-            payment.GatewayResponse =
-    gatewayResponse is null
-        ? null
-        : gatewayResponse.RootElement.GetRawText();
+            payment.GatewayFee = gatewayFee ?? 0m;
+            payment.GatewayResponse = storedGatewayResponse;
+
+            /*
+             * Clear any previous failure information because
+             * this payment has now completed successfully.
+             */
+            payment.FailureReason = null;
 
             financial.CustomerPaid =
                 financial.TotalAmount;
 
             financial.ProcessingFee =
-                gatewayFee ?? 0;
+                gatewayFee ?? 0m;
 
             financial.FinancialStatus =
                 "paid_pending_dispatch";
 
-            financial.PayoutStatus = "not_ready";
+            financial.PayoutStatus =
+                "not_ready";
 
             order.Status =
                 OrderStatuses.WaitingForSupplier;
@@ -127,7 +190,7 @@ public class PaymentCompletionService
                     OrderId = order.Id,
                     Status = OrderStatuses.PaymentPaid,
                     Notes =
-                        $"{gateway} payment confirmed.",
+                        $"{normalizedGateway} payment confirmed.",
                     CreatedAt = now
                 },
                 new StatusHistory
@@ -147,8 +210,8 @@ public class PaymentCompletionService
                     Id = Guid.NewGuid(),
                     OrderId = order.Id,
                     Action =
-                        $"{gateway} Payment Confirmed",
-                    PerformedBy = gateway,
+                        $"{normalizedGateway} Payment Confirmed",
+                    PerformedBy = normalizedGateway,
                     CreatedAt = now
                 });
 
@@ -174,7 +237,8 @@ public class PaymentCompletionService
                     transactionType:
                         "customer_order",
                     description:
-                        $"Completed payment for order {order.OrderNumber}",
+                        $"Completed payment for order " +
+                        $"{order.OrderNumber}",
                     cancellationToken:
                         cancellationToken);
 
@@ -187,6 +251,33 @@ public class PaymentCompletionService
                 cancellationToken);
 
             throw;
+        }
+    }
+
+    private static string? NormalizeGatewayResponse(
+        string? rawGatewayResponse)
+    {
+        if (string.IsNullOrWhiteSpace(rawGatewayResponse))
+        {
+            return null;
+        }
+
+        var trimmedResponse = rawGatewayResponse.Trim();
+
+        try
+        {
+            using var document =
+                JsonDocument.Parse(trimmedResponse);
+
+            return document.RootElement.GetRawText();
+        }
+        catch (JsonException)
+        {
+            /*
+             * Some gateways may return plain text or HTML during
+             * an error. Preserve that response for troubleshooting.
+             */
+            return trimmedResponse;
         }
     }
 }

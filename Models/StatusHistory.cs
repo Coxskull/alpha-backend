@@ -14,11 +14,13 @@ public class StatusHistory
     public Guid OrderId { get; set; }
 
     [Column("status")]
-    public string Status { get; set; }
+    public string Status { get; set; } = string.Empty;
 
     [Column("notes")]
     public string? Notes { get; set; }
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; }
+
+
 }

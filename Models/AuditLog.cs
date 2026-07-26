@@ -21,4 +21,8 @@ public class AuditLog
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; }
+
+    [Column("action")]
+    public string Action { get; set; } = string.Empty;
+
 }

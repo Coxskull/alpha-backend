@@ -17,8 +17,7 @@ public class PayMongoController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly PayMongoService _payMongo;
-    private readonly PaymentCompletionService
-        _paymentCompletionService;
+    private readonly PaymentCompletionService _paymentCompletionService;
 
     public PayMongoController(
         AppDbContext context,
@@ -27,15 +26,26 @@ public class PayMongoController : ControllerBase
     {
         _context = context;
         _payMongo = payMongo;
-        _paymentCompletionService =
-            paymentCompletionService;
+        _paymentCompletionService = paymentCompletionService;
     }
+
+    // =====================================================
+    // CREATE PAYMONGO GCASH CHECKOUT SESSION
+    // =====================================================
 
     [HttpPost("create-checkout")]
     public async Task<IActionResult> CreateCheckout(
         CreatePayMongoCheckoutDto dto,
         CancellationToken cancellationToken)
     {
+        if (dto.OrderId == Guid.Empty)
+        {
+            return BadRequest(new
+            {
+                message = "A valid order ID is required."
+            });
+        }
+
         var order = await _context.Orders
             .FirstOrDefaultAsync(
                 x => x.Id == dto.OrderId,
@@ -49,8 +59,14 @@ public class PayMongoController : ControllerBase
             });
         }
 
-        if (order.Status != OrderStatuses.PaymentPending &&
-            order.Status != "payment_pending")
+        if (!string.Equals(
+                order.Status,
+                OrderStatuses.PaymentPending,
+                StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(
+                order.Status,
+                "payment_pending",
+                StringComparison.OrdinalIgnoreCase))
         {
             return BadRequest(new
             {
@@ -59,8 +75,14 @@ public class PayMongoController : ControllerBase
             });
         }
 
-        if (order.CountryCode != "PH" ||
-            order.Currency != "PHP")
+        if (!string.Equals(
+                order.CountryCode,
+                "PH",
+                StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(
+                order.Currency,
+                "PHP",
+                StringComparison.OrdinalIgnoreCase))
         {
             return BadRequest(new
             {
@@ -74,21 +96,31 @@ public class PayMongoController : ControllerBase
                 x => x.OrderId == dto.OrderId,
                 cancellationToken);
 
+        if (financial == null)
+        {
+            return NotFound(new
+            {
+                message = "Order financial record was not found."
+            });
+        }
+
         var payment = await _context.Payments
             .FirstOrDefaultAsync(
                 x => x.OrderId == dto.OrderId,
                 cancellationToken);
 
-        if (financial == null || payment == null)
+        if (payment == null)
         {
             return NotFound(new
             {
-                message =
-                    "Order financial or payment record was not found."
+                message = "Payment record was not found."
             });
         }
 
-        if (payment.PaymentStatus == "paid")
+        if (string.Equals(
+                payment.PaymentStatus,
+                "paid",
+                StringComparison.OrdinalIgnoreCase))
         {
             return BadRequest(new
             {
@@ -96,7 +128,10 @@ public class PayMongoController : ControllerBase
             });
         }
 
-        if (payment.PaymentMethod != "paymongo_gcash")
+        if (!string.Equals(
+                payment.PaymentMethod,
+                "paymongo_gcash",
+                StringComparison.OrdinalIgnoreCase))
         {
             return BadRequest(new
             {
@@ -105,19 +140,46 @@ public class PayMongoController : ControllerBase
             });
         }
 
-        // Return the existing active checkout instead
-        // of creating multiple sessions.
-        if (!string.IsNullOrWhiteSpace(
-                payment.CheckoutUrl) &&
+        if (payment.Amount != financial.TotalAmount)
+        {
+            return BadRequest(new
+            {
+                message =
+                    "Payment amount does not match the order financial total."
+            });
+        }
+
+        if (!string.Equals(
+                payment.Currency,
+                financial.Currency,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new
+            {
+                message =
+                    "Payment currency does not match the financial currency."
+            });
+        }
+
+        /*
+         * Return the existing checkout session instead of creating
+         * multiple PayMongo checkout sessions for the same order.
+         */
+        if (!string.IsNullOrWhiteSpace(payment.CheckoutUrl) &&
             !string.IsNullOrWhiteSpace(
                 payment.GatewayCheckoutSessionId))
         {
             return Ok(new
             {
+                orderId = order.Id,
                 checkoutSessionId =
                     payment.GatewayCheckoutSessionId,
                 checkoutUrl =
                     payment.CheckoutUrl,
+                currency =
+                    payment.Currency,
+                amount =
+                    payment.Amount,
                 paymentStatus =
                     payment.PaymentStatus
             });
@@ -125,29 +187,60 @@ public class PayMongoController : ControllerBase
 
         try
         {
-            var result =
-                await _payMongo
-                    .CreateGcashCheckoutSessionAsync(
-                        order,
-                        financial,
-                        payment,
-                        cancellationToken);
+            var result = await _payMongo
+                .CreateGcashCheckoutSessionAsync(
+                    order,
+                    financial,
+                    payment,
+                    cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(
+                    result.CheckoutSessionId))
+            {
+                throw new InvalidOperationException(
+                    "PayMongo did not return a checkout session ID.");
+            }
+
+            if (string.IsNullOrWhiteSpace(
+                    result.CheckoutUrl))
+            {
+                throw new InvalidOperationException(
+                    "PayMongo did not return a checkout URL.");
+            }
+
+            /*
+             * The previous code referenced checkoutSessionResponse,
+             * but that variable did not exist.
+             *
+             * Serialize the actual result returned by PayMongoService.
+             */
+            var checkoutSessionResponse =
+                JsonSerializer.Serialize(
+                    result,
+                    new JsonSerializerOptions
+                    {
+                        PropertyNamingPolicy =
+                            JsonNamingPolicy.CamelCase,
+                        WriteIndented = false
+                    });
 
             payment.PaymentGateway = "paymongo";
-            payment.PaymentMethod =
-                "paymongo_gcash";
-            payment.PaymentStatus =
-                "checkout_created";
+            payment.PaymentMethod = "paymongo_gcash";
+            payment.PaymentStatus = "checkout_created";
+
             payment.TransactionReference =
                 result.CheckoutSessionId;
+
             payment.GatewayCheckoutSessionId =
                 result.CheckoutSessionId;
+
             payment.CheckoutUrl =
                 result.CheckoutUrl;
+
             payment.GatewayResponse =
-    checkoutSessionResponse is null
-        ? null
-        : checkoutSessionResponse.RootElement.GetRawText();
+                checkoutSessionResponse;
+
+            payment.FailureReason = null;
 
             await _context.SaveChangesAsync(
                 cancellationToken);
@@ -167,10 +260,15 @@ public class PayMongoController : ControllerBase
                     payment.PaymentStatus
             });
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception exception)
         {
             payment.PaymentStatus =
                 "checkout_failed";
+
             payment.FailureReason =
                 exception.Message;
 
@@ -187,11 +285,33 @@ public class PayMongoController : ControllerBase
         }
     }
 
+    // =====================================================
+    // VERIFY PAYMONGO CHECKOUT SESSION
+    // =====================================================
+
     [HttpPost("verify")]
     public async Task<IActionResult> VerifyCheckout(
         VerifyPayMongoCheckoutDto dto,
         CancellationToken cancellationToken)
     {
+        if (dto.OrderId == Guid.Empty)
+        {
+            return BadRequest(new
+            {
+                message = "A valid order ID is required."
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(
+                dto.CheckoutSessionId))
+        {
+            return BadRequest(new
+            {
+                message =
+                    "Checkout session ID is required."
+            });
+        }
+
         var payment = await _context.Payments
             .FirstOrDefaultAsync(
                 x => x.OrderId == dto.OrderId,
@@ -202,6 +322,27 @@ public class PayMongoController : ControllerBase
             return NotFound(new
             {
                 message = "Payment not found."
+            });
+        }
+
+        /*
+         * This makes the endpoint safe when the frontend calls
+         * verification more than once after a successful payment.
+         */
+        if (string.Equals(
+                payment.PaymentStatus,
+                "paid",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return Ok(new
+            {
+                paid = true,
+                paymentStatus =
+                    payment.PaymentStatus,
+                orderId =
+                    dto.OrderId,
+                gatewayPaymentId =
+                    payment.GatewayPaymentId
             });
         }
 
@@ -217,79 +358,172 @@ public class PayMongoController : ControllerBase
             });
         }
 
-        var checkout =
-            await _payMongo
+        try
+        {
+            using var checkout = await _payMongo
                 .RetrieveCheckoutSessionAsync(
                     dto.CheckoutSessionId,
                     cancellationToken);
 
-        var rawJson =
-            checkout.RootElement.GetRawText();
+            var rawJson =
+                checkout.RootElement.GetRawText();
 
-        var attributes =
-            checkout.RootElement
-                .GetProperty("data")
-                .GetProperty("attributes");
-
-        var paymentStatus =
-            attributes.TryGetProperty(
-                "payment_status",
-                out var statusElement)
-                ? statusElement.GetString()
-                : null;
-
-        if (!string.Equals(
-                paymentStatus,
-                "paid",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            return Ok(new
+            if (!checkout.RootElement.TryGetProperty(
+                    "data",
+                    out var dataElement))
             {
-                paid = false,
-                paymentStatus =
-                    paymentStatus ?? "pending"
-            });
-        }
+                return BadRequest(new
+                {
+                    message =
+                        "PayMongo returned an invalid checkout response."
+                });
+            }
 
-        string? payMongoPaymentId = null;
+            if (!dataElement.TryGetProperty(
+                    "attributes",
+                    out var attributes))
+            {
+                return BadRequest(new
+                {
+                    message =
+                        "PayMongo checkout attributes were not found."
+                });
+            }
 
-        if (attributes.TryGetProperty(
-                "payments",
-                out var paymentsElement) &&
-            paymentsElement.ValueKind ==
-                JsonValueKind.Array &&
-            paymentsElement.GetArrayLength() > 0)
-        {
-            payMongoPaymentId =
-                paymentsElement[0]
-                    .GetProperty("id")
-                    .GetString();
-        }
+            var paymentStatus =
+                attributes.TryGetProperty(
+                    "payment_status",
+                    out var statusElement)
+                    ? statusElement.GetString()
+                    : null;
 
-        await _paymentCompletionService
-            .CompleteOrderPaymentAsync(
-                orderId:
-                    dto.OrderId,
-                gateway:
-                    "paymongo",
-                paymentMethod:
-                    "paymongo_gcash",
-                transactionReference:
-                    dto.CheckoutSessionId,
-                gatewayPaymentId:
-                    payMongoPaymentId,
-                rawGatewayResponse:
-                    rawJson,
-                gatewayFee:
-                    null,
-                cancellationToken:
+            if (!string.Equals(
+                    paymentStatus,
+                    "paid",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                /*
+                 * Store the latest gateway response even when
+                 * the checkout is still pending or has failed.
+                 */
+                payment.GatewayResponse =
+                    rawJson;
+
+                payment.PaymentStatus =
+                    string.IsNullOrWhiteSpace(paymentStatus)
+                        ? "pending"
+                        : paymentStatus.Trim().ToLowerInvariant();
+
+                await _context.SaveChangesAsync(
                     cancellationToken);
 
-        return Ok(new
+                return Ok(new
+                {
+                    paid = false,
+                    paymentStatus =
+                        paymentStatus ?? "pending",
+                    orderId =
+                        dto.OrderId
+                });
+            }
+
+            string? payMongoPaymentId =
+                ExtractPayMongoPaymentId(
+                    attributes);
+
+            await _paymentCompletionService
+                .CompleteOrderPaymentAsync(
+                    orderId:
+                        dto.OrderId,
+                    gateway:
+                        "paymongo",
+                    paymentMethod:
+                        "paymongo_gcash",
+                    transactionReference:
+                        dto.CheckoutSessionId,
+                    gatewayPaymentId:
+                        payMongoPaymentId,
+                    rawGatewayResponse:
+                        rawJson,
+                    gatewayFee:
+                        null,
+                    cancellationToken:
+                        cancellationToken);
+
+            return Ok(new
+            {
+                paid = true,
+                paymentStatus = "paid",
+                orderId = dto.OrderId,
+                checkoutSessionId =
+                    dto.CheckoutSessionId,
+                gatewayPaymentId =
+                    payMongoPaymentId
+            });
+        }
+        catch (OperationCanceledException)
         {
-            paid = true,
-            paymentStatus = "paid",
-            orderId = dto.OrderId
-        });
+            throw;
+        }
+        catch (Exception exception)
+        {
+            payment.FailureReason =
+                exception.Message;
+
+            await _context.SaveChangesAsync(
+                cancellationToken);
+
+            return BadRequest(new
+            {
+                message =
+                    "Unable to verify PayMongo checkout.",
+                error =
+                    exception.Message
+            });
+        }
+    }
+
+    // =====================================================
+    // HELPER: EXTRACT PAYMONGO PAYMENT ID
+    // =====================================================
+
+    private static string? ExtractPayMongoPaymentId(
+        JsonElement attributes)
+    {
+        if (!attributes.TryGetProperty(
+                "payments",
+                out var paymentsElement))
+        {
+            return null;
+        }
+
+        if (paymentsElement.ValueKind !=
+            JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        if (paymentsElement.GetArrayLength() == 0)
+        {
+            return null;
+        }
+
+        var firstPayment =
+            paymentsElement[0];
+
+        if (firstPayment.ValueKind !=
+            JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (!firstPayment.TryGetProperty(
+                "id",
+                out var paymentIdElement))
+        {
+            return null;
+        }
+
+        return paymentIdElement.GetString();
     }
 }
