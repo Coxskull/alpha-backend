@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
 
 namespace Alpha.API.Models;
 
@@ -47,8 +48,8 @@ public class Payment
     [Column("gateway_fee")]
     public decimal GatewayFee { get; set; }
 
-    [Column("gateway_response")]
-    public string? GatewayResponse { get; set; }
+    [Column("gateway_response", TypeName = "jsonb")]
+    public JsonDocument? GatewayResponse { get; set; }
 
     [Column("expires_at")]
     public DateTime? ExpiresAt { get; set; }

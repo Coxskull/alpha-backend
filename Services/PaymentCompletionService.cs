@@ -158,7 +158,12 @@ public class PaymentCompletionService
 
             payment.PaidAt = now;
             payment.GatewayFee = gatewayFee ?? 0m;
-            payment.GatewayResponse = storedGatewayResponse;
+            payment.GatewayResponse =
+    string.IsNullOrWhiteSpace(
+        rawGatewayResponse)
+        ? null
+        : JsonDocument.Parse(
+            rawGatewayResponse);
 
             /*
              * Clear any previous failure information because

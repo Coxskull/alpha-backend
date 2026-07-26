@@ -238,7 +238,8 @@ public class PayMongoController : ControllerBase
                 result.CheckoutUrl;
 
             payment.GatewayResponse =
-                checkoutSessionResponse;
+    JsonDocument.Parse(
+        JsonSerializer.Serialize(result));
 
             payment.FailureReason = null;
 
@@ -525,5 +526,67 @@ public class PayMongoController : ControllerBase
         }
 
         return paymentIdElement.GetString();
+    }
+
+    [HttpGet("orders/{orderId:guid}/payment-status")]
+    public async Task<IActionResult> GetPaymentStatus(
+    Guid orderId,
+    CancellationToken cancellationToken)
+    {
+        var order = await _context.Orders
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                x => x.Id == orderId,
+                cancellationToken);
+
+        if (order == null)
+        {
+            return NotFound(new
+            {
+                message = "Order not found."
+            });
+        }
+
+        var payment = await _context.Payments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                x => x.OrderId == orderId,
+                cancellationToken);
+
+        if (payment == null)
+        {
+            return NotFound(new
+            {
+                message = "Payment record not found."
+            });
+        }
+
+        var normalizedStatus =
+            payment.PaymentStatus?
+                .Trim()
+                .ToLowerInvariant()
+            ?? "pending";
+
+        return Ok(new
+        {
+            orderId = order.Id,
+            orderStatus = order.Status,
+            paymentStatus =
+                payment.PaymentStatus,
+            paymentGateway =
+                payment.PaymentGateway,
+            checkoutSessionId =
+                payment.GatewayCheckoutSessionId,
+            gatewayPaymentId =
+                payment.GatewayPaymentId,
+            isPaid =
+                normalizedStatus == "paid" ||
+                normalizedStatus == "completed" ||
+                normalizedStatus == "succeeded",
+            message =
+                normalizedStatus == "paid"
+                    ? "Payment confirmed."
+                    : "Payment is still pending."
+        });
     }
 }

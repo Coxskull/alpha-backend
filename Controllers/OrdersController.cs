@@ -1285,26 +1285,60 @@ public class OrdersController : ControllerBase
     // POST: /api/Orders/{id}/proof
     // =========================================================
 
-    [HttpPost("{id}/proof")]
+    [HttpPost("{id:guid}/proof")]
+    [Consumes("multipart/form-data")]
     [RequestSizeLimit(20_000_000)]
-    public async Task<IActionResult> UploadProof(Guid id, [FromForm] IFormFile image, CancellationToken cancellationToken)
+    public async Task<IActionResult> UploadProof(
+    Guid id,
+    [FromForm] UploadDeliveryProofDto dto,
+    CancellationToken cancellationToken)
     {
-        var order = await _context.Orders.FindAsync(id);
+        var order = await _context.Orders
+            .FirstOrDefaultAsync(
+                x => x.Id == id,
+                cancellationToken);
 
         if (order == null)
-            return NotFound("Order not found.");
+        {
+            return NotFound(new
+            {
+                message = "Order not found."
+            });
+        }
 
-        if (order.Status != OrderStatuses.Delivered)
-            return BadRequest("Order must be delivered first.");
+        if (!string.Equals(
+                order.Status,
+                OrderStatuses.Delivered,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new
+            {
+                message = "Order must be delivered first."
+            });
+        }
 
-        if (image == null || image.Length == 0)
-            return BadRequest("Image required.");
+        if (dto.Image == null ||
+            dto.Image.Length == 0)
+        {
+            return BadRequest(new
+            {
+                message = "Image is required."
+            });
+        }
 
-        await using var ms = new MemoryStream();
-        await image.CopyToAsync(ms);
+        await using var memoryStream =
+            new MemoryStream();
 
-        var base64 = Convert.ToBase64String(ms.ToArray());
-        var imageUrl = $"data:{image.ContentType};base64,{base64}";
+        await dto.Image.CopyToAsync(
+            memoryStream,
+            cancellationToken);
+
+        var base64 =
+            Convert.ToBase64String(
+                memoryStream.ToArray());
+
+        var imageUrl =
+            $"data:{dto.Image.ContentType};base64,{base64}";
 
         var proof = new DeliveryProof
         {
@@ -1316,47 +1350,29 @@ public class OrdersController : ControllerBase
 
         _context.DeliveryProofs.Add(proof);
 
-        order.Status = OrderStatuses.ProofUploaded;
-        order.UpdatedAt = DateTime.UtcNow;
+        order.Status =
+            OrderStatuses.ProofUploaded;
 
-        var financial = await _context.OrderFinancials
-            .FirstOrDefaultAsync(x => x.OrderId == id);
+        order.UpdatedAt =
+            DateTime.UtcNow;
 
-        if (financial != null)
-        {
-            financial.CompletionProofUrl = imageUrl;
-            financial.FinancialStatus = "verified";
-            financial.PayoutStatus = "ready_for_payout";
-            financial.SettlementStatus = "ready_for_payout";
-        }
+        await _context.SaveChangesAsync(
+            cancellationToken);
 
-        await _context.SaveChangesAsync();
+        await AddStatusHistory(
+            id,
+            OrderStatuses.ProofUploaded);
 
-        await AddStatusHistory(id, OrderStatuses.ProofUploaded);
-        await AddAuditLog(id, "Delivery Proof Uploaded");
+        await AddAuditLog(
+            id,
+            "Delivery proof uploaded");
 
-        try
-        {
-            await _settlements.VerifySettlementAfterProof(id);
-        }
-        catch (Exception settlementError)
-        {
-            await AddAuditLog(
-                id,
-                $"Proof uploaded, but settlement verification failed: {settlementError.Message}"
-            );
-        }
-        await _referralCommissionService
-    .ReleaseOrderCommissionsAsync(
-        order.Id,
-        cancellationToken
-    );
         return Ok(new
         {
-            proof,
+            message =
+                "Delivery proof uploaded successfully.",
             imageUrl,
-            status = OrderStatuses.ProofUploaded,
-            message = "Proof uploaded successfully."
+            status = order.Status
         });
     }
 
