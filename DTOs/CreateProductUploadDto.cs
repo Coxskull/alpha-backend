@@ -1,22 +1,33 @@
 using System;
+using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace Alpha.API.DTOs;
 
 public class CreateProductUploadDto
 {
-	public Guid SupplierId { get; set; }
+    [Required]
+    public Guid SupplierId { get; set; }
 
-	public string? PartNumber { get; set; }
+    public string? PartNumber { get; set; }
 
-	public string Brand { get; set; } = string.Empty;
+    [Required]
+    public string Brand { get; set; } = string.Empty;
 
-	public string Name { get; set; } = string.Empty;
+    [Required]
+    public string Name { get; set; } = string.Empty;
 
-	public string? Description { get; set; }
+    public string? Description { get; set; }
 
-	public decimal Price { get; set; }
+    [Range(0, double.MaxValue)]
+    public decimal Price { get; set; }
 
-	public int QuantityAvailable { get; set; }
+    [Range(0, int.MaxValue)]
+    public int QuantityAvailable { get; set; }
 
-	public IFormFile? Image { get; set; }
+    public string Currency { get; set; } = "MXN";
+
+    public string CountryCode { get; set; } = "MX";
+
+    public IFormFile? Image { get; set; }
 }
