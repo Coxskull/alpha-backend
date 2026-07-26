@@ -14,15 +14,12 @@ public class AuditLog
     public Guid OrderId { get; set; }
 
     [Column("action")]
-    public string Action { get; set; }
+    public string Action { get; set; } = string.Empty;
 
     [Column("performed_by")]
     public string? PerformedBy { get; set; }
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; }
-
-    [Column("action")]
-    public string Action { get; set; } = string.Empty;
 
 }
