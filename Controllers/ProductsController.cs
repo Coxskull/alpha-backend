@@ -75,15 +75,23 @@ public class ProductsController : ControllerBase
         {
             Id = Guid.NewGuid(),
             SupplierId = dto.SupplierId,
-            PartNumber = dto.PartNumber,
-            Brand = dto.Brand,
-            Name = dto.Name,
-            Description = dto.Description,
-            ImageUrl = dto.ImageUrl,
+            PartNumber = dto.PartNumber ?? string.Empty,
+            Brand = dto.Brand ?? string.Empty,
+            Name = dto.Name ?? string.Empty,
+            Description = dto.Description ?? string.Empty,
+            ImageUrl = dto.ImageUrl ??
+         "/uploads/products/default-product.png",
             Price = dto.Price,
             QuantityAvailable = dto.QuantityAvailable,
             IsActive = true,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            Currency = string.IsNullOrWhiteSpace(dto.Currency)
+         ? "MXN"
+         : dto.Currency.Trim().ToUpperInvariant(),
+            CountryCode = string.IsNullOrWhiteSpace(dto.CountryCode)
+         ? "MX"
+         : dto.CountryCode.Trim().ToUpperInvariant()
         };
 
         _context.Products.Add(product);
@@ -135,15 +143,24 @@ public class ProductsController : ControllerBase
         {
             Id = Guid.NewGuid(),
             SupplierId = dto.SupplierId,
-            PartNumber = dto.PartNumber ?? "",
-            Brand = dto.Brand ?? "",
-            Name = dto.Name ?? "",
-            Description = dto.Description ?? "",
-            ImageUrl = imageUrl,
+            PartNumber = dto.PartNumber ?? string.Empty,
+            Brand = dto.Brand ?? string.Empty,
+            Name = dto.Name ?? string.Empty,
+            Description = dto.Description ?? string.Empty,
+            ImageUrl = string.IsNullOrWhiteSpace(imageUrl)
+        ? "/uploads/products/default-product.png"
+        : imageUrl,
             Price = dto.Price,
             QuantityAvailable = dto.QuantityAvailable,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            Currency = string.IsNullOrWhiteSpace(dto.Currency)
+        ? "MXN"
+        : dto.Currency.Trim().ToUpperInvariant(),
+            CountryCode = string.IsNullOrWhiteSpace(dto.CountryCode)
+        ? "MX"
+        : dto.CountryCode.Trim().ToUpperInvariant()
         };
 
         _context.Products.Add(product);
@@ -169,6 +186,17 @@ public class ProductsController : ControllerBase
         product.Price = dto.Price;
         product.QuantityAvailable = dto.QuantityAvailable;
         product.IsActive = dto.IsActive;
+        product.UpdatedAt = DateTime.UtcNow;
+
+        product.Currency =
+            string.IsNullOrWhiteSpace(dto.Currency)
+                ? product.Currency
+                : dto.Currency.Trim().ToUpperInvariant();
+
+        product.CountryCode =
+            string.IsNullOrWhiteSpace(dto.CountryCode)
+                ? product.CountryCode
+                : dto.CountryCode.Trim().ToUpperInvariant();
 
         if (dto.Image != null && dto.Image.Length > 0)
         {
