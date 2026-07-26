@@ -408,7 +408,9 @@ public class PayMongoController : ControllerBase
                  * the checkout is still pending or has failed.
                  */
                 payment.GatewayResponse =
-                    rawJson;
+     string.IsNullOrWhiteSpace(rawJson)
+         ? null
+         : JsonDocument.Parse(rawJson);
 
                 payment.PaymentStatus =
                     string.IsNullOrWhiteSpace(paymentStatus)
