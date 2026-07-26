@@ -145,8 +145,9 @@ public class PayMongoController : ControllerBase
             payment.CheckoutUrl =
                 result.CheckoutUrl;
             payment.GatewayResponse =
-                JsonDocument.Parse(
-                    result.RawResponse);
+    checkoutSessionResponse is null
+        ? null
+        : checkoutSessionResponse.RootElement.GetRawText();
 
             await _context.SaveChangesAsync(
                 cancellationToken);

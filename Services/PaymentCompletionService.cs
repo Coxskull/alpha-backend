@@ -100,7 +100,9 @@ public class PaymentCompletionService
             payment.PaidAt = now;
             payment.GatewayFee = gatewayFee ?? 0;
             payment.GatewayResponse =
-                JsonDocument.Parse(rawGatewayResponse);
+    gatewayResponse is null
+        ? null
+        : gatewayResponse.RootElement.GetRawText();
 
             financial.CustomerPaid =
                 financial.TotalAmount;
