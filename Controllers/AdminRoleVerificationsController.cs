@@ -808,8 +808,8 @@ public class AdminRoleVerificationsController : ControllerBase
         return Ok(new
         {
             message =
-                "The applicant has been asked to " +
-                "provide more information.",
+        "The applicant has been asked to " +
+        "provide more information.",
 
             application = new
             {
@@ -824,19 +824,18 @@ public class AdminRoleVerificationsController : ControllerBase
             },
 
             documents =
-                application.Documents?
-                    .Select(document => new
-                    {
-                        document.Id,
-                        document.DocumentType,
-                        document.OriginalFileName,
-                        document.VerificationStatus,
-                        document.ReviewerNotes,
-                        document.ReviewedAt,
-                        document.ReviewedByUserId
-                    })
-                    .ToList()
-                ?? new List<object>()
+        application.Documents
+            .Select(document => new
+            {
+                document.Id,
+                document.DocumentType,
+                document.OriginalFileName,
+                document.VerificationStatus,
+                document.ReviewerNotes,
+                document.ReviewedAt,
+                document.ReviewedByUserId
+            })
+            .ToList()
         });
     }
     // ---------------------------------------------------------
