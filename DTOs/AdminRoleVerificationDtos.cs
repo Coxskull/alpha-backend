@@ -7,7 +7,7 @@ public class AdminReviewDocumentDto
 	public string? ReviewerNotes { get; set; }
 }
 
-public class AdminApproveVerificationDto
+public sealed class AdminApproveVerificationDto
 {
 	public string? ReviewerNotes { get; set; }
 }
@@ -19,7 +19,8 @@ public class AdminRejectVerificationDto
 	public string? ReviewerNotes { get; set; }
 }
 
-public class AdminRequestMoreInformationDto
+public sealed class AdminRequestMoreInformationDto
 {
-	public string ReviewerNotes { get; set; } = string.Empty;
+	public string ReviewerNotes { get; set; } =
+		string.Empty;
 }
