@@ -1011,7 +1011,7 @@ public class AdminRoleVerificationsController : ControllerBase
                 ? userId
                 : Guid.Empty;
     }
-}
+
 
     private async Task ActivateOperationalProfile(
         Guid userId,
@@ -1071,18 +1071,6 @@ public class AdminRoleVerificationsController : ControllerBase
         }
     }
 
-    private Guid? GetCurrentUserId()
-    {
-        var userIdValue =
-            User.FindFirstValue(
-                ClaimTypes.NameIdentifier);
-
-        return Guid.TryParse(
-            userIdValue,
-            out var userId)
-                ? userId
-                : null;
-    }
 
     private string ResolveDocumentPath(
         string storedPath)
