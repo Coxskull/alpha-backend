@@ -62,6 +62,16 @@ public class AppDbContext : DbContext
     public DbSet<PaymentWebhookEvent> PaymentWebhookEvents =>
     Set<PaymentWebhookEvent>();
 
+
+    public DbSet<RoleVerificationApplication>
+    RoleVerificationApplications
+    { get; set; }
+
+    public DbSet<RoleVerificationDocument>
+        RoleVerificationDocuments
+    { get; set; }
+
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -293,6 +303,30 @@ public class AppDbContext : DbContext
 
             entity.HasIndex(transaction => transaction.EventKey)
                 .IsUnique();
+        });
+
+        modelBuilder.Entity<RoleVerificationApplication>(entity =>
+        {
+            entity.HasIndex(x => new
+            {
+                x.UserId,
+                x.RoleKey
+            }).IsUnique();
+
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany(x => x.Documents)
+                .WithOne(x => x.Application)
+                .HasForeignKey(x => x.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RoleVerificationDocument>(entity =>
+        {
+            entity.HasIndex(x => x.ApplicationId);
         });
 
         modelBuilder.Entity<ReferralSetting>(entity =>

@@ -730,10 +730,17 @@ public class AuthController : ControllerBase
                         referrer.ReferralCode
                     },
 
-                nextStep = selectedRoles.Count > 1
+                var requiresVerification = selectedRoles.Any(role =>
+     role == EntrepreneurRoles.Driver ||
+     role == EntrepreneurRoles.Mechanic ||
+     role == EntrepreneurRoles.Supplier);
+
+            nextStep = requiresVerification
+                ? "/verification"
+                : selectedRoles.Count > 1
                     ? "/select-workspace"
-                    : GetDashboardRoute(primaryRole)
-            });
+                    : GetDashboardRoute(primaryRole);
+        });
         }
         catch (DbUpdateException exception)
         {
@@ -743,8 +750,9 @@ public class AuthController : ControllerBase
                 StatusCodes.Status500InternalServerError,
                 new
                 {
-                    message =
-                        "Registration could not be completed because the account data could not be saved.",
+                    message = requiresVerification
+    ? "Your account was created. Complete identity and business verification before using an operational role."
+    : "Welcome to the Alpha Entrepreneur Network.",
                     detail = exception.InnerException?.Message ??
                              exception.Message
                 }
@@ -950,9 +958,8 @@ public class AuthController : ControllerBase
         var selectedRoles = await _context.UserRoles
             .AsNoTracking()
             .Where(role =>
-                role.UserId == user.Id &&
-                role.Status != "rejected" &&
-                role.Status != "suspended")
+    role.UserId == user.Id &&
+    role.Status == "active")
             .Select(role => role.RoleKey)
             .Distinct()
             .ToListAsync(cancellationToken);
@@ -963,12 +970,21 @@ public class AuthController : ControllerBase
             selectedRoles.Add(user.Role);
         }
 
-        if (!selectedRoles.Contains(
-            user.Role,
-            StringComparer.OrdinalIgnoreCase))
-        {
-            selectedRoles.Insert(0, user.Role);
-        }
+        var allRoleStatuses = await _context.UserRoles
+    .AsNoTracking()
+    .Where(x => x.UserId == user.Id)
+    .Select(x => new
+    {
+        role = x.RoleKey,
+        status = x.Status
+    })
+    .ToListAsync(cancellationToken);
+
+        var activeRoles = allRoleStatuses
+            .Where(x => x.status == "active")
+            .Select(x => x.role)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         var token = await GenerateTokenAsync(
     user,
@@ -1033,18 +1049,22 @@ public class AuthController : ControllerBase
 
                 role = user.Role,
                 primaryRole = user.Role,
-                roles = selectedRoles,
 
-                user.ReferralCode,
-                user.ReferredByUserId,
+                roles = activeRoles,
+                roleStatuses = allRoleStatuses,
 
-                supplierId,
-                driverId,
-                mechanicId,
+                verificationRequired = allRoleStatuses
+        .Where(x =>
+            x.status == "profile_incomplete" ||
+            x.status == "under_review" ||
+            x.status == "rejected")
+        .ToList(),
 
-                nextStep = selectedRoles.Count > 1
-                    ? "/select-workspace"
-                    : GetDashboardRoute(user.Role)
+                nextStep = activeRoles.Count == 0
+        ? "/verification"
+        : activeRoles.Count > 1
+            ? "/select-workspace"
+            : GetDashboardRoute(activeRoles[0])
             }
         });
     }
@@ -1061,9 +1081,8 @@ public class AuthController : ControllerBase
         var selectedRoles = await _context.UserRoles
             .AsNoTracking()
             .Where(role =>
-                role.UserId == user.Id &&
-                role.Status != "rejected" &&
-                role.Status != "suspended")
+    role.UserId == user.Id &&
+    role.Status == "active")
             .Select(role => role.RoleKey)
             .Distinct()
             .ToListAsync(cancellationToken);
