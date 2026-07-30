@@ -6,6 +6,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Supabase;
 using Alpha.API.Services;
 var builder = WebApplication.CreateBuilder(args);
 
@@ -117,6 +118,50 @@ builder.Services.AddSwaggerGen(options =>
             }
         });
 });
+
+var supabaseUrl =
+    builder.Configuration["Supabase:Url"]
+    ?? Environment.GetEnvironmentVariable(
+        "SUPABASE_URL");
+
+var supabaseServiceRoleKey =
+    builder.Configuration[
+        "Supabase:ServiceRoleKey"]
+    ?? Environment.GetEnvironmentVariable(
+        "SUPABASE_SERVICE_ROLE_KEY");
+
+if (string.IsNullOrWhiteSpace(supabaseUrl))
+{
+    throw new InvalidOperationException(
+        "SUPABASE_URL is missing.");
+}
+
+if (string.IsNullOrWhiteSpace(
+        supabaseServiceRoleKey))
+{
+    throw new InvalidOperationException(
+        "SUPABASE_SERVICE_ROLE_KEY is missing.");
+}
+
+builder.Services.AddSingleton(
+    _ =>
+    {
+        var options =
+            new SupabaseOptions
+            {
+                AutoConnectRealtime = false,
+                AutoRefreshToken = false
+            };
+
+        return new Client(
+            supabaseUrl,
+            supabaseServiceRoleKey,
+            options);
+    });
+
+builder.Services.AddScoped<
+    Alpha.API.Services.VerificationStorageService>();
+
 
 // Database
 var databaseUrl = builder.Configuration["DATABASE_URL"];

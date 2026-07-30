@@ -10,6 +10,7 @@ using System.IO;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
+using Alpha.API.Services;
 
 namespace Alpha.API.Controllers;
 
@@ -21,15 +22,18 @@ public class AdminRoleVerificationsController : ControllerBase
     private readonly AppDbContext _context;
     private readonly IWebHostEnvironment _environment;
     private readonly ILogger<AdminRoleVerificationsController> _logger;
+    private readonly VerificationStorageService _storage;
 
     public AdminRoleVerificationsController(
-        AppDbContext context,
-        IWebHostEnvironment environment,
-        ILogger<AdminRoleVerificationsController> logger)
+    AppDbContext context,
+    IWebHostEnvironment environment,
+    ILogger<AdminRoleVerificationsController> logger,
+    VerificationStorageService storage)
     {
         _context = context;
         _environment = environment;
         _logger = logger;
+        _storage = storage;
     }
 
     // ---------------------------------------------------------
@@ -214,8 +218,8 @@ public class AdminRoleVerificationsController : ControllerBase
 
     [HttpGet("documents/{documentId:guid}/file")]
     public async Task<IActionResult> GetDocumentFile(
-        Guid documentId,
-        CancellationToken cancellationToken)
+    Guid documentId,
+    CancellationToken cancellationToken)
     {
         var document =
             await _context.RoleVerificationDocuments
@@ -233,50 +237,30 @@ public class AdminRoleVerificationsController : ControllerBase
             });
         }
 
-        /*
-         * Your database contains both:
-         *
-         * storage_path - the path recorded when the file was uploaded
-         * file_path    - an optional local file-system path
-         *
-         * First try file_path. If it is empty or the file does not
-         * exist there, try storage_path as a local/relative path.
-         */
-        var candidatePaths = new[]
+        if (string.IsNullOrWhiteSpace(
+                document.StoragePath))
         {
-            document.FilePath,
-            document.StoragePath
+            return NotFound(new
+            {
+                message =
+                    "The document has no Supabase Storage path."
+            });
         }
-        .Where(path =>
-            !string.IsNullOrWhiteSpace(path))
-        .Select(path =>
-            path!.Trim())
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .ToList();
 
-        foreach (var candidatePath in candidatePaths)
+        try
         {
-            string fullPath;
+            var bytes =
+                await _storage.DownloadAsync(
+                    document.StoragePath,
+                    cancellationToken);
 
-            try
+            if (bytes.Length == 0)
             {
-                fullPath =
-                    ResolveDocumentPath(candidatePath);
-            }
-            catch (Exception exception)
-            {
-                _logger.LogWarning(
-                    exception,
-                    "Unable to resolve verification document path {Path} for document {DocumentId}.",
-                    candidatePath,
-                    documentId);
-
-                continue;
-            }
-
-            if (!System.IO.File.Exists(fullPath))
-            {
-                continue;
+                return NotFound(new
+                {
+                    message =
+                        "The stored document is empty."
+                });
             }
 
             var contentType =
@@ -285,57 +269,26 @@ public class AdminRoleVerificationsController : ControllerBase
                     ? "application/octet-stream"
                     : document.ContentType.Trim();
 
-            var fileStream =
-                new FileStream(
-                    fullPath,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.Read,
-                    bufferSize: 64 * 1024,
-                    useAsync: true);
-
             return File(
-                fileStream,
+                bytes,
                 contentType,
                 document.OriginalFileName,
                 enableRangeProcessing: true);
         }
-
-        /*
-         * If StoragePath contains an HTTP/HTTPS URL, redirect the
-         * browser to it. This supports a public or already-signed
-         * Supabase Storage URL.
-         */
-        if (Uri.TryCreate(
-                document.StoragePath,
-                UriKind.Absolute,
-                out var storageUri) &&
-            (storageUri.Scheme == Uri.UriSchemeHttp ||
-             storageUri.Scheme == Uri.UriSchemeHttps))
+        catch (Exception exception)
         {
-            return Redirect(storageUri.ToString());
+            _logger.LogError(
+                exception,
+                "Unable to download verification document {DocumentId} from Supabase Storage. Path: {StoragePath}",
+                documentId,
+                document.StoragePath);
+
+            return NotFound(new
+            {
+                message =
+                    "The document could not be found in secure storage."
+            });
         }
-
-        _logger.LogWarning(
-            "Verification document file was not found. DocumentId: {DocumentId}, FilePath: {FilePath}, StoragePath: {StoragePath}",
-            document.Id,
-            document.FilePath,
-            document.StoragePath);
-
-        return NotFound(new
-        {
-            message =
-                "The document file could not be found on the server. If the file is stored in a private Supabase Storage bucket, configure a signed download URL for StoragePath.",
-
-            documentId =
-                document.Id,
-
-            storagePath =
-                document.StoragePath,
-
-            filePath =
-                document.FilePath
-        });
     }
 
     // ---------------------------------------------------------

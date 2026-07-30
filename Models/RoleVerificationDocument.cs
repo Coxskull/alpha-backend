@@ -1,4 +1,3 @@
-using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -11,39 +10,30 @@ public class RoleVerificationDocument
     [Column("id")]
     public Guid Id { get; set; }
 
-    [Required]
     [Column("application_id")]
     public Guid ApplicationId { get; set; }
 
-    [Required]
     [Column("document_type")]
     public string DocumentType { get; set; } =
         string.Empty;
 
-    [Required]
     [Column("original_file_name")]
     public string OriginalFileName { get; set; } =
         string.Empty;
 
     /*
-     * Existing database column.
+     * Supabase Storage object path only.
      *
-     * This may contain the Supabase Storage object path,
-     * for example:
-     *
-     * role-verifications/{applicationId}/{fileName}
+     * Example:
+     * user-id/application-id/driver/government_id/file.png
      */
-    [Required]
     [Column("storage_path")]
     public string StoragePath { get; set; } =
         string.Empty;
 
     /*
-     * Optional local file-system path.
-     *
-     * This column already exists in your database.
-     * It may be null when documents are stored in
-     * Supabase Storage instead of Railway's local disk.
+     * Kept only for compatibility with old Railway-local uploads.
+     * New uploads must leave this null.
      */
     [Column("file_path")]
     public string? FilePath { get; set; }
@@ -54,7 +44,6 @@ public class RoleVerificationDocument
     [Column("file_size_bytes")]
     public long? FileSizeBytes { get; set; }
 
-    [Required]
     [Column("verification_status")]
     public string VerificationStatus { get; set; } =
         "pending";
@@ -72,7 +61,6 @@ public class RoleVerificationDocument
     [Column("reviewed_by_user_id")]
     public Guid? ReviewedByUserId { get; set; }
 
-    [ForeignKey(nameof(ApplicationId))]
     public RoleVerificationApplication? Application
     {
         get;
