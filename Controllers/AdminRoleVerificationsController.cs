@@ -377,188 +377,31 @@ public class AdminRoleVerificationsController : ControllerBase
     // Approve entire application
     // ---------------------------------------------------------
 
-    [HttpPost("{id:guid}/approve")]
+    [HttpPost("{applicationId:guid}/approve")]
     public async Task<IActionResult> ApproveApplication(
-        Guid id,
-        [FromBody] AdminApproveVerificationDto dto,
-        CancellationToken cancellationToken)
+     Guid applicationId,
+     [FromBody] ReviewRoleVerificationDto? dto,
+     CancellationToken cancellationToken)
     {
-        await using var transaction =
-            await _context.Database.BeginTransactionAsync(
-                cancellationToken);
+        var reviewerIdValue =
+            User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("sub");
 
-        try
+        if (!Guid.TryParse(
+                reviewerIdValue,
+                out var reviewerId))
         {
-            var application =
-                await _context.RoleVerificationApplications
-                    .Include(item =>
-                        item.Documents)
-                    .FirstOrDefaultAsync(
-                        item => item.Id == id,
-                        cancellationToken);
-
-            if (application == null)
+            return Unauthorized(new
             {
-                return NotFound(new
-                {
-                    message =
-                        "Verification application was not found."
-                });
-            }
-
-            if (application.Status != "under_review" &&
-                application.Status !=
-                    "needs_more_information")
-            {
-                return BadRequest(new
-                {
-                    message =
-                        "Only applications under review can be approved."
-                });
-            }
-
-            var documents =
-                application.Documents?.ToList() ??
-                new List<RoleVerificationDocument>();
-
-            if (documents.Count == 0)
-            {
-                return BadRequest(new
-                {
-                    message =
-                        "The application has no uploaded documents."
-                });
-            }
-
-            var pendingDocuments =
-                documents.Where(document =>
-                    document.VerificationStatus !=
-                    "accepted")
-                .Select(document =>
-                    document.OriginalFileName)
-                .ToList();
-
-            if (pendingDocuments.Count > 0)
-            {
-                return BadRequest(new
-                {
-                    message =
-                        "Every required document must be accepted before approving the application.",
-
-                    documents =
-                        pendingDocuments
-                });
-            }
-
-            var now = DateTime.UtcNow;
-            var adminUserId =
-                GetCurrentUserId();
-
-            application.Status = "active";
-            application.ReviewerNotes =
-                string.IsNullOrWhiteSpace(
-                    dto.ReviewerNotes)
-                    ? null
-                    : dto.ReviewerNotes.Trim();
-
-            application.RejectionReason = null;
-            application.ReviewedAt = now;
-            application.ReviewedByUserId =
-                adminUserId;
-            application.UpdatedAt = now;
-
-            var userRole =
-                await _context.UserRoles
-                    .FirstOrDefaultAsync(
-                        role =>
-                            role.UserId ==
-                                application.UserId &&
-                            role.RoleKey ==
-                                application.RoleKey,
-                        cancellationToken);
-
-            if (userRole == null)
-            {
-                return BadRequest(new
-                {
-                    message =
-                        "The user role record could not be found."
-                });
-            }
-
-            userRole.Status = "active";
-            userRole.ActivatedAt = now;
-
-            await ActivateOperationalProfile(
-                application.UserId,
-                application.RoleKey,
-                cancellationToken);
-
-            await _context.SaveChangesAsync(
-                cancellationToken);
-
-            await transaction.CommitAsync(
-                cancellationToken);
-
-            return Ok(new
-            {
-                message =
-                    $"{GetRoleTitle(application.RoleKey)} verification approved.",
-
-                application.Id,
-                application.RoleKey,
-                status = application.Status
-            });
-        }
-        catch (Exception exception)
-        {
-            await transaction.RollbackAsync(
-                cancellationToken);
-
-            _logger.LogError(
-                exception,
-                "Unable to approve verification application {ApplicationId}.",
-                id);
-
-            return StatusCode(
-                StatusCodes.Status500InternalServerError,
-                new
-                {
-                    message =
-                        "Unable to approve the verification application.",
-
-                    detail =
-                        exception.Message
-                });
-        }
-    }
-
-    // ---------------------------------------------------------
-    // Request additional information
-    // ---------------------------------------------------------
-
-    [HttpPost("{id:guid}/request-more-information")]
-    public async Task<IActionResult>
-        RequestMoreInformation(
-            Guid id,
-            [FromBody]
-            AdminRequestMoreInformationDto dto,
-            CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(
-            dto.ReviewerNotes))
-        {
-            return BadRequest(new
-            {
-                message =
-                    "Explain what information or documents are required."
+                message = "The admin user ID is invalid."
             });
         }
 
         var application =
             await _context.RoleVerificationApplications
+                .Include(x => x.Documents)
                 .FirstOrDefaultAsync(
-                    item => item.Id == id,
+                    x => x.Id == applicationId,
                     cancellationToken);
 
         if (application == null)
@@ -570,37 +413,414 @@ public class AdminRoleVerificationsController : ControllerBase
             });
         }
 
+        if (!string.Equals(
+                application.Status,
+                "under_review",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new
+            {
+                message =
+                    $"Only applications under review can be approved. Current status: {application.Status}"
+            });
+        }
+
+        var rejectedDocuments =
+            application.Documents
+                .Where(x =>
+                    string.Equals(
+                        x.VerificationStatus,
+                        "rejected",
+                        StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+        if (rejectedDocuments.Count > 0)
+        {
+            return BadRequest(new
+            {
+                message =
+                    "The application has rejected documents and cannot be approved."
+            });
+        }
+
+        var pendingDocuments =
+            application.Documents
+                .Where(x =>
+                    !string.Equals(
+                        x.VerificationStatus,
+                        "accepted",
+                        StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+        if (pendingDocuments.Count > 0)
+        {
+            return BadRequest(new
+            {
+                message =
+                    "Every required document must be accepted before approving the application."
+            });
+        }
+
+        var now = DateTime.UtcNow;
+
+        application.Status = "approved";
+        application.ReviewerNotes =
+            string.IsNullOrWhiteSpace(dto?.ReviewerNotes)
+                ? null
+                : dto.ReviewerNotes.Trim();
+
+        application.ReviewedByUserId = reviewerId;
+        application.ReviewedAt = now;
+        application.UpdatedAt = now;
+        application.RejectionReason = null;
+
+        foreach (var document in application.Documents)
+        {
+            document.VerificationStatus = "accepted";
+            document.ReviewedByUserId = reviewerId;
+            document.ReviewedAt ??= now;
+        }
+
+        var userRole =
+            await _context.UserRoles
+                .FirstOrDefaultAsync(
+                    x =>
+                        x.UserId == application.UserId &&
+                        x.RoleKey == application.RoleKey,
+                    cancellationToken);
+
+        if (userRole == null)
+        {
+            userRole = new UserRole
+            {
+                Id = Guid.NewGuid(),
+                UserId = application.UserId,
+                RoleKey = application.RoleKey,
+                Status = "active",
+                ActivatedAt = now,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+
+            _context.UserRoles.Add(userRole);
+        }
+        else
+        {
+            userRole.Status = "active";
+            userRole.ActivatedAt = now;
+            userRole.UpdatedAt = now;
+        }
+
+        try
+        {
+            await _context.SaveChangesAsync(
+                cancellationToken);
+        }
+        catch (DbUpdateException exception)
+        {
+            _logger.LogError(
+                exception,
+                "Database error approving verification application {ApplicationId}.",
+                applicationId);
+
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message =
+                        "A database error occurred while approving the application.",
+
+                    detail =
+                        exception.InnerException?.Message
+                        ?? exception.Message
+                });
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(
+                exception,
+                "Unexpected error approving verification application {ApplicationId}.",
+                applicationId);
+
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message =
+                        "An unexpected error occurred while approving the application.",
+
+                    detail = exception.Message
+                });
+        }
+
+        return Ok(new
+        {
+            message =
+                "Verification application approved successfully.",
+
+            applicationId = application.Id,
+            application.RoleKey,
+            application.Status,
+            application.ReviewedAt
+        });
+    }
+
+    // ---------------------------------------------------------
+    // Request additional information
+    // ---------------------------------------------------------
+
+    [HttpPost("{id:guid}/request-more-information")]
+    public async Task<IActionResult>
+    RequestMoreInformation(
+        Guid id,
+        [FromBody]
+        AdminRequestMoreInformationDto dto,
+        CancellationToken cancellationToken)
+    {
+        if (dto == null)
+        {
+            return BadRequest(new
+            {
+                message =
+                    "Request information is required."
+            });
+        }
+
+        var reviewerNotes =
+            dto.ReviewerNotes?.Trim();
+
+        if (string.IsNullOrWhiteSpace(
+                reviewerNotes))
+        {
+            return BadRequest(new
+            {
+                message =
+                    "Explain what information or documents are required."
+            });
+        }
+
+        var reviewerId =
+            GetCurrentUserId();
+
+        var application =
+            await _context
+                .RoleVerificationApplications
+                .Include(item =>
+                    item.Documents)
+                .FirstOrDefaultAsync(
+                    item =>
+                        item.Id == id,
+                    cancellationToken);
+
+        if (application == null)
+        {
+            return NotFound(new
+            {
+                message =
+                    "Verification application was not found."
+            });
+        }
+
+        var allowedStatuses =
+            new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+            "under_review",
+            "submitted",
+            "pending",
+            "needs_more_information"
+            };
+
+        if (!allowedStatuses.Contains(
+                application.Status))
+        {
+            return BadRequest(new
+            {
+                message =
+                    "More information cannot be requested " +
+                    $"while the application status is " +
+                    $"'{application.Status}'."
+            });
+        }
+
+        var now =
+            DateTime.UtcNow;
+
         application.Status =
             "needs_more_information";
 
         application.ReviewerNotes =
-            dto.ReviewerNotes.Trim();
+            reviewerNotes;
 
         application.RejectionReason =
             null;
 
         application.ReviewedAt =
-            DateTime.UtcNow;
+            now;
 
         application.ReviewedByUserId =
-            GetCurrentUserId();
+            reviewerId;
 
         application.UpdatedAt =
-            DateTime.UtcNow;
+            now;
 
-        await UpdateUserRoleStatus(
-            application.UserId,
-            application.RoleKey,
-            "needs_more_information",
-            cancellationToken);
+        /*
+         * Mark the documents as requiring more information.
+         *
+         * This allows the applicant page to clearly identify
+         * which uploaded documents need to be replaced.
+         *
+         * Remove this foreach block if the request should only
+         * apply to the application fields and not the documents.
+         */
+        foreach (
+            var document in application.Documents)
+        {
+            document.VerificationStatus =
+                "needs_more_information";
 
-        await _context.SaveChangesAsync(
-            cancellationToken);
+            document.ReviewerNotes =
+                reviewerNotes;
+
+            document.ReviewedAt =
+                now;
+
+            document.ReviewedByUserId =
+                reviewerId;
+        }
+
+        var userRole =
+            await _context.UserRoles
+                .FirstOrDefaultAsync(
+                    item =>
+                        item.UserId ==
+                            application.UserId &&
+                        item.RoleKey ==
+                            application.RoleKey,
+                    cancellationToken);
+
+        if (userRole == null)
+        {
+            userRole =
+                new UserRole
+                {
+                    Id =
+                        Guid.NewGuid(),
+
+                    UserId =
+                        application.UserId,
+
+                    RoleKey =
+                        application.RoleKey,
+
+                    Status =
+                        "needs_more_information",
+
+                    ActivatedAt =
+                        null,
+
+                    CreatedAt =
+                        now,
+
+                    UpdatedAt =
+                        now
+                };
+
+            _context.UserRoles.Add(
+                userRole);
+        }
+        else
+        {
+            userRole.Status =
+                "needs_more_information";
+
+            userRole.ActivatedAt =
+                null;
+
+            userRole.UpdatedAt =
+                now;
+        }
+
+        try
+        {
+            await _context.SaveChangesAsync(
+                cancellationToken);
+        }
+        catch (DbUpdateException exception)
+        {
+            _logger.LogError(
+                exception,
+                "Database error while requesting more " +
+                "information for verification application " +
+                "{ApplicationId}.",
+                id);
+
+            return StatusCode(
+                StatusCodes
+                    .Status500InternalServerError,
+                new
+                {
+                    message =
+                        "A database error occurred while " +
+                        "requesting more information.",
+
+                    detail =
+                        exception.InnerException?.Message
+                        ?? exception.Message
+                });
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(
+                exception,
+                "Unexpected error while requesting more " +
+                "information for verification application " +
+                "{ApplicationId}.",
+                id);
+
+            return StatusCode(
+                StatusCodes
+                    .Status500InternalServerError,
+                new
+                {
+                    message =
+                        "An unexpected error occurred while " +
+                        "requesting more information.",
+
+                    detail =
+                        exception.Message
+                });
+        }
 
         return Ok(new
         {
             message =
-                "The applicant has been asked to provide more information."
+                "The applicant has been asked to provide more information.",
+
+            application = new
+            {
+                application.Id,
+                application.UserId,
+                application.RoleKey,
+                application.Status,
+                application.ReviewerNotes,
+                application.ReviewedAt,
+                application.ReviewedByUserId,
+                application.UpdatedAt
+            },
+
+            documents =
+                application.Documents
+                    .Select(document => new
+                    {
+                        document.Id,
+                        document.DocumentType,
+                        document.OriginalFileName,
+                        document.VerificationStatus,
+                        document.ReviewerNotes,
+                        document.ReviewedAt
+                    })
+                    .ToList()
         });
     }
 
