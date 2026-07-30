@@ -1,14 +1,19 @@
-using Supabase;
-using Supabase.Storage;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+using StorageFileOptions = Supabase.Storage.FileOptions;
 
 namespace Alpha.API.Services;
 
 public sealed class VerificationStorageService
 {
-    private readonly Client _supabase;
-    private readonly ILogger<VerificationStorageService> _logger;
-    private readonly string _bucket;
+    public const long MaximumFileSizeBytes = 10 * 1024 * 1024;
 
     private static readonly HashSet<string> AllowedContentTypes =
         new(StringComparer.OrdinalIgnoreCase)
@@ -19,10 +24,12 @@ public sealed class VerificationStorageService
             "application/pdf"
         };
 
-    public const long MaximumFileSizeBytes = 10 * 1024 * 1024;
+    private readonly Supabase.Client _supabase;
+    private readonly ILogger<VerificationStorageService> _logger;
+    private readonly string _bucket;
 
     public VerificationStorageService(
-        Client supabase,
+        Supabase.Client supabase,
         IConfiguration configuration,
         ILogger<VerificationStorageService> logger)
     {
@@ -52,7 +59,8 @@ public sealed class VerificationStorageService
                 "The maximum document size is 10 MB.");
         }
 
-        if (!AllowedContentTypes.Contains(file.ContentType))
+        if (string.IsNullOrWhiteSpace(file.ContentType) ||
+            !AllowedContentTypes.Contains(file.ContentType))
         {
             throw new InvalidOperationException(
                 "Only JPG, PNG, WEBP, and PDF files are allowed.");
@@ -69,31 +77,24 @@ public sealed class VerificationStorageService
     {
         ValidateFile(file);
 
-        var safeRole =
-            SanitizeSegment(roleKey);
+        var safeRole = SanitizeSegment(roleKey);
+        var safeDocumentType = SanitizeSegment(documentType);
+        var extension = GetSafeExtension(
+            file.FileName,
+            file.ContentType);
 
-        var safeDocumentType =
-            SanitizeSegment(documentType);
+        var storedFileName = $"{Guid.NewGuid():N}{extension}";
 
-        var extension =
-            GetSafeExtension(
-                file.FileName,
-                file.ContentType);
-
-        var objectName =
-            $"{Guid.NewGuid():N}{extension}";
-
-        /*
-         * Save only the object path in PostgreSQL.
-         * Do not save /app/out/... or another Railway path.
-         */
         var objectPath =
-            $"{userId:D}/{applicationId:D}/{safeRole}/{safeDocumentType}/{objectName}";
+            $"{userId:D}/" +
+            $"{applicationId:D}/" +
+            $"{safeRole}/" +
+            $"{safeDocumentType}/" +
+            storedFileName;
 
-        var temporaryFilePath =
-            Path.Combine(
-                Path.GetTempPath(),
-                $"alpha-verification-{Guid.NewGuid():N}{extension}");
+        var temporaryFilePath = Path.Combine(
+            Path.GetTempPath(),
+            $"alpha-verification-{Guid.NewGuid():N}{extension}");
 
         try
         {
@@ -111,12 +112,14 @@ public sealed class VerificationStorageService
                     cancellationToken);
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
+
             await _supabase.Storage
                 .From(_bucket)
                 .Upload(
                     temporaryFilePath,
                     objectPath,
-                    new FileOptions
+                    new StorageFileOptions
                     {
                         CacheControl = "3600",
                         Upsert = false,
@@ -129,7 +132,7 @@ public sealed class VerificationStorageService
         {
             _logger.LogError(
                 exception,
-                "Unable to upload verification document to Supabase Storage. Bucket: {Bucket}, Path: {Path}",
+                "Unable to upload verification document. Bucket: {Bucket}, Path: {Path}",
                 _bucket,
                 objectPath);
 
@@ -137,20 +140,7 @@ public sealed class VerificationStorageService
         }
         finally
         {
-            try
-            {
-                if (File.Exists(temporaryFilePath))
-                {
-                    File.Delete(temporaryFilePath);
-                }
-            }
-            catch (Exception cleanupException)
-            {
-                _logger.LogWarning(
-                    cleanupException,
-                    "Unable to remove temporary verification upload {TemporaryPath}.",
-                    temporaryFilePath);
-            }
+            TryDeleteTemporaryFile(temporaryFilePath);
         }
     }
 
@@ -158,48 +148,25 @@ public sealed class VerificationStorageService
         string storagePath,
         CancellationToken cancellationToken)
     {
-        var objectPath =
-            NormalizeObjectPath(storagePath);
-
-        /*
-         * Supabase C# Storage Download currently does not expose
-         * CancellationToken in the documented overload.
-         */
-        cancellationToken.ThrowIfCancellationRequested();
-
-        return await _supabase.Storage
-            .From(_bucket)
-            .Download(objectPath);
-    }
-
-    public async Task DeleteAsync(
-        string? storagePath,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(storagePath))
-        {
-            return;
-        }
-
-        var objectPath =
-            NormalizeObjectPath(storagePath);
+        var objectPath = NormalizeObjectPath(storagePath);
 
         cancellationToken.ThrowIfCancellationRequested();
 
         try
         {
-            await _supabase.Storage
+            var bytes = await _supabase.Storage
                 .From(_bucket)
-                .Remove(new List<string>
-                {
-                    objectPath
-                });
+                .Download(objectPath);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return bytes;
         }
         catch (Exception exception)
         {
-            _logger.LogWarning(
+            _logger.LogError(
                 exception,
-                "Unable to delete verification document from Supabase Storage. Bucket: {Bucket}, Path: {Path}",
+                "Unable to download verification document. Bucket: {Bucket}, Path: {Path}",
                 _bucket,
                 objectPath);
 
@@ -211,18 +178,71 @@ public sealed class VerificationStorageService
         string storagePath,
         int expiresInSeconds = 300)
     {
-        var objectPath =
-            NormalizeObjectPath(storagePath);
+        if (expiresInSeconds <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(expiresInSeconds),
+                "Expiration must be greater than zero.");
+        }
 
-        return await _supabase.Storage
-            .From(_bucket)
-            .CreateSignedUrl(
-                objectPath,
-                expiresInSeconds);
+        var objectPath = NormalizeObjectPath(storagePath);
+
+        try
+        {
+            return await _supabase.Storage
+                .From(_bucket)
+                .CreateSignedUrl(
+                    objectPath,
+                    expiresInSeconds);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(
+                exception,
+                "Unable to create a signed verification document URL. Bucket: {Bucket}, Path: {Path}",
+                _bucket,
+                objectPath);
+
+            throw;
+        }
     }
 
-    public string NormalizeObjectPath(
-        string storagePath)
+    public async Task DeleteAsync(
+        string? storagePath,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(storagePath))
+        {
+            return;
+        }
+
+        var objectPath = NormalizeObjectPath(storagePath);
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        try
+        {
+            await _supabase.Storage
+                .From(_bucket)
+                .Remove(
+                    new List<string>
+                    {
+                        objectPath
+                    });
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Unable to delete verification document. Bucket: {Bucket}, Path: {Path}",
+                _bucket,
+                objectPath);
+
+            throw;
+        }
+    }
+
+    public string NormalizeObjectPath(string storagePath)
     {
         if (string.IsNullOrWhiteSpace(storagePath))
         {
@@ -230,54 +250,47 @@ public sealed class VerificationStorageService
                 "The document storage path is empty.");
         }
 
-        var normalized =
-            storagePath
-                .Trim()
-                .Replace("\\", "/");
+        var normalized = storagePath
+            .Trim()
+            .Replace("\\", "/");
 
         if (Uri.TryCreate(
                 normalized,
                 UriKind.Absolute,
                 out var uri))
         {
-            normalized =
-                Uri.UnescapeDataString(
-                    uri.AbsolutePath);
+            normalized = Uri.UnescapeDataString(
+                uri.AbsolutePath);
         }
 
-        normalized =
-            normalized.TrimStart('/');
+        normalized = normalized.TrimStart('/');
 
-        var prefixes =
-            new[]
-            {
-                $"storage/v1/object/public/{_bucket}/",
-                $"storage/v1/object/sign/{_bucket}/",
-                $"storage/v1/object/authenticated/{_bucket}/",
-                $"{_bucket}/"
-            };
-
-        foreach (var prefix in prefixes)
+        var knownPrefixes = new[]
         {
-            var index =
-                normalized.IndexOf(
-                    prefix,
-                    StringComparison.OrdinalIgnoreCase);
+            $"storage/v1/object/public/{_bucket}/",
+            $"storage/v1/object/sign/{_bucket}/",
+            $"storage/v1/object/authenticated/{_bucket}/",
+            $"{_bucket}/"
+        };
+
+        foreach (var prefix in knownPrefixes)
+        {
+            var index = normalized.IndexOf(
+                prefix,
+                StringComparison.OrdinalIgnoreCase);
 
             if (index < 0)
             {
                 continue;
             }
 
-            normalized =
-                normalized[
-                    (index + prefix.Length)..];
+            normalized = normalized[
+                (index + prefix.Length)..];
 
             break;
         }
 
-        normalized =
-            normalized.TrimStart('/');
+        normalized = normalized.TrimStart('/');
 
         if (string.IsNullOrWhiteSpace(normalized))
         {
@@ -285,24 +298,57 @@ public sealed class VerificationStorageService
                 "The Supabase Storage object path is empty.");
         }
 
+        if (normalized.StartsWith(
+                "app/out/",
+                StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith(
+                "private-uploads/",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "This database record points to an old Railway-local file. The applicant must upload the document again.");
+        }
+
         return normalized;
     }
 
-    private static string SanitizeSegment(
-        string value)
+    private void TryDeleteTemporaryFile(
+        string temporaryFilePath)
     {
-        var normalized =
-            value
-                .Trim()
-                .ToLowerInvariant()
-                .Replace("-", "_")
-                .Replace(" ", "_");
+        try
+        {
+            if (File.Exists(temporaryFilePath))
+            {
+                File.Delete(temporaryFilePath);
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Unable to remove temporary verification upload {TemporaryPath}.",
+                temporaryFilePath);
+        }
+    }
 
-        normalized =
-            Regex.Replace(
-                normalized,
-                "[^a-z0-9_]",
-                string.Empty);
+    private static string SanitizeSegment(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new InvalidOperationException(
+                "A valid storage path segment is required.");
+        }
+
+        var normalized = value
+            .Trim()
+            .ToLowerInvariant()
+            .Replace("-", "_")
+            .Replace(" ", "_");
+
+        normalized = Regex.Replace(
+            normalized,
+            "[^a-z0-9_]",
+            string.Empty);
 
         if (string.IsNullOrWhiteSpace(normalized))
         {
@@ -317,11 +363,14 @@ public sealed class VerificationStorageService
         string originalFileName,
         string contentType)
     {
-        var suppliedExtension =
-            Path.GetExtension(originalFileName)
-                .ToLowerInvariant();
+        var suppliedExtension = Path.GetExtension(
+                originalFileName)
+            .ToLowerInvariant();
 
-        return contentType.ToLowerInvariant() switch
+        return contentType
+            .Trim()
+            .ToLowerInvariant()
+            switch
         {
             "image/jpeg" =>
                 suppliedExtension is ".jpeg" or ".jpg"

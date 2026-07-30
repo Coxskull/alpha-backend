@@ -147,20 +147,23 @@ builder.Services.AddSingleton(
     _ =>
     {
         var options =
-            new SupabaseOptions
+            new Supabase.SupabaseOptions
             {
                 AutoConnectRealtime = false,
                 AutoRefreshToken = false
             };
 
-        return new Client(
+        return new Supabase.Client(
             supabaseUrl,
             supabaseServiceRoleKey,
-            options);
-    });
+            options
+        );
+    }
+);
 
 builder.Services.AddScoped<
-    Alpha.API.Services.VerificationStorageService>();
+    VerificationStorageService
+>();
 
 
 // Database
