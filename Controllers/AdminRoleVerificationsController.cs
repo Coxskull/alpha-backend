@@ -840,7 +840,7 @@ public class AdminRoleVerificationsController : ControllerBase
     }
     // ---------------------------------------------------------
     // Reject entire application
-    // ---------------------------------------------------------
+    // --------------------------------------------------------
 
     [HttpPost("{id:guid}/reject")]
     public async Task<IActionResult> RejectApplication(
