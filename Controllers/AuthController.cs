@@ -683,10 +683,34 @@ public class AuthController : ControllerBase
             // 17. Return registration result
             // -----------------------------------------------------
 
+            var requiresVerification = selectedRoles.Any(role =>
+                role.Equals(
+                    EntrepreneurRoles.Driver,
+                    StringComparison.OrdinalIgnoreCase) ||
+                role.Equals(
+                    EntrepreneurRoles.Mechanic,
+                    StringComparison.OrdinalIgnoreCase) ||
+                role.Equals(
+                    EntrepreneurRoles.Supplier,
+                    StringComparison.OrdinalIgnoreCase)
+            );
+
+            var onboardingRequiredRoles = selectedRoles
+                .Where(role =>
+                    GetInitialRoleStatus(role) != "active")
+                .ToList();
+
+            var nextStep = requiresVerification
+                ? "/verification"
+                : selectedRoles.Count > 1
+                    ? "/select-workspace"
+                    : GetDashboardRoute(primaryRole);
+
             return Ok(new
             {
-                message =
-                    "Welcome to the Alpha Entrepreneur Network.",
+                message = requiresVerification
+                    ? "Your account was created. Complete identity and business verification before using an operational role."
+                    : "Welcome to the Alpha Entrepreneur Network.",
 
                 user = new
                 {
@@ -714,10 +738,13 @@ public class AuthController : ControllerBase
                             StringComparer.OrdinalIgnoreCase
                         ),
 
-                    onboardingRequired = selectedRoles
-                        .Where(role =>
-                            GetInitialRoleStatus(role) != "active")
-                        .ToList()
+                    verificationRequired =
+                        requiresVerification,
+
+                    onboardingRequired =
+                        onboardingRequiredRoles,
+
+                    nextStep
                 },
 
                 referredBy = referrer == null
@@ -730,17 +757,14 @@ public class AuthController : ControllerBase
                         referrer.ReferralCode
                     },
 
-                var requiresVerification = selectedRoles.Any(role =>
-     role == EntrepreneurRoles.Driver ||
-     role == EntrepreneurRoles.Mechanic ||
-     role == EntrepreneurRoles.Supplier);
+                verificationRequired =
+                    requiresVerification,
 
-            nextStep = requiresVerification
-                ? "/verification"
-                : selectedRoles.Count > 1
-                    ? "/select-workspace"
-                    : GetDashboardRoute(primaryRole);
-        });
+                onboardingRequired =
+                    onboardingRequiredRoles,
+
+                nextStep
+            });
         }
         catch (DbUpdateException exception)
         {
@@ -750,11 +774,12 @@ public class AuthController : ControllerBase
                 StatusCodes.Status500InternalServerError,
                 new
                 {
-                    message = requiresVerification
-    ? "Your account was created. Complete identity and business verification before using an operational role."
-    : "Welcome to the Alpha Entrepreneur Network.",
-                    detail = exception.InnerException?.Message ??
-                             exception.Message
+                    message =
+                        "Registration could not be completed because the account data could not be saved.",
+
+                    detail =
+                        exception.InnerException?.Message ??
+                        exception.Message
                 }
             );
         }
@@ -768,6 +793,7 @@ public class AuthController : ControllerBase
                 {
                     message =
                         "An unexpected error occurred during registration.",
+
                     detail = exception.Message
                 }
             );
@@ -882,6 +908,35 @@ public class AuthController : ControllerBase
         };
     }
 
+    private static bool IsOperationalRole(string role)
+    {
+        return role.Equals(
+                   EntrepreneurRoles.Driver,
+                   StringComparison.OrdinalIgnoreCase) ||
+               role.Equals(
+                   EntrepreneurRoles.Mechanic,
+                   StringComparison.OrdinalIgnoreCase) ||
+               role.Equals(
+                   EntrepreneurRoles.Supplier,
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool RequiresVerification(string status)
+    {
+        var normalizedStatus = status
+            .Trim()
+            .ToLowerInvariant()
+            .Replace("-", "_")
+            .Replace(" ", "_");
+
+        return normalizedStatus is
+            "pending" or
+            "profile_incomplete" or
+            "under_review" or
+            "rejected" or
+            "needs_more_information";
+    }
+
     private static string GetDashboardRoute(string primaryRole)
     {
         return primaryRole switch
@@ -964,31 +1019,47 @@ public class AuthController : ControllerBase
             .Distinct()
             .ToListAsync(cancellationToken);
 
-        if (selectedRoles.Count == 0 &&
-            !string.IsNullOrWhiteSpace(user.Role))
-        {
-            selectedRoles.Add(user.Role);
-        }
-
         var allRoleStatuses = await _context.UserRoles
-    .AsNoTracking()
-    .Where(x => x.UserId == user.Id)
-    .Select(x => new
-    {
-        role = x.RoleKey,
-        status = x.Status
-    })
-    .ToListAsync(cancellationToken);
+            .AsNoTracking()
+            .Where(role => role.UserId == user.Id)
+            .Select(role => new
+            {
+                role = role.RoleKey,
+                status = role.Status
+            })
+            .ToListAsync(cancellationToken);
 
         var activeRoles = allRoleStatuses
-            .Where(x => x.status == "active")
-            .Select(x => x.role)
+            .Where(role =>
+                role.status.Equals(
+                    "active",
+                    StringComparison.OrdinalIgnoreCase))
+            .Select(role => role.role)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        var verificationRequired = allRoleStatuses
+            .Where(role =>
+                IsOperationalRole(role.role) &&
+                RequiresVerification(role.status))
+            .Select(role => new
+            {
+                role = role.role,
+                status = role.status
+            })
+            .ToList();
+
+        var nextStep = verificationRequired.Count > 0
+            ? "/verification"
+            : activeRoles.Count > 1
+                ? "/select-workspace"
+                : activeRoles.Count == 1
+                    ? GetDashboardRoute(activeRoles[0])
+                    : "/";
+
         var token = await GenerateTokenAsync(
-    user,
-    cancellationToken);
+            user,
+            cancellationToken);
 
         Guid? supplierId = null;
         Guid? driverId = null;
@@ -1053,18 +1124,8 @@ public class AuthController : ControllerBase
                 roles = activeRoles,
                 roleStatuses = allRoleStatuses,
 
-                verificationRequired = allRoleStatuses
-        .Where(x =>
-            x.status == "profile_incomplete" ||
-            x.status == "under_review" ||
-            x.status == "rejected")
-        .ToList(),
-
-                nextStep = activeRoles.Count == 0
-        ? "/verification"
-        : activeRoles.Count > 1
-            ? "/select-workspace"
-            : GetDashboardRoute(activeRoles[0])
+                verificationRequired,
+                nextStep
             }
         });
     }
@@ -1088,12 +1149,6 @@ public class AuthController : ControllerBase
             .ToListAsync(cancellationToken);
 
         // Support accounts created before user_roles existed.
-        if (selectedRoles.Count == 0 &&
-            !string.IsNullOrWhiteSpace(user.Role))
-        {
-            selectedRoles.Add(user.Role);
-        }
-
         if (!string.IsNullOrWhiteSpace(user.Role) &&
             !selectedRoles.Contains(
                 user.Role,
@@ -1129,10 +1184,6 @@ public class AuthController : ControllerBase
             new System.Security.Claims.Claim(
                 ClaimTypes.Email,
                 user.Email),
-
-            new System.Security.Claims.Claim(
-                ClaimTypes.Role,
-                user.Role),
 
             new System.Security.Claims.Claim(
                 "primary_role",
@@ -1184,17 +1235,93 @@ public class AuthController : ControllerBase
 
     [Authorize]
     [HttpGet("me")]
-    public IActionResult Me()
+    public async Task<IActionResult> Me(
+        CancellationToken cancellationToken)
     {
+        var userIdValue =
+            User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!Guid.TryParse(userIdValue, out var userId))
+        {
+            return Unauthorized(new
+            {
+                message = "The authentication token is invalid."
+            });
+        }
+
+        var user = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                existingUser =>
+                    existingUser.Id == userId &&
+                    existingUser.IsActive,
+                cancellationToken);
+
+        if (user == null)
+        {
+            return Unauthorized(new
+            {
+                message = "The account is unavailable or inactive."
+            });
+        }
+
+        var roleStatuses = await _context.UserRoles
+            .AsNoTracking()
+            .Where(role => role.UserId == user.Id)
+            .Select(role => new
+            {
+                role = role.RoleKey,
+                status = role.Status,
+                isPrimary = role.IsPrimary
+            })
+            .ToListAsync(cancellationToken);
+
+        var activeRoles = roleStatuses
+            .Where(role =>
+                role.status.Equals(
+                    "active",
+                    StringComparison.OrdinalIgnoreCase))
+            .Select(role => role.role)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var verificationRequired = roleStatuses
+            .Where(role =>
+                IsOperationalRole(role.role) &&
+                RequiresVerification(role.status))
+            .Select(role => new
+            {
+                role = role.role,
+                status = role.status
+            })
+            .ToList();
+
+        var nextStep = verificationRequired.Count > 0
+            ? "/verification"
+            : activeRoles.Count > 1
+                ? "/select-workspace"
+                : activeRoles.Count == 1
+                    ? GetDashboardRoute(activeRoles[0])
+                    : "/";
+
         return Ok(new
         {
-            id = User.FindFirstValue(ClaimTypes.NameIdentifier),
-            email = User.FindFirstValue(ClaimTypes.Email),
-            role = User.FindFirstValue(ClaimTypes.Role)
+            user.Id,
+            user.FullName,
+            user.Email,
+            user.Phone,
+
+            role = user.Role,
+            primaryRole = user.Role,
+
+            roles = activeRoles,
+            roleStatuses,
+            verificationRequired,
+            nextStep
         });
     }
 
-   
+
 
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword(
