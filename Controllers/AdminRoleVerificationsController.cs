@@ -195,6 +195,8 @@ public class AdminRoleVerificationsController : ControllerBase
                     document.Id,
                     document.DocumentType,
                     document.OriginalFileName,
+                    document.StoragePath,
+                    document.FilePath,
                     document.ContentType,
                     document.FileSizeBytes,
                     document.VerificationStatus,
@@ -231,33 +233,109 @@ public class AdminRoleVerificationsController : ControllerBase
             });
         }
 
-        var fullPath =
-            ResolveDocumentPath(document.FilePath);
-
-        if (!System.IO.File.Exists(fullPath))
+        /*
+         * Your database contains both:
+         *
+         * storage_path - the path recorded when the file was uploaded
+         * file_path    - an optional local file-system path
+         *
+         * First try file_path. If it is empty or the file does not
+         * exist there, try storage_path as a local/relative path.
+         */
+        var candidatePaths = new[]
         {
-            return NotFound(new
+            document.FilePath,
+            document.StoragePath
+        }
+        .Where(path =>
+            !string.IsNullOrWhiteSpace(path))
+        .Select(path =>
+            path!.Trim())
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+        foreach (var candidatePath in candidatePaths)
+        {
+            string fullPath;
+
+            try
             {
-                message =
-                    "The document file could not be found."
-            });
+                fullPath =
+                    ResolveDocumentPath(candidatePath);
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Unable to resolve verification document path {Path} for document {DocumentId}.",
+                    candidatePath,
+                    documentId);
+
+                continue;
+            }
+
+            if (!System.IO.File.Exists(fullPath))
+            {
+                continue;
+            }
+
+            var contentType =
+                string.IsNullOrWhiteSpace(
+                    document.ContentType)
+                    ? "application/octet-stream"
+                    : document.ContentType.Trim();
+
+            var fileStream =
+                new FileStream(
+                    fullPath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    bufferSize: 64 * 1024,
+                    useAsync: true);
+
+            return File(
+                fileStream,
+                contentType,
+                document.OriginalFileName,
+                enableRangeProcessing: true);
         }
 
-        var contentType =
-            string.IsNullOrWhiteSpace(
-                document.ContentType)
-                ? "application/octet-stream"
-                : document.ContentType;
+        /*
+         * If StoragePath contains an HTTP/HTTPS URL, redirect the
+         * browser to it. This supports a public or already-signed
+         * Supabase Storage URL.
+         */
+        if (Uri.TryCreate(
+                document.StoragePath,
+                UriKind.Absolute,
+                out var storageUri) &&
+            (storageUri.Scheme == Uri.UriSchemeHttp ||
+             storageUri.Scheme == Uri.UriSchemeHttps))
+        {
+            return Redirect(storageUri.ToString());
+        }
 
-        var bytes =
-            await System.IO.File.ReadAllBytesAsync(
-                fullPath,
-                cancellationToken);
+        _logger.LogWarning(
+            "Verification document file was not found. DocumentId: {DocumentId}, FilePath: {FilePath}, StoragePath: {StoragePath}",
+            document.Id,
+            document.FilePath,
+            document.StoragePath);
 
-        return File(
-            bytes,
-            contentType,
-            document.OriginalFileName);
+        return NotFound(new
+        {
+            message =
+                "The document file could not be found on the server. If the file is stored in a private Supabase Storage bucket, configure a signed download URL for StoragePath.",
+
+            documentId =
+                document.Id,
+
+            storagePath =
+                document.StoragePath,
+
+            filePath =
+                document.FilePath
+        });
     }
 
     // ---------------------------------------------------------
@@ -744,20 +822,54 @@ public class AdminRoleVerificationsController : ControllerBase
     private string ResolveDocumentPath(
         string storedPath)
     {
-        if (Path.IsPathRooted(storedPath))
+        if (string.IsNullOrWhiteSpace(storedPath))
         {
-            return storedPath;
+            throw new ArgumentException(
+                "The document path is empty.",
+                nameof(storedPath));
         }
 
-        var relativePath = storedPath
+        var decodedPath =
+            Uri.UnescapeDataString(
+                storedPath.Trim());
+
+        if (Path.IsPathRooted(decodedPath))
+        {
+            return Path.GetFullPath(decodedPath);
+        }
+
+        var relativePath = decodedPath
             .TrimStart('/', '\\')
             .Replace(
                 '/',
+                Path.DirectorySeparatorChar)
+            .Replace(
+                '\\',
                 Path.DirectorySeparatorChar);
 
-        return Path.Combine(
-            _environment.ContentRootPath,
-            relativePath);
+        var fullPath =
+            Path.GetFullPath(
+                Path.Combine(
+                    _environment.ContentRootPath,
+                    relativePath));
+
+        var contentRoot =
+            Path.GetFullPath(
+                _environment.ContentRootPath)
+            .TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+
+        if (!fullPath.StartsWith(
+                contentRoot,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "The document path is outside the application content directory.");
+        }
+
+        return fullPath;
     }
 
     private static string NormalizeStatus(

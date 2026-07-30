@@ -68,8 +68,9 @@ public class AppDbContext : DbContext
     { get; set; }
 
     public DbSet<RoleVerificationDocument>
-        RoleVerificationDocuments
-    { get; set; }
+    RoleVerificationDocuments
+    { get; set; } =
+        null!;
 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -324,10 +325,85 @@ public class AppDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        modelBuilder.Entity<RoleVerificationDocument>(entity =>
-        {
-            entity.HasIndex(x => x.ApplicationId);
-        });
+        modelBuilder.Entity<RoleVerificationDocument>(
+      entity =>
+      {
+          entity.ToTable(
+              "role_verification_documents"
+          );
+
+          entity.HasKey(document =>
+              document.Id
+          );
+
+          entity.Property(document =>
+                  document.Id)
+              .HasColumnName("id");
+
+          entity.Property(document =>
+                  document.ApplicationId)
+              .HasColumnName("application_id");
+
+          entity.Property(document =>
+                  document.DocumentType)
+              .HasColumnName("document_type")
+              .IsRequired();
+
+          entity.Property(document =>
+                  document.OriginalFileName)
+              .HasColumnName("original_file_name")
+              .IsRequired();
+
+          entity.Property(document =>
+                  document.StoragePath)
+              .HasColumnName("storage_path")
+              .IsRequired();
+
+          entity.Property(document =>
+                  document.FilePath)
+              .HasColumnName("file_path");
+
+          entity.Property(document =>
+                  document.ContentType)
+              .HasColumnName("content_type");
+
+          entity.Property(document =>
+                  document.FileSizeBytes)
+              .HasColumnName("file_size_bytes");
+
+          entity.Property(document =>
+                  document.VerificationStatus)
+              .HasColumnName("verification_status")
+              .HasDefaultValue("pending")
+              .IsRequired();
+
+          entity.Property(document =>
+                  document.ReviewerNotes)
+              .HasColumnName("reviewer_notes");
+
+          entity.Property(document =>
+                  document.UploadedAt)
+              .HasColumnName("uploaded_at");
+
+          entity.Property(document =>
+                  document.ReviewedAt)
+              .HasColumnName("reviewed_at");
+
+          entity.Property(document =>
+                  document.ReviewedByUserId)
+              .HasColumnName("reviewed_by_user_id");
+
+          entity.HasOne(document =>
+                  document.Application)
+              .WithMany(application =>
+                  application.Documents)
+              .HasForeignKey(document =>
+                  document.ApplicationId)
+              .OnDelete(
+                  DeleteBehavior.Cascade
+              );
+      }
+  );
 
         modelBuilder.Entity<ReferralSetting>(entity =>
         {
