@@ -154,13 +154,12 @@ public sealed class VerificationStorageService
 
         try
         {
-            var bytes =
-    await _supabase.Storage
-        .From(_bucket)
-        .Download(
-            objectPath,
-            null,
-            null);
+            var bytes = await _supabase.Storage
+    .From(_bucket)
+    .Download(
+        objectPath,
+        (Supabase.Storage.TransformOptions?)null,
+        (EventHandler<float>?)null);
 
             cancellationToken.ThrowIfCancellationRequested();
 
