@@ -142,7 +142,13 @@ if (string.IsNullOrWhiteSpace(
     throw new InvalidOperationException(
         "SUPABASE_SERVICE_ROLE_KEY is missing.");
 }
+builder.Services.AddScoped<IPaymentGateway, PayMongoGateway>();
+builder.Services.AddScoped<IPaymentGateway, XenditGateway>();
+builder.Services.AddScoped<IPaymentGateway, PaypalGateway>();
+builder.Services.AddScoped<IPaymentGateway, MayaGateway>();
+builder.Services.AddScoped<IPaymentGateway, HitPayGateway>();
 
+builder.Services.AddScoped<PaymentGatewayFactory>();
 builder.Services.AddSingleton(
     _ =>
     {
