@@ -135,7 +135,7 @@ public class StripeWebhookController : ControllerBase
         {
             switch (stripeEvent.Type)
             {
-                case Events.CheckoutSessionCompleted:
+                case "checkout.session.completed":
 
                     await ProcessCheckoutCompleted(
                         stripeEvent,
@@ -144,7 +144,7 @@ public class StripeWebhookController : ControllerBase
 
                     break;
 
-                case Events.CheckoutSessionAsyncPaymentSucceeded:
+                case "checkout.session.async_payment_succeeded":
 
                     await ProcessCheckoutCompleted(
                         stripeEvent,
@@ -153,14 +153,31 @@ public class StripeWebhookController : ControllerBase
 
                     break;
 
-                case Events.CheckoutSessionExpired:
+                case "checkout.session.expired":
 
                     await ProcessCheckoutExpired(
                         stripeEvent,
                         cancellationToken);
 
                     break;
+
+                case "checkout.session.async_payment_failed":
+
+                    await ProcessCheckoutPaymentFailed(
+                        stripeEvent,
+                        cancellationToken);
+
+                    break;
+
+                default:
+
+                    _logger.LogInformation(
+                        "Unhandled Stripe event: {EventType}",
+                        stripeEvent.Type);
+
+                    break;
             }
+        }
 
             webhookEvent.Processed = true;
 
@@ -330,4 +347,60 @@ public class StripeWebhookController : ControllerBase
         await _context.SaveChangesAsync(
             cancellationToken);
     }
+private async Task ProcessCheckoutPaymentFailed(
+    Event stripeEvent,
+    CancellationToken cancellationToken)
+{
+    var session =
+        stripeEvent.Data.Object as Session;
+
+    if (session == null)
+    {
+        return;
+    }
+
+    if (!session.Metadata.TryGetValue(
+            "order_id",
+            out var orderIdValue))
+    {
+        return;
+    }
+
+    if (!Guid.TryParse(
+            orderIdValue,
+            out var orderId))
+    {
+        return;
+    }
+
+    var payment =
+        await _context.Payments
+            .FirstOrDefaultAsync(
+                x => x.OrderId == orderId,
+                cancellationToken);
+
+    if (payment == null)
+    {
+        return;
+    }
+
+    // Never overwrite a successful payment.
+    if (payment.PaymentStatus == "paid")
+    {
+        return;
+    }
+
+    payment.PaymentStatus =
+        "failed";
+
+    payment.FailureReason =
+        "Stripe payment failed.";
+
+    payment.GatewayResponse =
+        JsonDocument.Parse(
+            stripeEvent.Data.Object.ToJson());
+
+    await _context.SaveChangesAsync(
+        cancellationToken);
+}
 }
