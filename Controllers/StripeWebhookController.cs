@@ -199,10 +199,6 @@ public class StripeWebhookController : ControllerBase
         {
             switch (stripeEvent.Type)
             {
-                // =================================================
-                // CHECKOUT COMPLETED
-                // =================================================
-
                 case "checkout.session.completed":
 
                     await ProcessCheckoutCompleted(
@@ -211,10 +207,6 @@ public class StripeWebhookController : ControllerBase
                         cancellationToken);
 
                     break;
-
-                // =================================================
-                // ASYNC PAYMENT SUCCEEDED
-                // =================================================
 
                 case "checkout.session.async_payment_succeeded":
 
@@ -225,10 +217,6 @@ public class StripeWebhookController : ControllerBase
 
                     break;
 
-                // =================================================
-                // CHECKOUT EXPIRED
-                // =================================================
-
                 case "checkout.session.expired":
 
                     await ProcessCheckoutExpired(
@@ -237,21 +225,14 @@ public class StripeWebhookController : ControllerBase
 
                     break;
 
-                // =================================================
-                // ASYNC PAYMENT FAILED
-                // =================================================
-
                 case "checkout.session.async_payment_failed":
 
                     await ProcessCheckoutPaymentFailed(
                         stripeEvent,
+                        json,
                         cancellationToken);
 
                     break;
-
-                // =================================================
-                // PAYMENT INTENT SUCCEEDED
-                // =================================================
 
                 case "payment_intent.succeeded":
 
@@ -262,33 +243,23 @@ public class StripeWebhookController : ControllerBase
 
                     break;
 
-                // =================================================
-                // PAYMENT INTENT PAYMENT FAILED
-                // =================================================
-
                 case "payment_intent.payment_failed":
 
                     await ProcessPaymentIntentFailed(
                         stripeEvent,
+                        json,
                         cancellationToken);
 
                     break;
-
-                // =================================================
-                // CHARGE REFUNDED
-                // =================================================
 
                 case "charge.refunded":
 
                     await ProcessChargeRefunded(
                         stripeEvent,
+                        json,
                         cancellationToken);
 
                     break;
-
-                // =================================================
-                // UNHANDLED EVENT
-                // =================================================
 
                 default:
 
@@ -574,8 +545,9 @@ public class StripeWebhookController : ControllerBase
     // ============================================================
 
     private async Task ProcessCheckoutPaymentFailed(
-        Event stripeEvent,
-        CancellationToken cancellationToken)
+     Event stripeEvent,
+     string rawJson,
+     CancellationToken cancellationToken)
     {
         var session =
             stripeEvent.Data.Object as Session;
@@ -643,8 +615,7 @@ public class StripeWebhookController : ControllerBase
             session.Id;
 
         payment.GatewayResponse =
-            JsonDocument.Parse(
-                stripeEvent.Data.Object.ToJson());
+     JsonDocument.Parse(rawJson);
 
         await _context.SaveChangesAsync(
             cancellationToken);
@@ -829,8 +800,7 @@ public class StripeWebhookController : ControllerBase
             paymentIntent.Id;
 
         payment.GatewayResponse =
-            JsonDocument.Parse(
-                stripeEvent.Data.Object.ToJson());
+     JsonDocument.Parse(rawJson);
 
         await _context.SaveChangesAsync(
             cancellationToken);
@@ -920,8 +890,7 @@ public class StripeWebhookController : ControllerBase
         }
 
         payment.GatewayResponse =
-            JsonDocument.Parse(
-                stripeEvent.Data.Object.ToJson());
+     JsonDocument.Parse(rawJson);
 
         await _context.SaveChangesAsync(
             cancellationToken);
