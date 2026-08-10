@@ -177,9 +177,36 @@ public class StripeWebhookController : ControllerBase
 
                     break;
             }
-        }
 
             webhookEvent.Processed = true;
+
+            webhookEvent.ProcessedAt =
+                DateTime.UtcNow;
+
+            webhookEvent.ProcessingError =
+                null;
+
+            await _context.SaveChangesAsync(
+                cancellationToken);
+
+            return Ok();
+        }
+        catch (Exception ex)
+        {
+            webhookEvent.ProcessingError =
+                ex.Message;
+
+            await _context.SaveChangesAsync(
+                cancellationToken);
+
+            _logger.LogError(
+                ex,
+                "Stripe webhook processing failed.");
+
+            return StatusCode(500);
+        }
+
+        webhookEvent.Processed = true;
 
             webhookEvent.ProcessedAt =
                 DateTime.UtcNow;
