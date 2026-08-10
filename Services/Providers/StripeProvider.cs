@@ -1,10 +1,8 @@
 using Alpha.API.Models.Payments;
-using Microsoft.AspNetCore.Http;
 using Stripe;
 using Stripe.Checkout;
 using System;
 using System.Collections.Generic;
-using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace Alpha.API.Services.Providers;
@@ -57,7 +55,9 @@ public class StripeProvider : IPaymentProvider
         }
 
         var currency =
-            request.Currency.Trim().ToLowerInvariant();
+            request.Currency
+                .Trim()
+                .ToLowerInvariant();
 
         var frontendUrl =
             _configuration["FRONTEND_URL"];
@@ -80,11 +80,6 @@ public class StripeProvider : IPaymentProvider
             $"{frontendUrl}/customer/orders/{request.OrderId}" +
             "?payment=cancelled";
 
-        var amountInMinorUnits =
-            ConvertToMinorUnits(
-                request.Amount,
-                currency);
-
         var options =
             new SessionCreateOptions
             {
@@ -103,7 +98,7 @@ public class StripeProvider : IPaymentProvider
                 LineItems =
                     new List<SessionLineItemOptions>
                     {
-                        new SessionLineItemOptions
+                        new()
                         {
                             Quantity = 1,
 
@@ -113,7 +108,9 @@ public class StripeProvider : IPaymentProvider
                                     Currency = currency,
 
                                     UnitAmount =
-                                        amountInMinorUnits,
+                                        ConvertToMinorUnits(
+                                            request.Amount,
+                                            currency),
 
                                     ProductData =
                                         new SessionLineItemPriceDataProductDataOptions
@@ -136,28 +133,45 @@ public class StripeProvider : IPaymentProvider
                     }
             };
 
-        var service =
-            new SessionService();
-
-        var session =
-            await service.CreateAsync(options);
-
-        return new PaymentResult
+        try
         {
-            Success = true,
+            var service =
+                new SessionService();
 
-            PaymentId =
-                session.Id,
+            var session =
+                await service.CreateAsync(options);
 
-            CheckoutUrl =
-                session.Url,
+            return new PaymentResult
+            {
+                Success = true,
 
-            TransactionReference =
-                session.Id,
+                PaymentId =
+                    session.Id,
 
-            RawResponse =
-                session.ToJson()
-        };
+                CheckoutUrl =
+                    session.Url,
+
+                TransactionReference =
+                    session.Id,
+
+                RawResponse =
+                    session.ToJson()
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to create Stripe Checkout Session.");
+
+            return new PaymentResult
+            {
+                Success = false,
+
+                Error =
+                    "Unable to create Stripe Checkout Session."
+            };
+        }
     }
 
     public async Task<PaymentStatusResult> GetStatusAsync(
@@ -172,27 +186,42 @@ public class StripeProvider : IPaymentProvider
             };
         }
 
-        var service =
-            new SessionService();
-
-        var session =
-            await service.GetAsync(paymentId);
-
-        return new PaymentStatusResult
+        try
         {
-            Success = true,
+            var service =
+                new SessionService();
 
-            Status =
-                session.PaymentStatus
-                ?? session.Status
-                ?? "unknown",
+            var session =
+                await service.GetAsync(paymentId);
 
-            Reference =
-                session.PaymentIntentId
-                ?? session.Id,
+            return new PaymentStatusResult
+            {
+                Success = true,
 
-            GatewayFee = 0
-        };
+                Status =
+                    session.PaymentStatus
+                    ?? session.Status
+                    ?? "unknown",
+
+                Reference =
+                    session.PaymentIntentId
+                    ?? session.Id,
+
+                GatewayFee = 0
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to retrieve Stripe Session.");
+
+            return new PaymentStatusResult
+            {
+                Success = false,
+                Status = "unknown"
+            };
+        }
     }
 
     public async Task<bool> RefundAsync(
@@ -204,58 +233,65 @@ public class StripeProvider : IPaymentProvider
             return false;
         }
 
-        var sessionService =
-            new SessionService();
-
-        var session =
-            await sessionService.GetAsync(paymentId);
-
-        if (string.IsNullOrWhiteSpace(
-                session.PaymentIntentId))
+        try
         {
+            var sessionService =
+                new SessionService();
+
+            var session =
+                await sessionService.GetAsync(paymentId);
+
+            if (string.IsNullOrWhiteSpace(
+                    session.PaymentIntentId))
+            {
+                return false;
+            }
+
+            var refundService =
+                new RefundService();
+
+            var options =
+                new RefundCreateOptions
+                {
+                    PaymentIntent =
+                        session.PaymentIntentId
+                };
+
+            if (amount > 0)
+            {
+                options.Amount =
+                    ConvertToMinorUnits(
+                        amount,
+                        session.Currency);
+            }
+
+            var refund =
+                await refundService.CreateAsync(options);
+
+            return refund.Status == "succeeded";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Stripe refund failed.");
+
             return false;
         }
-
-        var refundService =
-            new RefundService();
-
-        var options =
-            new RefundCreateOptions
-            {
-                PaymentIntent =
-                    session.PaymentIntentId
-            };
-
-        if (amount > 0)
-        {
-            options.Amount =
-                ConvertToMinorUnits(
-                    amount,
-                    session.Currency);
-        }
-
-        var refund =
-            await refundService.CreateAsync(options);
-
-        return refund.Status == "succeeded";
     }
 
-    public async Task<bool> HandleWebhookAsync(
+    public Task<bool> HandleWebhookAsync(
         HttpRequest request)
     {
-        return true;
+        // Stripe webhook verification and processing
+        // are handled by StripeWebhookController.
+        return Task.FromResult(true);
     }
 
     private static long ConvertToMinorUnits(
         decimal amount,
         string currency)
     {
-        /*
-         * PHP, MXN and USD currently use
-         * two decimal places for normal card
-         * presentment.
-         */
-
         return checked(
             (long)Math.Round(
                 amount * 100m,

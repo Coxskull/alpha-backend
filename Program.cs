@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Supabase;
+using Alpha.API.Services.Providers;
 using Alpha.API.Services;
 var builder = WebApplication.CreateBuilder(args);
 

@@ -1,3 +1,4 @@
+using Alpha.API.Models.Payments;
 using Microsoft.AspNetCore.Http;
 using System.Threading.Tasks;
 
