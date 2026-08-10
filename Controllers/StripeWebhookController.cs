@@ -17,13 +17,9 @@ namespace Alpha.API.Controllers;
 public class StripeWebhookController : ControllerBase
 {
     private readonly AppDbContext _context;
-    private readonly PaymentCompletionService
-        _paymentCompletionService;
-
+    private readonly PaymentCompletionService _paymentCompletionService;
     private readonly IConfiguration _configuration;
-
-    private readonly ILogger<StripeWebhookController>
-        _logger;
+    private readonly ILogger<StripeWebhookController> _logger;
 
     public StripeWebhookController(
         AppDbContext context,
@@ -32,20 +28,42 @@ public class StripeWebhookController : ControllerBase
         ILogger<StripeWebhookController> logger)
     {
         _context = context;
-        _paymentCompletionService =
-            paymentCompletionService;
+        _paymentCompletionService = paymentCompletionService;
         _configuration = configuration;
         _logger = logger;
     }
+
+    // ============================================================
+    // STRIPE WEBHOOK ENTRY POINT
+    // POST /api/webhooks/stripe
+    // ============================================================
 
     [HttpPost]
     public async Task<IActionResult> Receive(
         CancellationToken cancellationToken)
     {
-        var json =
-            await new StreamReader(
-                Request.Body)
-                .ReadToEndAsync(cancellationToken);
+        string json;
+
+        // --------------------------------------------------------
+        // 1. Read the raw Stripe request body
+        // --------------------------------------------------------
+
+        using (var reader = new StreamReader(Request.Body))
+        {
+            json = await reader.ReadToEndAsync(cancellationToken);
+        }
+
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            _logger.LogWarning(
+                "Stripe webhook received an empty request body.");
+
+            return BadRequest("Empty request body.");
+        }
+
+        // --------------------------------------------------------
+        // 2. Get Stripe signature
+        // --------------------------------------------------------
 
         var signature =
             Request.Headers["Stripe-Signature"]
@@ -53,22 +71,33 @@ public class StripeWebhookController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(signature))
         {
+            _logger.LogWarning(
+                "Stripe-Signature header is missing.");
+
             return BadRequest(
                 "Stripe-Signature header missing.");
         }
 
-        var webhookSecret =
-            _configuration[
-                "STRIPE_WEBHOOK_SECRET"];
+        // --------------------------------------------------------
+        // 3. Get webhook signing secret
+        // --------------------------------------------------------
 
-        if (string.IsNullOrWhiteSpace(
-                webhookSecret))
+        var webhookSecret =
+            _configuration["STRIPE_WEBHOOK_SECRET"];
+
+        if (string.IsNullOrWhiteSpace(webhookSecret))
         {
             _logger.LogError(
                 "STRIPE_WEBHOOK_SECRET is missing.");
 
-            return StatusCode(500);
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                "Stripe webhook secret is not configured.");
         }
+
+        // --------------------------------------------------------
+        // 4. Verify Stripe signature
+        // --------------------------------------------------------
 
         Event stripeEvent;
 
@@ -80,14 +109,37 @@ public class StripeWebhookController : ControllerBase
                     signature,
                     webhookSecret);
         }
+        catch (StripeException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Stripe webhook signature validation failed.");
+
+            return BadRequest(
+                "Invalid Stripe webhook signature.");
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(
                 ex,
-                "Invalid Stripe webhook.");
+                "Unable to construct Stripe webhook event.");
 
-            return BadRequest();
+            return BadRequest(
+                "Invalid Stripe webhook.");
         }
+
+        // --------------------------------------------------------
+        // 5. Log the received event
+        // --------------------------------------------------------
+
+        _logger.LogInformation(
+            "Stripe webhook received. EventId={EventId}, Type={EventType}",
+            stripeEvent.Id,
+            stripeEvent.Type);
+
+        // --------------------------------------------------------
+        // 6. Prevent duplicate webhook processing
+        // --------------------------------------------------------
 
         var alreadyProcessed =
             await _context.PaymentWebhookEvents
@@ -100,8 +152,16 @@ public class StripeWebhookController : ControllerBase
 
         if (alreadyProcessed)
         {
+            _logger.LogInformation(
+                "Stripe webhook {EventId} was already processed.",
+                stripeEvent.Id);
+
             return Ok();
         }
+
+        // --------------------------------------------------------
+        // 7. Save webhook event before processing
+        // --------------------------------------------------------
 
         var webhookEvent =
             new Models.PaymentWebhookEvent
@@ -131,10 +191,18 @@ public class StripeWebhookController : ControllerBase
         await _context.SaveChangesAsync(
             cancellationToken);
 
+        // --------------------------------------------------------
+        // 8. Process event
+        // --------------------------------------------------------
+
         try
         {
             switch (stripeEvent.Type)
             {
+                // =================================================
+                // CHECKOUT COMPLETED
+                // =================================================
+
                 case "checkout.session.completed":
 
                     await ProcessCheckoutCompleted(
@@ -143,6 +211,10 @@ public class StripeWebhookController : ControllerBase
                         cancellationToken);
 
                     break;
+
+                // =================================================
+                // ASYNC PAYMENT SUCCEEDED
+                // =================================================
 
                 case "checkout.session.async_payment_succeeded":
 
@@ -153,6 +225,10 @@ public class StripeWebhookController : ControllerBase
 
                     break;
 
+                // =================================================
+                // CHECKOUT EXPIRED
+                // =================================================
+
                 case "checkout.session.expired":
 
                     await ProcessCheckoutExpired(
@@ -161,6 +237,10 @@ public class StripeWebhookController : ControllerBase
 
                     break;
 
+                // =================================================
+                // ASYNC PAYMENT FAILED
+                // =================================================
+
                 case "checkout.session.async_payment_failed":
 
                     await ProcessCheckoutPaymentFailed(
@@ -168,6 +248,47 @@ public class StripeWebhookController : ControllerBase
                         cancellationToken);
 
                     break;
+
+                // =================================================
+                // PAYMENT INTENT SUCCEEDED
+                // =================================================
+
+                case "payment_intent.succeeded":
+
+                    await ProcessPaymentIntentSucceeded(
+                        stripeEvent,
+                        json,
+                        cancellationToken);
+
+                    break;
+
+                // =================================================
+                // PAYMENT INTENT PAYMENT FAILED
+                // =================================================
+
+                case "payment_intent.payment_failed":
+
+                    await ProcessPaymentIntentFailed(
+                        stripeEvent,
+                        cancellationToken);
+
+                    break;
+
+                // =================================================
+                // CHARGE REFUNDED
+                // =================================================
+
+                case "charge.refunded":
+
+                    await ProcessChargeRefunded(
+                        stripeEvent,
+                        cancellationToken);
+
+                    break;
+
+                // =================================================
+                // UNHANDLED EVENT
+                // =================================================
 
                 default:
 
@@ -178,13 +299,16 @@ public class StripeWebhookController : ControllerBase
                     break;
             }
 
+            // ----------------------------------------------------
+            // 9. Mark webhook as processed
+            // ----------------------------------------------------
+
             webhookEvent.Processed = true;
 
             webhookEvent.ProcessedAt =
                 DateTime.UtcNow;
 
-            webhookEvent.ProcessingError =
-                null;
+            webhookEvent.ProcessingError = null;
 
             await _context.SaveChangesAsync(
                 cancellationToken);
@@ -193,47 +317,35 @@ public class StripeWebhookController : ControllerBase
         }
         catch (Exception ex)
         {
+            // ----------------------------------------------------
+            // 10. Record processing error
+            // ----------------------------------------------------
+
             webhookEvent.ProcessingError =
                 ex.Message;
+
+            webhookEvent.Processed = false;
 
             await _context.SaveChangesAsync(
                 cancellationToken);
 
             _logger.LogError(
                 ex,
-                "Stripe webhook processing failed.");
+                "Stripe webhook processing failed. " +
+                "EventId={EventId}, Type={EventType}",
+                stripeEvent.Id,
+                stripeEvent.Type);
 
-            return StatusCode(500);
-        }
-
-        webhookEvent.Processed = true;
-
-            webhookEvent.ProcessedAt =
-                DateTime.UtcNow;
-
-            webhookEvent.ProcessingError =
-                null;
-
-            await _context.SaveChangesAsync(
-                cancellationToken);
-
-            return Ok();
-        }
-        catch (Exception ex)
-        {
-            webhookEvent.ProcessingError =
-                ex.Message;
-
-            await _context.SaveChangesAsync(
-                cancellationToken);
-
-            _logger.LogError(
-                ex,
-                "Stripe webhook processing failed.");
-
-            return StatusCode(500);
+            // Returning 500 tells Stripe that processing failed
+            // and allows Stripe to retry the webhook.
+            return StatusCode(
+                StatusCodes.Status500InternalServerError);
         }
     }
+
+    // ============================================================
+    // CHECKOUT SESSION COMPLETED
+    // ============================================================
 
     private async Task ProcessCheckoutCompleted(
         Event stripeEvent,
@@ -241,14 +353,17 @@ public class StripeWebhookController : ControllerBase
         CancellationToken cancellationToken)
     {
         var session =
-            stripeEvent.Data.Object
-            as Session;
+            stripeEvent.Data.Object as Session;
 
         if (session == null)
         {
             throw new InvalidOperationException(
                 "Stripe Checkout Session could not be read.");
         }
+
+        // --------------------------------------------------------
+        // Get order_id from Stripe metadata
+        // --------------------------------------------------------
 
         if (!session.Metadata.TryGetValue(
                 "order_id",
@@ -266,6 +381,10 @@ public class StripeWebhookController : ControllerBase
                 "Stripe metadata order_id is invalid.");
         }
 
+        // --------------------------------------------------------
+        // Find payment
+        // --------------------------------------------------------
+
         var payment =
             await _context.Payments
                 .FirstOrDefaultAsync(
@@ -275,28 +394,45 @@ public class StripeWebhookController : ControllerBase
         if (payment == null)
         {
             throw new InvalidOperationException(
-                "Payment record not found.");
+                $"Payment record was not found for order {orderId}.");
         }
 
-        /*
-         * Never trust only the browser redirect.
-         *
-         * Stripe Checkout reports the actual
-         * payment status here.
-         */
+        // --------------------------------------------------------
+        // Never trust the frontend redirect.
+        // Stripe must report the payment as paid.
+        // --------------------------------------------------------
+
         if (!string.Equals(
                 session.PaymentStatus,
                 "paid",
                 StringComparison.OrdinalIgnoreCase))
         {
+            _logger.LogWarning(
+                "Stripe Checkout Session {SessionId} " +
+                "completed but payment status is {PaymentStatus}.",
+                session.Id,
+                session.PaymentStatus);
+
             throw new InvalidOperationException(
                 $"Stripe session is not paid. " +
                 $"Payment status: {session.PaymentStatus}");
         }
 
+        // --------------------------------------------------------
+        // Get transaction reference
+        // --------------------------------------------------------
+
         var transactionReference =
             session.PaymentIntentId
             ?? session.Id;
+
+        // --------------------------------------------------------
+        // Complete payment through the existing
+        // PaymentCompletionService.
+        //
+        // This is important because your application already
+        // has centralized financial/payment completion logic.
+        // --------------------------------------------------------
 
         await _paymentCompletionService
             .CompleteOrderPaymentAsync(
@@ -320,22 +456,332 @@ public class StripeWebhookController : ControllerBase
 
                 cancellationToken:
                     cancellationToken);
+
+        _logger.LogInformation(
+            "Stripe payment completed successfully. " +
+            "OrderId={OrderId}, SessionId={SessionId}, " +
+            "PaymentIntentId={PaymentIntentId}",
+            orderId,
+            session.Id,
+            session.PaymentIntentId);
     }
+
+    // ============================================================
+    // CHECKOUT SESSION EXPIRED
+    // ============================================================
 
     private async Task ProcessCheckoutExpired(
         Event stripeEvent,
         CancellationToken cancellationToken)
     {
         var session =
-            stripeEvent.Data.Object
-            as Session;
+            stripeEvent.Data.Object as Session;
+
+        if (session == null)
+        {
+            _logger.LogWarning(
+                "Unable to read expired Stripe Checkout Session.");
+
+            return;
+        }
+
+        // --------------------------------------------------------
+        // Get order_id
+        // --------------------------------------------------------
+
+        if (!session.Metadata.TryGetValue(
+                "order_id",
+                out var orderIdValue))
+        {
+            _logger.LogWarning(
+                "Expired Stripe session {SessionId} " +
+                "does not contain order_id.",
+                session.Id);
+
+            return;
+        }
+
+        if (!Guid.TryParse(
+                orderIdValue,
+                out var orderId))
+        {
+            _logger.LogWarning(
+                "Invalid order_id in expired Stripe session {SessionId}.",
+                session.Id);
+
+            return;
+        }
+
+        // --------------------------------------------------------
+        // Find payment
+        // --------------------------------------------------------
+
+        var payment =
+            await _context.Payments
+                .FirstOrDefaultAsync(
+                    x => x.OrderId == orderId,
+                    cancellationToken);
+
+        if (payment == null)
+        {
+            _logger.LogWarning(
+                "Payment not found for expired Stripe order {OrderId}.",
+                orderId);
+
+            return;
+        }
+
+        // --------------------------------------------------------
+        // Never change an already-paid payment
+        // --------------------------------------------------------
+
+        if (string.Equals(
+                payment.PaymentStatus,
+                "paid",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        payment.PaymentStatus =
+            "expired";
+
+        payment.FailureReason =
+            "Stripe Checkout Session expired.";
+
+        // --------------------------------------------------------
+        // Save Stripe session response
+        // --------------------------------------------------------
+
+        payment.GatewayPaymentId =
+            session.PaymentIntentId;
+
+        payment.GatewayCheckoutSessionId =
+            session.Id;
+
+        await _context.SaveChangesAsync(
+            cancellationToken);
+
+        _logger.LogInformation(
+            "Stripe Checkout Session expired. " +
+            "OrderId={OrderId}, SessionId={SessionId}",
+            orderId,
+            session.Id);
+    }
+
+    // ============================================================
+    // ASYNC PAYMENT FAILED
+    // ============================================================
+
+    private async Task ProcessCheckoutPaymentFailed(
+        Event stripeEvent,
+        CancellationToken cancellationToken)
+    {
+        var session =
+            stripeEvent.Data.Object as Session;
 
         if (session == null)
         {
             return;
         }
 
+        // --------------------------------------------------------
+        // Get order_id
+        // --------------------------------------------------------
+
         if (!session.Metadata.TryGetValue(
+                "order_id",
+                out var orderIdValue))
+        {
+            return;
+        }
+
+        if (!Guid.TryParse(
+                orderIdValue,
+                out var orderId))
+        {
+            return;
+        }
+
+        // --------------------------------------------------------
+        // Find payment
+        // --------------------------------------------------------
+
+        var payment =
+            await _context.Payments
+                .FirstOrDefaultAsync(
+                    x => x.OrderId == orderId,
+                    cancellationToken);
+
+        if (payment == null)
+        {
+            return;
+        }
+
+        // --------------------------------------------------------
+        // Never overwrite successful payment
+        // --------------------------------------------------------
+
+        if (string.Equals(
+                payment.PaymentStatus,
+                "paid",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        payment.PaymentStatus =
+            "failed";
+
+        payment.FailureReason =
+            "Stripe payment failed.";
+
+        payment.GatewayPaymentId =
+            session.PaymentIntentId;
+
+        payment.GatewayCheckoutSessionId =
+            session.Id;
+
+        payment.GatewayResponse =
+            JsonDocument.Parse(
+                stripeEvent.Data.Object.ToJson());
+
+        await _context.SaveChangesAsync(
+            cancellationToken);
+
+        _logger.LogWarning(
+            "Stripe payment failed. " +
+            "OrderId={OrderId}, SessionId={SessionId}",
+            orderId,
+            session.Id);
+    }
+
+    // ============================================================
+    // PAYMENT INTENT SUCCEEDED
+    // ============================================================
+
+    private async Task ProcessPaymentIntentSucceeded(
+        Event stripeEvent,
+        string rawJson,
+        CancellationToken cancellationToken)
+    {
+        var paymentIntent =
+            stripeEvent.Data.Object as PaymentIntent;
+
+        if (paymentIntent == null)
+        {
+            return;
+        }
+
+        // --------------------------------------------------------
+        // Find order_id from metadata
+        // --------------------------------------------------------
+
+        if (!paymentIntent.Metadata.TryGetValue(
+                "order_id",
+                out var orderIdValue))
+        {
+            _logger.LogInformation(
+                "Stripe PaymentIntent {PaymentIntentId} " +
+                "has no order_id metadata.",
+                paymentIntent.Id);
+
+            return;
+        }
+
+        if (!Guid.TryParse(
+                orderIdValue,
+                out var orderId))
+        {
+            _logger.LogWarning(
+                "Invalid order_id in PaymentIntent {PaymentIntentId}.",
+                paymentIntent.Id);
+
+            return;
+        }
+
+        // --------------------------------------------------------
+        // Find payment
+        // --------------------------------------------------------
+
+        var payment =
+            await _context.Payments
+                .FirstOrDefaultAsync(
+                    x => x.OrderId == orderId,
+                    cancellationToken);
+
+        if (payment == null)
+        {
+            _logger.LogWarning(
+                "Payment record not found for order {OrderId}.",
+                orderId);
+
+            return;
+        }
+
+        // --------------------------------------------------------
+        // Protect against duplicate completion
+        // --------------------------------------------------------
+
+        if (string.Equals(
+                payment.PaymentStatus,
+                "paid",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        // --------------------------------------------------------
+        // Complete payment
+        // --------------------------------------------------------
+
+        await _paymentCompletionService
+            .CompleteOrderPaymentAsync(
+                orderId: orderId,
+
+                gateway: "stripe",
+
+                paymentMethod: "stripe",
+
+                transactionReference:
+                    paymentIntent.Id,
+
+                gatewayPaymentId:
+                    paymentIntent.Id,
+
+                rawGatewayResponse:
+                    rawJson,
+
+                gatewayFee:
+                    0m,
+
+                cancellationToken:
+                    cancellationToken);
+
+        _logger.LogInformation(
+            "Stripe PaymentIntent completed. " +
+            "OrderId={OrderId}, PaymentIntentId={PaymentIntentId}",
+            orderId,
+            paymentIntent.Id);
+    }
+
+    // ============================================================
+    // PAYMENT INTENT FAILED
+    // ============================================================
+
+    private async Task ProcessPaymentIntentFailed(
+        Event stripeEvent,
+        CancellationToken cancellationToken)
+    {
+        var paymentIntent =
+            stripeEvent.Data.Object as PaymentIntent;
+
+        if (paymentIntent == null)
+        {
+            return;
+        }
+
+        if (!paymentIntent.Metadata.TryGetValue(
                 "order_id",
                 out var orderIdValue))
         {
@@ -360,74 +806,131 @@ public class StripeWebhookController : ControllerBase
             return;
         }
 
-        if (payment.PaymentStatus == "paid")
+        // --------------------------------------------------------
+        // Never overwrite successful payment
+        // --------------------------------------------------------
+
+        if (string.Equals(
+                payment.PaymentStatus,
+                "paid",
+                StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
         payment.PaymentStatus =
-            "expired";
+            "failed";
 
         payment.FailureReason =
-            "Stripe Checkout Session expired.";
+            paymentIntent.LastPaymentError?.Message
+            ?? "Stripe payment failed.";
+
+        payment.GatewayPaymentId =
+            paymentIntent.Id;
+
+        payment.GatewayResponse =
+            JsonDocument.Parse(
+                stripeEvent.Data.Object.ToJson());
 
         await _context.SaveChangesAsync(
             cancellationToken);
-    }
-private async Task ProcessCheckoutPaymentFailed(
-    Event stripeEvent,
-    CancellationToken cancellationToken)
-{
-    var session =
-        stripeEvent.Data.Object as Session;
 
-    if (session == null)
+        _logger.LogWarning(
+            "Stripe PaymentIntent failed. " +
+            "OrderId={OrderId}, PaymentIntentId={PaymentIntentId}, " +
+            "Reason={Reason}",
+            orderId,
+            paymentIntent.Id,
+            payment.FailureReason);
+    }
+
+    // ============================================================
+    // CHARGE REFUNDED
+    // ============================================================
+
+    private async Task ProcessChargeRefunded(
+        Event stripeEvent,
+        CancellationToken cancellationToken)
     {
-        return;
+        var charge =
+            stripeEvent.Data.Object as Charge;
+
+        if (charge == null)
+        {
+            return;
+        }
+
+        // --------------------------------------------------------
+        // Stripe Charge has PaymentIntentId.
+        // Find our payment using that ID.
+        // --------------------------------------------------------
+
+        var paymentIntentId =
+            charge.PaymentIntentId;
+
+        if (string.IsNullOrWhiteSpace(
+                paymentIntentId))
+        {
+            _logger.LogWarning(
+                "Refunded Stripe charge {ChargeId} " +
+                "does not have a PaymentIntentId.",
+                charge.Id);
+
+            return;
+        }
+
+        var payment =
+            await _context.Payments
+                .FirstOrDefaultAsync(
+                    x =>
+                        x.GatewayPaymentId ==
+                            paymentIntentId,
+                    cancellationToken);
+
+        if (payment == null)
+        {
+            _logger.LogWarning(
+                "Payment not found for refunded " +
+                "Stripe PaymentIntent {PaymentIntentId}.",
+                paymentIntentId);
+
+            return;
+        }
+
+        // --------------------------------------------------------
+        // Determine whether the entire payment was refunded
+        // --------------------------------------------------------
+
+        var amountRefunded =
+            charge.AmountRefunded;
+
+        var amount =
+            charge.Amount;
+
+        if (amount > 0 &&
+            amountRefunded >= amount)
+        {
+            payment.PaymentStatus =
+                "refunded";
+        }
+        else
+        {
+            payment.PaymentStatus =
+                "partially_refunded";
+        }
+
+        payment.GatewayResponse =
+            JsonDocument.Parse(
+                stripeEvent.Data.Object.ToJson());
+
+        await _context.SaveChangesAsync(
+            cancellationToken);
+
+        _logger.LogInformation(
+            "Stripe refund processed. " +
+            "PaymentIntentId={PaymentIntentId}, " +
+            "AmountRefunded={AmountRefunded}",
+            paymentIntentId,
+            amountRefunded);
     }
-
-    if (!session.Metadata.TryGetValue(
-            "order_id",
-            out var orderIdValue))
-    {
-        return;
-    }
-
-    if (!Guid.TryParse(
-            orderIdValue,
-            out var orderId))
-    {
-        return;
-    }
-
-    var payment =
-        await _context.Payments
-            .FirstOrDefaultAsync(
-                x => x.OrderId == orderId,
-                cancellationToken);
-
-    if (payment == null)
-    {
-        return;
-    }
-
-    // Never overwrite a successful payment.
-    if (payment.PaymentStatus == "paid")
-    {
-        return;
-    }
-
-    payment.PaymentStatus =
-        "failed";
-
-    payment.FailureReason =
-        "Stripe payment failed.";
-
-    payment.GatewayResponse =
-        JsonDocument.Parse(
-            stripeEvent.Data.Object.ToJson());
-
-    await _context.SaveChangesAsync(
-        cancellationToken);
-}
 }
