@@ -741,8 +741,9 @@ public class StripeWebhookController : ControllerBase
     // ============================================================
 
     private async Task ProcessPaymentIntentFailed(
-        Event stripeEvent,
-        CancellationToken cancellationToken)
+     Event stripeEvent,
+     string rawJson,
+     CancellationToken cancellationToken)
     {
         var paymentIntent =
             stripeEvent.Data.Object as PaymentIntent;
@@ -752,10 +753,19 @@ public class StripeWebhookController : ControllerBase
             return;
         }
 
+        // --------------------------------------------------------
+        // Get order_id from Stripe metadata
+        // --------------------------------------------------------
+
         if (!paymentIntent.Metadata.TryGetValue(
                 "order_id",
                 out var orderIdValue))
         {
+            _logger.LogInformation(
+                "Stripe PaymentIntent {PaymentIntentId} " +
+                "has no order_id metadata.",
+                paymentIntent.Id);
+
             return;
         }
 
@@ -763,8 +773,16 @@ public class StripeWebhookController : ControllerBase
                 orderIdValue,
                 out var orderId))
         {
+            _logger.LogWarning(
+                "Invalid order_id in PaymentIntent {PaymentIntentId}.",
+                paymentIntent.Id);
+
             return;
         }
+
+        // --------------------------------------------------------
+        // Find payment
+        // --------------------------------------------------------
 
         var payment =
             await _context.Payments
@@ -774,6 +792,10 @@ public class StripeWebhookController : ControllerBase
 
         if (payment == null)
         {
+            _logger.LogWarning(
+                "Payment record not found for order {OrderId}.",
+                orderId);
+
             return;
         }
 
@@ -789,25 +811,33 @@ public class StripeWebhookController : ControllerBase
             return;
         }
 
-        payment.PaymentStatus =
-            "failed";
+        // --------------------------------------------------------
+        // Mark payment failed
+        // --------------------------------------------------------
 
-        payment.FailureReason =
+        payment.PaymentStatus = "failed";
+
+        payment.FailureReason ProcessChargeRefunded
             paymentIntent.LastPaymentError?.Message
             ?? "Stripe payment failed.";
 
         payment.GatewayPaymentId =
             paymentIntent.Id;
 
+        // --------------------------------------------------------
+        // Save complete Stripe webhook payload
+        // --------------------------------------------------------
+
         payment.GatewayResponse =
-     JsonDocument.Parse(rawJson);
+            JsonDocument.Parse(rawJson);
 
         await _context.SaveChangesAsync(
             cancellationToken);
 
         _logger.LogWarning(
             "Stripe PaymentIntent failed. " +
-            "OrderId={OrderId}, PaymentIntentId={PaymentIntentId}, " +
+            "OrderId={OrderId}, " +
+            "PaymentIntentId={PaymentIntentId}, " +
             "Reason={Reason}",
             orderId,
             paymentIntent.Id,
@@ -819,8 +849,9 @@ public class StripeWebhookController : ControllerBase
     // ============================================================
 
     private async Task ProcessChargeRefunded(
-        Event stripeEvent,
-        CancellationToken cancellationToken)
+    Event stripeEvent,
+    string rawJson,
+    CancellationToken cancellationToken)
     {
         var charge =
             stripeEvent.Data.Object as Charge;
@@ -831,8 +862,7 @@ public class StripeWebhookController : ControllerBase
         }
 
         // --------------------------------------------------------
-        // Stripe Charge has PaymentIntentId.
-        // Find our payment using that ID.
+        // Stripe Charge contains the PaymentIntent ID
         // --------------------------------------------------------
 
         var paymentIntentId =
@@ -848,6 +878,10 @@ public class StripeWebhookController : ControllerBase
 
             return;
         }
+
+        // --------------------------------------------------------
+        // Find our payment
+        // --------------------------------------------------------
 
         var payment =
             await _context.Payments
@@ -868,17 +902,17 @@ public class StripeWebhookController : ControllerBase
         }
 
         // --------------------------------------------------------
-        // Determine whether the entire payment was refunded
+        // Determine full vs partial refund
         // --------------------------------------------------------
 
         var amountRefunded =
             charge.AmountRefunded;
 
-        var amount =
+        var originalAmount =
             charge.Amount;
 
-        if (amount > 0 &&
-            amountRefunded >= amount)
+        if (originalAmount > 0 &&
+            amountRefunded >= originalAmount)
         {
             payment.PaymentStatus =
                 "refunded";
@@ -889,8 +923,12 @@ public class StripeWebhookController : ControllerBase
                 "partially_refunded";
         }
 
+        // --------------------------------------------------------
+        // Save complete Stripe webhook payload
+        // --------------------------------------------------------
+
         payment.GatewayResponse =
-     JsonDocument.Parse(rawJson);
+            JsonDocument.Parse(rawJson);
 
         await _context.SaveChangesAsync(
             cancellationToken);
