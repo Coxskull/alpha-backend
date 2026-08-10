@@ -817,9 +817,9 @@ public class StripeWebhookController : ControllerBase
 
         payment.PaymentStatus = "failed";
 
-        payment.FailureReason ProcessChargeRefunded
-            paymentIntent.LastPaymentError?.Message
-            ?? "Stripe payment failed.";
+        payment.FailureReason =
+     paymentIntent.LastPaymentError?.Message
+     ?? "Stripe payment failed.";
 
         payment.GatewayPaymentId =
             paymentIntent.Id;
