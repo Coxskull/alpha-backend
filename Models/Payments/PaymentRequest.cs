@@ -1,8 +1,8 @@
 using System;
 
-namespace Alpha.API.Services.Payments.Models;
+namespace Alpha.API.Models.Payments;
 
-public class CreatePaymentRequest
+public class PaymentRequest
 {
     public Guid OrderId { get; set; }
 
@@ -10,15 +10,13 @@ public class CreatePaymentRequest
 
     public string Currency { get; set; } = "";
 
-    public string Description { get; set; } = "";
-
     public string CustomerEmail { get; set; } = "";
 
     public string CustomerName { get; set; } = "";
 
+    public string Gateway { get; set; } = "";
+
     public string SuccessUrl { get; set; } = "";
 
     public string CancelUrl { get; set; } = "";
-
-    public string Gateway { get; set; } = "";
 }

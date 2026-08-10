@@ -165,11 +165,12 @@ public class OrdersController : ControllerBase
                 : dto.PaymentMethod.Trim().ToLowerInvariant();
 
             var allowedPaymentMethods = new[]
-            {
-            "cash",
-            "paypal",
-            "paymongo_gcash"
-        };
+{
+    "cash",
+    "paypal",
+    "paymongo_gcash",
+    "stripe"
+};
 
             if (!allowedPaymentMethods.Contains(paymentMethod))
             {
@@ -208,6 +209,20 @@ public class OrdersController : ControllerBase
                     message =
                         "Use PayMongo GCash or cash for Philippine orders."
                 });
+            }
+
+            if (paymentMethod == "stripe")
+            {
+                if (currency is not "PHP" and
+                    not "MXN" and
+                    not "USD")
+                {
+                    return BadRequest(new
+                    {
+                        message =
+                            "Stripe does not support this currency."
+                    });
+                }
             }
 
             // ---------------------------------------------------------
@@ -609,6 +624,7 @@ public class OrdersController : ControllerBase
             {
                 "paypal" => "paypal",
                 "paymongo_gcash" => "paymongo",
+                "stripe" => "stripe",
                 _ => null
             };
 
@@ -616,6 +632,7 @@ public class OrdersController : ControllerBase
             {
                 "paypal" => "pending",
                 "paymongo_gcash" => "pending",
+                "stripe" => "pending",
                 "cash" => "cash_pending",
                 _ => "pending"
             };
@@ -658,12 +675,21 @@ public class OrdersController : ControllerBase
                 OrderStatuses.PaymentPending);
 
             await AddAuditLog(
-                order.Id,
-                paymentMethod == "paymongo_gcash"
-                    ? "Order Created - Awaiting PayMongo GCash Payment"
-                    : paymentMethod == "paypal"
-                        ? "Order Created - Awaiting PayPal Payment"
-                        : "Order Created - Cash Payment Pending");
+     order.Id,
+     paymentMethod switch
+     {
+         "stripe" =>
+             "Order Created - Awaiting Stripe Payment",
+
+         "paymongo_gcash" =>
+             "Order Created - Awaiting PayMongo GCash Payment",
+
+         "paypal" =>
+             "Order Created - Awaiting PayPal Payment",
+
+         _ =>
+             "Order Created - Cash Payment Pending"
+     });
 
             // ---------------------------------------------------------
             // 17. Commit transaction
@@ -736,7 +762,10 @@ public class OrdersController : ControllerBase
                     payment.PaymentStatus,
 
                     requiresRedirect =
-                        paymentMethod is "paypal" or "paymongo_gcash",
+    paymentMethod is
+        "paypal" or
+        "paymongo_gcash" or
+        "stripe",
 
                     paymentProvider = paymentGateway
                 },
