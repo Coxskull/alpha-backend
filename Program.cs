@@ -221,13 +221,17 @@ if (!string.IsNullOrEmpty(databaseUrl))
 // CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("AlphaFrontend", policy =>
     {
         policy
-            .AllowAnyOrigin()
-            .AllowAnyMethod()
+            .WithOrigins(
+                "https://alphauto.app",
+                "https://www.alphauto.app",
+                "http://localhost:3000"
+            )
             .AllowAnyHeader()
-            .WithExposedHeaders("X-Total-Count");
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 builder.Services.AddScoped<SettlementService>();

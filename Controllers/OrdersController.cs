@@ -20,6 +20,7 @@ public class OrdersController : ControllerBase
     private readonly TaxEngineService _taxEngine;
     private readonly ReferralCommissionService _referralCommissionService;
     private readonly CountryCurrencyService _countryCurrencyService;
+    private readonly AutoPartsCommissionService _autoPartsCommissionService;
 
     public OrdersController(
         AppDbContext context,
@@ -27,6 +28,7 @@ public class OrdersController : ControllerBase
         SettlementService settlements,
         TaxEngineService taxEngine,
         ReferralCommissionService referralCommissionService,
+        AutoPartsCommissionService autoPartsCommissionService,
         CountryCurrencyService countryCurrencyService)
     {
         _context = context;
@@ -35,6 +37,7 @@ public class OrdersController : ControllerBase
         _taxEngine = taxEngine;
         _referralCommissionService = referralCommissionService;
         _countryCurrencyService = countryCurrencyService;
+        _autoPartsCommissionService = autoPartsCommissionService;
     }
 
     // =========================================================
@@ -353,6 +356,17 @@ public class OrdersController : ControllerBase
                 2,
                 MidpointRounding.AwayFromZero);
 
+            var partsCommission =
+    await _autoPartsCommissionService.CalculateAsync(
+        itemSubtotal,
+        currency,
+        DateTime.UtcNow,
+        cancellationToken);
+
+            decimal supplierEarning =
+    itemSubtotal -
+    partsCommission.TotalCommission;
+
             // ---------------------------------------------------------
             // 8. Apply country-specific fees
             // ---------------------------------------------------------
@@ -387,22 +401,14 @@ public class OrdersController : ControllerBase
             // 9. Calculate preliminary earnings
             // ---------------------------------------------------------
 
-            decimal supplierEarning = Math.Round(
-                itemSubtotal * 0.80m,
-                2,
-                MidpointRounding.AwayFromZero);
+           
 
             decimal driverEarning = Math.Round(
                 deliveryFee * 0.70m,
                 2,
                 MidpointRounding.AwayFromZero);
 
-            decimal companyRevenue = Math.Round(
-                serviceFee +
-                (itemSubtotal * 0.20m) +
-                (deliveryFee * 0.30m),
-                2,
-                MidpointRounding.AwayFromZero);
+           
 
             // ---------------------------------------------------------
             // 10. Get customer ID from authenticated user
@@ -533,45 +539,63 @@ public class OrdersController : ControllerBase
             var financial = new OrderFinancial
             {
                 Id = Guid.NewGuid(),
+
                 OrderId = order.Id,
 
                 Currency = currency,
+
                 ExchangeRate = exchangeRate,
 
                 ItemSubtotal = itemSubtotal,
+
                 DeliveryFee = deliveryFee,
+
                 ServiceFee = serviceFee,
 
                 Tax = tax,
-                TaxCollected = 0,
-                TaxWithheld = 0,
 
                 Discount = discount,
+
                 TotalAmount = totalAmount,
 
                 CustomerPaid = 0,
 
+                // PARTS ECONOMICS
                 SupplierAmount = supplierEarning,
-                DriverAmount = driverEarning,
-                MechanicAmount = 0,
-                AlphaPlatformFee = companyRevenue,
 
                 SupplierEarning = supplierEarning,
+
+                // DELIVERY ECONOMICS
+                DriverAmount = driverEarning,
+
                 DriverEarning = driverEarning,
-                CompanyRevenue = companyRevenue,
 
-                SupplierNetPayable = supplierEarning,
-                DriverNetPayable = driverEarning,
-                MechanicNetPayable = 0,
-                AlphaNetRevenue = companyRevenue,
+                // MECHANIC
+                MechanicAmount = 0,
 
-                ProcessingFee = 0,
-                RefundAmount = 0,
-                DisputeReserve = 0,
-                ReconciliationDifference = 0,
+                // ALPHA
+                AlphaPlatformFee =
+        partsCommission.TotalCommission,
+
+                CompanyRevenue =
+        partsCommission.TotalCommission,
+
+                SupplierNetPayable =
+        supplierEarning,
+
+                DriverNetPayable =
+        driverEarning,
+
+                MechanicNetPayable =
+        0,
+
+                AlphaNetRevenue =
+        partsCommission.TotalCommission,
 
                 FinancialStatus = financialStatus,
+
                 PayoutStatus = "not_ready",
+
                 SettlementStatus = "pending",
 
                 CreatedAt = now
@@ -614,6 +638,95 @@ public class OrdersController : ControllerBase
             {
                 throw new InvalidOperationException(
                     "The calculated order total must be greater than zero.");
+            }
+
+            financial.AutoPartsCommission =
+    partsCommission.TotalCommission;
+
+            financial.AutoPartsCommissionRate =
+                partsCommission.EffectiveCommissionRate;
+
+            financial.AutoPartsCommissionPolicyId =
+                partsCommission.PolicyId;
+
+            financial.AutoPartsCommissionPolicyVersion =
+                partsCommission.PolicyVersion;
+
+            financial.PartsSupplierGross =
+                itemSubtotal;
+
+            financial.PartsSupplierNet =
+                supplierEarning;
+
+            var calculation =
+    new AutoPartsCommissionCalculation
+    {
+        Id = Guid.NewGuid(),
+
+        OrderId = order.Id,
+
+        OrderFinancialId = financial.Id,
+
+        PolicyId = partsCommission.PolicyId,
+
+        PolicyVersion =
+            partsCommission.PolicyVersion,
+
+        Currency =
+            partsCommission.Currency,
+
+        PartsSubtotal =
+            partsCommission.PartsSubtotal,
+
+        TotalCommission =
+            partsCommission.TotalCommission,
+
+        EffectiveCommissionRate =
+            partsCommission.EffectiveCommissionRate,
+
+        CalculatedAt =
+            DateTime.UtcNow,
+
+        CreatedBy = "system"
+    };
+
+            _context.AutoPartsCommissionCalculations
+                .Add(calculation);
+
+            foreach (var line in partsCommission.Lines)
+            {
+                _context.AutoPartsCommissionCalculationLines.Add(
+                    new AutoPartsCommissionCalculationLine
+                    {
+                        Id = Guid.NewGuid(),
+
+                        CalculationId =
+                            calculation.Id,
+
+                        TierId =
+                            line.TierId,
+
+                        TierOrder =
+                            line.TierOrder,
+
+                        TierMinimum =
+                            line.TierMinimum,
+
+                        TierMaximum =
+                            line.TierMaximum,
+
+                        TierPercentage =
+                            line.TierPercentage,
+
+                        AmountInTier =
+                            line.AmountInTier,
+
+                        CommissionAmount =
+                            line.CommissionAmount,
+
+                        CreatedAt =
+                            DateTime.UtcNow
+                    });
             }
 
             // ---------------------------------------------------------
