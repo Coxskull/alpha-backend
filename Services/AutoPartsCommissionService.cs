@@ -20,38 +20,38 @@ namespace Alpha.API.Services
             _context = context;
         }
 
+        // =============================================================
+        // CALCULATE AUTO PARTS COMMISSION
+        // =============================================================
+
         public async Task<AutoPartsCommissionResultDtos> CalculateAsync(
             decimal subtotal,
             string currency,
             DateTime calculationDate,
             CancellationToken cancellationToken = default)
         {
-            // ---------------------------------------------------------
-            // 1. Validate subtotal
-            // ---------------------------------------------------------
-
             if (subtotal <= 0)
             {
                 return new AutoPartsCommissionResultDtos
                 {
-                    Currency = currency?.Trim().ToUpperInvariant() ?? "USD",
+                    Currency =
+                        currency?.Trim().ToUpperInvariant() ?? "USD",
+
                     PartsSubtotal = subtotal,
+
                     TotalCommission = 0,
+
                     EffectiveCommissionRate = 0,
+
                     SupplierNet = subtotal,
-                    Lines = new List<AutoPartsCommissionLineResultDtos>()
+
+                    Lines =
+                        new List<AutoPartsCommissionLineResultDtos>()
                 };
             }
 
-            // ---------------------------------------------------------
-            // 2. Normalize currency
-            // ---------------------------------------------------------
-
-            currency = currency?.Trim().ToUpperInvariant() ?? "USD";
-
-            // ---------------------------------------------------------
-            // 3. Find active commission policy
-            // ---------------------------------------------------------
+            currency =
+                currency?.Trim().ToUpperInvariant() ?? "USD";
 
             var policy = await _context
                 .AutoPartsCommissionPolicies
@@ -73,10 +73,6 @@ namespace Alpha.API.Services
                     $"No active auto-parts commission policy exists for currency '{currency}'.");
             }
 
-            // ---------------------------------------------------------
-            // 4. Get active tiers
-            // ---------------------------------------------------------
-
             var tiers = policy.Tiers
                 .Where(x => x.IsActive)
                 .OrderBy(x => x.TierOrder)
@@ -88,15 +84,7 @@ namespace Alpha.API.Services
                     $"Commission policy '{policy.PolicyName}' version {policy.Version} has no active tiers.");
             }
 
-            // ---------------------------------------------------------
-            // 5. Validate tier configuration
-            // ---------------------------------------------------------
-
             ValidateTiers(tiers);
-
-            // ---------------------------------------------------------
-            // 6. Progressive calculation
-            // ---------------------------------------------------------
 
             decimal remaining = subtotal;
 
@@ -110,10 +98,6 @@ namespace Alpha.API.Services
                 if (remaining <= 0)
                     break;
 
-                // -----------------------------------------------------
-                // Determine how much money belongs to this tier
-                // -----------------------------------------------------
-
                 decimal tierWidth;
 
                 if (tier.MaximumAmount.HasValue)
@@ -124,26 +108,17 @@ namespace Alpha.API.Services
                 }
                 else
                 {
-                    // Unlimited final tier
                     tierWidth = decimal.MaxValue;
                 }
 
                 if (tierWidth <= 0)
                     continue;
 
-                // -----------------------------------------------------
-                // Calculate amount falling inside this tier
-                // -----------------------------------------------------
-
                 decimal amountInTier =
                     Math.Min(remaining, tierWidth);
 
                 if (amountInTier <= 0)
                     continue;
-
-                // -----------------------------------------------------
-                // Calculate commission
-                // -----------------------------------------------------
 
                 decimal commission =
                     decimal.Round(
@@ -152,10 +127,6 @@ namespace Alpha.API.Services
                         2,
                         MidpointRounding.AwayFromZero);
 
-                // -----------------------------------------------------
-                // Save calculation line
-                // -----------------------------------------------------
-
                 lines.Add(
                     new AutoPartsCommissionLineResultDtos
                     {
@@ -163,9 +134,11 @@ namespace Alpha.API.Services
 
                         TierOrder = tier.TierOrder,
 
-                        TierMinimum = tier.MinimumAmount,
+                        TierMinimum =
+                            tier.MinimumAmount,
 
-                        TierMaximum = tier.MaximumAmount,
+                        TierMaximum =
+                            tier.MaximumAmount,
 
                         TierPercentage =
                             tier.CommissionPercentage,
@@ -177,18 +150,10 @@ namespace Alpha.API.Services
                             commission
                     });
 
-                // -----------------------------------------------------
-                // Update totals
-                // -----------------------------------------------------
-
                 totalCommission += commission;
 
                 remaining -= amountInTier;
             }
-
-            // ---------------------------------------------------------
-            // 7. Make sure the complete subtotal was processed
-            // ---------------------------------------------------------
 
             if (remaining > 0)
             {
@@ -197,19 +162,11 @@ namespace Alpha.API.Services
                     $"Unprocessed amount: {remaining:0.00} {currency}.");
             }
 
-            // ---------------------------------------------------------
-            // 8. Round total commission
-            // ---------------------------------------------------------
-
             totalCommission =
                 decimal.Round(
                     totalCommission,
                     2,
                     MidpointRounding.AwayFromZero);
-
-            // ---------------------------------------------------------
-            // 9. Calculate effective commission rate
-            // ---------------------------------------------------------
 
             decimal effectiveRate =
                 subtotal == 0
@@ -222,10 +179,6 @@ namespace Alpha.API.Services
                     6,
                     MidpointRounding.AwayFromZero);
 
-            // ---------------------------------------------------------
-            // 10. Calculate supplier net
-            // ---------------------------------------------------------
-
             decimal supplierNet =
                 subtotal - totalCommission;
 
@@ -234,10 +187,6 @@ namespace Alpha.API.Services
                     supplierNet,
                     2,
                     MidpointRounding.AwayFromZero);
-
-            // ---------------------------------------------------------
-            // 11. Return DTO
-            // ---------------------------------------------------------
 
             return new AutoPartsCommissionResultDtos
             {
@@ -249,115 +198,21 @@ namespace Alpha.API.Services
 
                 PartsSubtotal = subtotal,
 
-                TotalCommission = totalCommission,
+                TotalCommission =
+                    totalCommission,
 
-                EffectiveCommissionRate = effectiveRate,
+                EffectiveCommissionRate =
+                    effectiveRate,
 
-                SupplierNet = supplierNet,
+                SupplierNet =
+                    supplierNet,
 
                 Lines = lines
             };
         }
-        public async Task<CommissionCalculationResult> CalculateCommissionAsync(
-     decimal subtotal,
-     string currency)
-        {
-            if (subtotal < 0)
-            {
-                throw new ArgumentException(
-                    "Subtotal cannot be negative.",
-                    nameof(subtotal)
-                );
-            }
 
-            if (string.IsNullOrWhiteSpace(currency))
-            {
-                throw new ArgumentException(
-                    "Currency is required.",
-                    nameof(currency)
-                );
-            }
-
-            currency = currency.Trim().ToUpperInvariant();
-
-            var policy = await _db.AutoPartsCommissionPolicies
-                .Include(p => p.Tiers)
-                .Where(p =>
-                    p.Currency == currency &&
-                    p.IsActive)
-                .OrderByDescending(p => p.Version)
-                .FirstOrDefaultAsync();
-
-            if (policy == null)
-            {
-                throw new InvalidOperationException(
-                    $"No active auto-parts commission policy found for {currency}."
-                );
-            }
-
-            var tiers = policy.Tiers
-                .Where(t => t.IsActive)
-                .OrderBy(t => t.TierOrder)
-                .ToList();
-
-            decimal commission = 0m;
-            decimal remaining = subtotal;
-
-            foreach (var tier in tiers)
-            {
-                if (remaining <= 0)
-                    break;
-
-                var tierMinimum = tier.MinimumAmount;
-                var tierMaximum = tier.MaximumAmount;
-
-                decimal tierAmount;
-
-                if (tierMaximum.HasValue)
-                {
-                    var tierRange =
-                        tierMaximum.Value - tierMinimum;
-
-                    tierAmount = Math.Min(
-                        Math.Max(
-                            subtotal - tierMinimum,
-                            0m
-                        ),
-                        tierRange
-                    );
-                }
-                else
-                {
-                    tierAmount =
-                        Math.Max(
-                            subtotal - tierMinimum,
-                            0m
-                        );
-                }
-
-                if (tierAmount <= 0)
-                    continue;
-
-                var tierCommission =
-                    tierAmount *
-                    (tier.CommissionPercentage / 100m);
-
-                commission += tierCommission;
-
-                remaining -= tierAmount;
-            }
-
-            return new CommissionCalculationResult
-            {
-                Subtotal = subtotal,
-                CommissionAmount = commission,
-                Currency = currency,
-                PolicyId = policy.Id,
-                PolicyVersion = policy.Version
-            };
-        }
         // =============================================================
-        // Tier Validation
+        // VALIDATE TIERS
         // =============================================================
 
         private static void ValidateTiers(
@@ -373,59 +228,37 @@ namespace Alpha.API.Services
             {
                 var tier = tiers[i];
 
-                // -----------------------------------------------------
-                // Minimum validation
-                // -----------------------------------------------------
-
                 if (tier.MinimumAmount < 0)
                 {
                     throw new InvalidOperationException(
                         $"Commission tier {tier.TierOrder} has a negative minimum amount.");
                 }
 
-                // -----------------------------------------------------
-                // Maximum validation
-                // -----------------------------------------------------
-
                 if (
                     tier.MaximumAmount.HasValue &&
-                    tier.MaximumAmount.Value <= tier.MinimumAmount
-                )
+                    tier.MaximumAmount.Value <=
+                    tier.MinimumAmount)
                 {
                     throw new InvalidOperationException(
                         $"Commission tier {tier.TierOrder} has an invalid maximum amount.");
                 }
 
-                // -----------------------------------------------------
-                // Percentage validation
-                // -----------------------------------------------------
-
                 if (
                     tier.CommissionPercentage < 0 ||
-                    tier.CommissionPercentage > 100
-                )
+                    tier.CommissionPercentage > 100)
                 {
                     throw new InvalidOperationException(
                         $"Commission tier {tier.TierOrder} has an invalid commission percentage.");
                 }
 
-                // -----------------------------------------------------
-                // Make sure there is only one unlimited tier
-                // -----------------------------------------------------
-
                 if (
                     tier.MaximumAmount == null &&
-                    i != tiers.Count - 1
-                )
+                    i != tiers.Count - 1)
                 {
                     throw new InvalidOperationException(
                         $"Commission tier {tier.TierOrder} is unlimited " +
                         $"but is not the final tier.");
                 }
-
-                // -----------------------------------------------------
-                // Check that tiers connect correctly
-                // -----------------------------------------------------
 
                 if (i > 0)
                 {
@@ -434,8 +267,7 @@ namespace Alpha.API.Services
                     if (
                         previousTier.MaximumAmount.HasValue &&
                         tier.MinimumAmount !=
-                        previousTier.MaximumAmount.Value
-                    )
+                        previousTier.MaximumAmount.Value)
                     {
                         throw new InvalidOperationException(
                             $"Commission tier {tier.TierOrder} does not " +
