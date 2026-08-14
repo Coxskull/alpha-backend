@@ -24,22 +24,12 @@ public class AutoPartsCommissionTestController : ControllerBase
         [FromBody] AutoPartsCommissionTestDtos request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var result = await _commissionService.CalculateAsync(
-                request.Subtotal,
-                request.Currency,
-                DateTime.UtcNow,
-                cancellationToken);
+        var result = await _commissionService.CalculateAsync(
+            request.Subtotal,
+            request.Currency,
+            DateTime.UtcNow,
+            cancellationToken);
 
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new
-            {
-                message = ex.Message
-            });
-        }
+        return Ok(result);
     }
 }
