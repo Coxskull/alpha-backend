@@ -341,6 +341,12 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Notes)
                 .HasColumnName("notes");
 
+            entity.Property(e => e.EffectiveFrom)
+                .HasColumnName("effective_from");
+
+            entity.Property(e => e.EffectiveTo)
+                .HasColumnName("effective_to");
+
             entity.Property(e => e.CreatedByUserId)
                 .HasColumnName("created_by_user_id");
 

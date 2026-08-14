@@ -17,6 +17,12 @@ namespace Alpha.API.Models
 
         public string? Notes { get; set; }
 
+        // Policy validity period
+        public DateTime EffectiveFrom { get; set; }
+
+        public DateTime? EffectiveTo { get; set; }
+
+        // Audit information
         public Guid? CreatedByUserId { get; set; }
 
         public Guid? UpdatedByUserId { get; set; }
@@ -25,6 +31,7 @@ namespace Alpha.API.Models
 
         public DateTime UpdatedAt { get; set; }
 
+        // Commission tiers
         public ICollection<AutoPartsCommissionTier> Tiers { get; set; }
             = new List<AutoPartsCommissionTier>();
     }
