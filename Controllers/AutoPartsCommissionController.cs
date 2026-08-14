@@ -298,7 +298,7 @@ public class AutoPartsCommissionController : ControllerBase
     Guid id,
     [FromBody] UpdateAutoPartsCommissionTierRequest request)
     {
-        var tier = await _db.AutoPartsCommissionTiers
+        var tier = await _context.AutoPartsCommissionTiers
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (tier == null)
@@ -329,7 +329,7 @@ public class AutoPartsCommissionController : ControllerBase
         tier.IsActive = request.IsActive;
         tier.UpdatedAt = DateTime.UtcNow;
 
-        await _db.SaveChangesAsync();
+        await _context.SaveChangesAsync();
 
         return Ok(tier);
     }
@@ -339,7 +339,7 @@ public class AutoPartsCommissionController : ControllerBase
     Guid policyId,
     [FromBody] UpdateAutoPartsCommissionTierRequest request)
     {
-        var policy = await _db.AutoPartsCommissionPolicies
+        var policy = await _context.AutoPartsCommissionPolicies
             .FirstOrDefaultAsync(x => x.Id == policyId);
 
         if (policy == null)
@@ -378,9 +378,9 @@ public class AutoPartsCommissionController : ControllerBase
             UpdatedAt = DateTime.UtcNow
         };
 
-        _db.AutoPartsCommissionTiers.Add(tier);
+        _context.AutoPartsCommissionTiers.Add(tier);
 
-        await _db.SaveChangesAsync();
+        await _context.SaveChangesAsync();
 
         return CreatedAtAction(
             nameof(GetCurrentPolicy),
@@ -395,7 +395,7 @@ public class AutoPartsCommissionController : ControllerBase
     [HttpDelete("tiers/{id:guid}")]
     public async Task<IActionResult> DeleteTier(Guid id)
     {
-        var tier = await _db.AutoPartsCommissionTiers
+        var tier = await _context.AutoPartsCommissionTiers
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (tier == null)
@@ -403,9 +403,9 @@ public class AutoPartsCommissionController : ControllerBase
                 "Commission tier not found."
             );
 
-        _db.AutoPartsCommissionTiers.Remove(tier);
+        _context.AutoPartsCommissionTiers.Remove(tier);
 
-        await _db.SaveChangesAsync();
+        await _context.SaveChangesAsync();
 
         return NoContent();
     }
