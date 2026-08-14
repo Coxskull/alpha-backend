@@ -221,15 +221,20 @@ if (!string.IsNullOrEmpty(databaseUrl))
 // CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("AllowFrontend", policy =>
     {
         policy
-            .AllowAnyOrigin()
-            .AllowAnyMethod()
+            .WithOrigins(
+                "https://alphaauto.app",
+                "https://www.alphaauto.app"
+            )
             .AllowAnyHeader()
-            .WithExposedHeaders("X-Total-Count");
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
+
+
 builder.Services.AddScoped<SettlementService>();
 var app = builder.Build();
 
@@ -256,7 +261,7 @@ app.Use(async (context, next) =>
 app.UseSwagger();
 app.UseSwaggerUI();
 app.UseStaticFiles();
-app.UseCors("AllowAll");
+app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
 app.UseAuthorization();
