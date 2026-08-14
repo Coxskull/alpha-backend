@@ -48,7 +48,7 @@ builder.Services
                 )
             };
     });
-
+builder.Services.AddScoped<AutoPartsCommissionService>();
 builder.Services.AddScoped<TaxEngineService>();
 builder.Services.AddScoped<SettlementService>();
 builder.Services.AddScoped<OrderWorkflowService>();
