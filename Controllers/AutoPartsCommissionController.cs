@@ -293,5 +293,121 @@ public class AutoPartsCommissionController : ControllerBase
         });
     }
 
+    [HttpPut("tiers/{id:guid}")]
+    public async Task<IActionResult> UpdateTier(
+    Guid id,
+    [FromBody] UpdateAutoPartsCommissionTierRequest request)
+    {
+        var tier = await _db.AutoPartsCommissionTiers
+            .FirstOrDefaultAsync(x => x.Id == id);
+
+        if (tier == null)
+            return NotFound("Commission tier not found.");
+
+        if (request.Minimum < 0)
+            return BadRequest("Minimum cannot be negative.");
+
+        if (request.Maximum.HasValue &&
+            request.Maximum.Value <= request.Minimum)
+        {
+            return BadRequest(
+                "Maximum must be greater than minimum."
+            );
+        }
+
+        if (request.CommissionRate < 0 ||
+            request.CommissionRate > 100)
+        {
+            return BadRequest(
+                "Commission rate must be between 0 and 100."
+            );
+        }
+
+        tier.Minimum = request.Minimum;
+        tier.Maximum = request.Maximum;
+        tier.CommissionRate = request.CommissionRate;
+        tier.IsActive = request.IsActive;
+        tier.UpdatedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync();
+
+        return Ok(tier);
+    }
+
+    [HttpPost("policies/{policyId:guid}/tiers")]
+    public async Task<IActionResult> CreateTier(
+    Guid policyId,
+    [FromBody] UpdateAutoPartsCommissionTierRequest request)
+    {
+        var policy = await _db.AutoPartsCommissionPolicies
+            .FirstOrDefaultAsync(x => x.Id == policyId);
+
+        if (policy == null)
+            return NotFound("Commission policy not found.");
+
+        if (request.Minimum < 0)
+            return BadRequest(
+                "Minimum cannot be negative."
+            );
+
+        if (request.Maximum.HasValue &&
+            request.Maximum.Value <= request.Minimum)
+        {
+            return BadRequest(
+                "Maximum must be greater than minimum."
+            );
+        }
+
+        if (request.CommissionRate < 0 ||
+            request.CommissionRate > 100)
+        {
+            return BadRequest(
+                "Commission rate must be between 0 and 100."
+            );
+        }
+
+        var tier = new AutoPartsCommissionTier
+        {
+            Id = Guid.NewGuid(),
+            PolicyId = policyId,
+            Minimum = request.Minimum,
+            Maximum = request.Maximum,
+            CommissionRate = request.CommissionRate,
+            IsActive = request.IsActive,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _db.AutoPartsCommissionTiers.Add(tier);
+
+        await _db.SaveChangesAsync();
+
+        return CreatedAtAction(
+            nameof(GetCurrentPolicy),
+            new
+            {
+                currency = policy.Currency
+            },
+            tier
+        );
+    }
+
+    [HttpDelete("tiers/{id:guid}")]
+    public async Task<IActionResult> DeleteTier(Guid id)
+    {
+        var tier = await _db.AutoPartsCommissionTiers
+            .FirstOrDefaultAsync(x => x.Id == id);
+
+        if (tier == null)
+            return NotFound(
+                "Commission tier not found."
+            );
+
+        _db.AutoPartsCommissionTiers.Remove(tier);
+
+        await _db.SaveChangesAsync();
+
+        return NoContent();
+    }
 
 }
