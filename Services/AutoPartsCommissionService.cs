@@ -258,7 +258,104 @@ namespace Alpha.API.Services
                 Lines = lines
             };
         }
+        public async Task<CommissionCalculationResult> CalculateCommissionAsync(
+     decimal subtotal,
+     string currency)
+        {
+            if (subtotal < 0)
+            {
+                throw new ArgumentException(
+                    "Subtotal cannot be negative.",
+                    nameof(subtotal)
+                );
+            }
 
+            if (string.IsNullOrWhiteSpace(currency))
+            {
+                throw new ArgumentException(
+                    "Currency is required.",
+                    nameof(currency)
+                );
+            }
+
+            currency = currency.Trim().ToUpperInvariant();
+
+            var policy = await _db.AutoPartsCommissionPolicies
+                .Include(p => p.Tiers)
+                .Where(p =>
+                    p.Currency == currency &&
+                    p.IsActive)
+                .OrderByDescending(p => p.Version)
+                .FirstOrDefaultAsync();
+
+            if (policy == null)
+            {
+                throw new InvalidOperationException(
+                    $"No active auto-parts commission policy found for {currency}."
+                );
+            }
+
+            var tiers = policy.Tiers
+                .Where(t => t.IsActive)
+                .OrderBy(t => t.TierOrder)
+                .ToList();
+
+            decimal commission = 0m;
+            decimal remaining = subtotal;
+
+            foreach (var tier in tiers)
+            {
+                if (remaining <= 0)
+                    break;
+
+                var tierMinimum = tier.MinimumAmount;
+                var tierMaximum = tier.MaximumAmount;
+
+                decimal tierAmount;
+
+                if (tierMaximum.HasValue)
+                {
+                    var tierRange =
+                        tierMaximum.Value - tierMinimum;
+
+                    tierAmount = Math.Min(
+                        Math.Max(
+                            subtotal - tierMinimum,
+                            0m
+                        ),
+                        tierRange
+                    );
+                }
+                else
+                {
+                    tierAmount =
+                        Math.Max(
+                            subtotal - tierMinimum,
+                            0m
+                        );
+                }
+
+                if (tierAmount <= 0)
+                    continue;
+
+                var tierCommission =
+                    tierAmount *
+                    (tier.CommissionPercentage / 100m);
+
+                commission += tierCommission;
+
+                remaining -= tierAmount;
+            }
+
+            return new CommissionCalculationResult
+            {
+                Subtotal = subtotal,
+                CommissionAmount = commission,
+                Currency = currency,
+                PolicyId = policy.Id,
+                PolicyVersion = policy.Version
+            };
+        }
         // =============================================================
         // Tier Validation
         // =============================================================
