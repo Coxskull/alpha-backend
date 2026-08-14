@@ -250,7 +250,7 @@ public sealed class RoleVerificationsController : ControllerBase
     public async Task<IActionResult> UploadDocument(
         Guid id,
         [FromForm] string documentType,
-        [FromForm] IFormFile file,
+        IFormFile file,
         CancellationToken cancellationToken)
     {
         var userId = GetRequiredUserId();
