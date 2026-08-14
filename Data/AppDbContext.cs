@@ -61,7 +61,12 @@ public class AppDbContext : DbContext
     Set<ReferralCommissionRate>();
     public DbSet<PaymentWebhookEvent> PaymentWebhookEvents =>
     Set<PaymentWebhookEvent>();
-
+    // Auto Parts Commission Module
+    public DbSet<AutoPartsCommissionPolicy> AutoPartsCommissionPolicies { get; set; }
+    public DbSet<AutoPartsCommissionTier> AutoPartsCommissionTiers { get; set; }
+    public DbSet<AutoPartsCommissionCalculation> AutoPartsCommissionCalculations { get; set; }
+    public DbSet<AutoPartsCommissionCalculationLine> AutoPartsCommissionCalculationLines { get; set; }
+    public DbSet<AutoPartsCommissionAuditLog> AutoPartsCommissionAuditLogs { get; set; }
 
     public DbSet<RoleVerificationApplication>
     RoleVerificationApplications
@@ -305,6 +310,241 @@ public class AppDbContext : DbContext
             entity.HasIndex(transaction => transaction.EventKey)
                 .IsUnique();
         });
+
+        // =========================================================
+        // AUTO PARTS COMMISSION POLICY
+        // =========================================================
+
+        modelBuilder.Entity<AutoPartsCommissionPolicy>(entity =>
+        {
+            entity.ToTable("auto_parts_commission_policies");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id)
+                .HasColumnName("id");
+
+            entity.Property(e => e.PolicyName)
+                .HasColumnName("policy_name");
+
+            entity.Property(e => e.Currency)
+                .HasColumnName("currency");
+
+            entity.Property(e => e.Version)
+                .HasColumnName("version");
+
+            entity.Property(e => e.EffectiveFrom)
+                .HasColumnName("effective_from");
+
+            entity.Property(e => e.EffectiveTo)
+                .HasColumnName("effective_to");
+
+            entity.Property(e => e.IsActive)
+                .HasColumnName("is_active");
+
+            entity.Property(e => e.Notes)
+                .HasColumnName("notes");
+
+            entity.Property(e => e.CreatedByUserId)
+                .HasColumnName("created_by_user_id");
+
+            entity.Property(e => e.UpdatedByUserId)
+                .HasColumnName("updated_by_user_id");
+
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("created_at");
+
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnName("updated_at");
+
+            entity.HasMany(e => e.Tiers)
+                .WithOne(e => e.Policy)
+                .HasForeignKey(e => e.PolicyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // =========================================================
+        // AUTO PARTS COMMISSION TIERS
+        // =========================================================
+
+        modelBuilder.Entity<AutoPartsCommissionTier>(entity =>
+        {
+            entity.ToTable("auto_parts_commission_tiers");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id)
+                .HasColumnName("id");
+
+            entity.Property(e => e.PolicyId)
+                .HasColumnName("policy_id");
+
+            entity.Property(e => e.TierOrder)
+                .HasColumnName("tier_order");
+
+            entity.Property(e => e.MinimumAmount)
+                .HasColumnName("minimum_amount");
+
+            entity.Property(e => e.MaximumAmount)
+                .HasColumnName("maximum_amount");
+
+            entity.Property(e => e.CommissionPercentage)
+                .HasColumnName("commission_percentage");
+
+            entity.Property(e => e.IsActive)
+                .HasColumnName("is_active");
+
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("created_at");
+
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnName("updated_at");
+        });
+
+        // =========================================================
+        // AUTO PARTS COMMISSION CALCULATIONS
+        // =========================================================
+
+        modelBuilder.Entity<AutoPartsCommissionCalculation>(entity =>
+        {
+            entity.ToTable("auto_parts_commission_calculations");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id)
+                .HasColumnName("id");
+
+            entity.Property(e => e.OrderId)
+                .HasColumnName("order_id");
+
+            entity.Property(e => e.OrderFinancialId)
+                .HasColumnName("order_financial_id");
+
+            entity.Property(e => e.PolicyId)
+                .HasColumnName("policy_id");
+
+            entity.Property(e => e.PolicyVersion)
+                .HasColumnName("policy_version");
+
+            entity.Property(e => e.Currency)
+                .HasColumnName("currency");
+
+            entity.Property(e => e.PartsSubtotal)
+                .HasColumnName("parts_subtotal");
+
+            entity.Property(e => e.TotalCommission)
+                .HasColumnName("total_commission");
+
+            entity.Property(e => e.EffectiveCommissionRate)
+                .HasColumnName("effective_commission_rate");
+
+            entity.Property(e => e.CalculatedAt)
+                .HasColumnName("calculated_at");
+
+            entity.Property(e => e.CreatedBy)
+                .HasColumnName("created_by");
+
+            entity.HasOne(e => e.Policy)
+                .WithMany()
+                .HasForeignKey(e => e.PolicyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // =========================================================
+        // AUTO PARTS COMMISSION CALCULATION LINES
+        // =========================================================
+
+        modelBuilder.Entity<AutoPartsCommissionCalculationLine>(entity =>
+        {
+            entity.ToTable("auto_parts_commission_calculation_lines");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id)
+                .HasColumnName("id");
+
+            entity.Property(e => e.CalculationId)
+                .HasColumnName("calculation_id");
+
+            entity.Property(e => e.TierId)
+                .HasColumnName("tier_id");
+
+            entity.Property(e => e.TierOrder)
+                .HasColumnName("tier_order");
+
+            entity.Property(e => e.TierMinimum)
+                .HasColumnName("tier_minimum");
+
+            entity.Property(e => e.TierMaximum)
+                .HasColumnName("tier_maximum");
+
+            entity.Property(e => e.TierPercentage)
+                .HasColumnName("tier_percentage");
+
+            entity.Property(e => e.AmountInTier)
+                .HasColumnName("amount_in_tier");
+
+            entity.Property(e => e.CommissionAmount)
+                .HasColumnName("commission_amount");
+
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("created_at");
+
+            entity.HasOne(e => e.Calculation)
+                .WithMany()
+                .HasForeignKey(e => e.CalculationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Tier)
+                .WithMany()
+                .HasForeignKey(e => e.TierId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // =========================================================
+        // AUTO PARTS COMMISSION AUDIT LOG
+        // =========================================================
+
+        modelBuilder.Entity<AutoPartsCommissionAuditLog>(entity =>
+        {
+            entity.ToTable("auto_parts_commission_audit_logs");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id)
+                .HasColumnName("id");
+
+            entity.Property(e => e.PolicyId)
+                .HasColumnName("policy_id");
+
+            entity.Property(e => e.PolicyVersion)
+                .HasColumnName("policy_version");
+
+            entity.Property(e => e.Action)
+                .HasColumnName("action");
+
+            entity.Property(e => e.PerformedByUserId)
+                .HasColumnName("performed_by_user_id");
+
+            entity.Property(e => e.BeforeSnapshot)
+                .HasColumnName("before_snapshot");
+
+            entity.Property(e => e.AfterSnapshot)
+                .HasColumnName("after_snapshot");
+
+            entity.Property(e => e.Reason)
+                .HasColumnName("reason");
+
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("created_at");
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(e => e.PerformedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+
 
         modelBuilder.Entity<RoleVerificationApplication>(entity =>
         {
