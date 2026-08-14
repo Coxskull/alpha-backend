@@ -1,21 +1,17 @@
 using Alpha.API.Data;
-using Alpha.API.DTOs.AutoPartsCommission.Admin;
-using Alpha.API.DTOs;
 using Alpha.API.Models;
 using Alpha.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
-using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace Alpha.API.Controllers;
 
 [ApiController]
 [Route("api/admin/auto-parts-commission")]
-[Authorize(Roles = "admin")]
+[Authorize]
 public class AutoPartsCommissionController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -29,352 +25,305 @@ public class AutoPartsCommissionController : ControllerBase
         _commissionService = commissionService;
     }
 
+    // ============================================================
+    // GET CURRENT POLICY
+    // ============================================================
+
     [HttpGet("current")]
     public async Task<IActionResult> GetCurrentPolicy(
-    [FromQuery] string currency = "USD")
+        [FromQuery] string currency = "USD")
     {
         currency = currency.Trim().ToUpperInvariant();
+
+        var now = DateTime.UtcNow;
 
         var policy = await _context.AutoPartsCommissionPolicies
             .Include(x => x.Tiers)
             .Where(x =>
                 x.Currency == currency &&
-                x.IsActive)
+                x.IsActive &&
+                x.EffectiveFrom <= now &&
+                (x.EffectiveTo == null || x.EffectiveTo > now))
             .OrderByDescending(x => x.Version)
             .FirstOrDefaultAsync();
 
         if (policy == null)
+        {
             return NotFound(new
             {
-                message = $"No active policy found for {currency}."
-            });
-
-        return Ok(policy);
-    }
-
-    [HttpGet("history")]
-    public async Task<IActionResult> GetHistory(
-    [FromQuery] string currency = "USD")
-    {
-        currency = currency.Trim().ToUpperInvariant();
-
-        var policies = await _context.AutoPartsCommissionPolicies
-            .Include(x => x.Tiers)
-            .Where(x => x.Currency == currency)
-            .OrderByDescending(x => x.Version)
-            .Select(x => new
-            {
-                x.Id,
-                x.PolicyName,
-                x.Currency,
-                x.Version,
-                x.EffectiveFrom,
-                x.EffectiveTo,
-                x.IsActive,
-                x.Notes,
-                x.CreatedAt,
-                x.UpdatedAt,
-                Tiers = x.Tiers
-                    .OrderBy(t => t.TierOrder)
-                    .Select(t => new
-                    {
-                        t.Id,
-                        t.TierOrder,
-                        t.MinimumAmount,
-                        t.MaximumAmount,
-                        t.CommissionPercentage,
-                        t.IsActive
-                    })
-            })
-            .ToListAsync();
-
-        return Ok(policies);
-    }
-
-    [HttpPost("preview")]
-    public async Task<IActionResult> Preview(
-    [FromBody] PreviewAutoPartsCommissionDto dto,
-    CancellationToken cancellationToken)
-    {
-        if (dto.Subtotal <= 0)
-        {
-            return BadRequest(new
-            {
-                message = "Subtotal must be greater than zero."
+                message =
+                    $"No active auto-parts commission policy found for {currency}."
             });
         }
 
-        var calculationDate =
-            dto.CalculationDate ?? DateTime.UtcNow;
+        var result = new
+        {
+            id = policy.Id,
+            policyName = policy.PolicyName,
+            currency = policy.Currency,
+            version = policy.Version,
+            isActive = policy.IsActive,
 
-        var result =
-            await _commissionService.CalculateAsync(
-                dto.Subtotal,
-                dto.Currency,
-                calculationDate,
-                cancellationToken);
+            effectiveFrom = policy.EffectiveFrom,
+            effectiveTo = policy.EffectiveTo,
+
+            notes = policy.Notes,
+
+            tiers = policy.Tiers
+                .OrderBy(x => x.TierOrder)
+                .Select(x => new
+                {
+                    id = x.Id,
+                    tierOrder = x.TierOrder,
+
+                    minimumAmount = x.MinimumAmount,
+                    maximumAmount = x.MaximumAmount,
+
+                    commissionPercentage =
+                        x.CommissionPercentage,
+
+                    isActive = x.IsActive
+                })
+                .ToList()
+        };
 
         return Ok(result);
     }
 
-    [HttpPost("policies")]
-    public async Task<IActionResult> CreatePolicy(
-    [FromBody] CreateAutoPartsCommissionPolicyDto dto,
-    CancellationToken cancellationToken)
+    // ============================================================
+    // CALCULATE COMMISSION
+    // ============================================================
+
+    [HttpPost("calculate")]
+    public async Task<IActionResult> CalculateCommission(
+        [FromBody] CalculateCommissionRequest request)
     {
-        if (dto.Tiers == null || dto.Tiers.Count == 0)
+        if (request.Subtotal < 0)
         {
             return BadRequest(new
             {
-                message = "At least one commission tier is required."
+                message = "Subtotal cannot be negative."
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Currency))
+        {
+            return BadRequest(new
+            {
+                message = "Currency is required."
             });
         }
 
         var currency =
-            dto.Currency.Trim().ToUpperInvariant();
+            request.Currency.Trim().ToUpperInvariant();
 
-        ValidateTiers(dto.Tiers);
-
-        var latestVersion =
-            await _context.AutoPartsCommissionPolicies
-                .Where(x => x.Currency == currency)
-                .Select(x => (int?)x.Version)
-                .MaxAsync(cancellationToken)
-                ?? 0;
-
-        var policy = new AutoPartsCommissionPolicy
+        try
         {
-            Id = Guid.NewGuid(),
+            var result =
+                await _commissionService.CalculateCommissionAsync(
+                    request.Subtotal,
+                    currency
+                );
 
-            PolicyName = dto.PolicyName,
-
-            Currency = currency,
-
-            Version = latestVersion + 1,
-
-            EffectiveFrom = dto.EffectiveFrom,
-
-            IsActive = false,
-
-            Notes = dto.Notes,
-
-            CreatedAt = DateTime.UtcNow,
-
-            UpdatedAt = DateTime.UtcNow
-        };
-
-        foreach (var tierDto in dto.Tiers.OrderBy(x => x.TierOrder))
-        {
-            policy.Tiers.Add(
-                new AutoPartsCommissionTier
-                {
-                    Id = Guid.NewGuid(),
-
-                    PolicyId = policy.Id,
-
-                    TierOrder = tierDto.TierOrder,
-
-                    MinimumAmount = tierDto.MinimumAmount,
-
-                    MaximumAmount = tierDto.MaximumAmount,
-
-                    CommissionPercentage =
-                        tierDto.CommissionPercentage,
-
-                    IsActive = tierDto.IsActive,
-
-                    CreatedAt = DateTime.UtcNow,
-
-                    UpdatedAt = DateTime.UtcNow
-                });
+            return Ok(result);
         }
-
-        _context.AutoPartsCommissionPolicies.Add(policy);
-
-        await _context.SaveChangesAsync(cancellationToken);
-
-        return CreatedAtAction(
-            nameof(GetCurrentPolicy),
-            new { currency },
-            policy);
-    }
-
-    private static void ValidateTiers(
-    List<CreateAutoPartsCommissionTierDto> tiers)
-    {
-        var ordered = tiers
-            .OrderBy(x => x.MinimumAmount)
-            .ToList();
-
-        if (ordered[0].MinimumAmount != 0)
+        catch (InvalidOperationException ex)
         {
-            throw new ArgumentException(
-                "The first tier must start at 0.");
-        }
-
-        for (int i = 0; i < ordered.Count; i++)
-        {
-            var tier = ordered[i];
-
-            if (tier.CommissionPercentage < 0 ||
-                tier.CommissionPercentage > 100)
+            return BadRequest(new
             {
-                throw new ArgumentException(
-                    $"Invalid commission percentage for tier {tier.TierOrder}.");
-            }
-
-            if (tier.MaximumAmount.HasValue &&
-                tier.MaximumAmount.Value <=
-                tier.MinimumAmount)
-            {
-                throw new ArgumentException(
-                    $"Maximum amount must be greater than minimum amount for tier {tier.TierOrder}.");
-            }
-
-            if (i < ordered.Count - 1)
-            {
-                var next = ordered[i + 1];
-
-                if (!tier.MaximumAmount.HasValue)
-                {
-                    throw new ArgumentException(
-                        "Only the final tier may have no maximum amount.");
-                }
-
-                if (tier.MaximumAmount.Value !=
-                    next.MinimumAmount)
-                {
-                    throw new ArgumentException(
-                        "Commission tiers cannot contain gaps or overlaps.");
-                }
-            }
+                message = ex.Message
+            });
         }
     }
 
-    [HttpPost("policies/{id:guid}/activate")]
-    public async Task<IActionResult> ActivatePolicy(
-    Guid id,
-    CancellationToken cancellationToken)
-    {
-        var policy =
-            await _context.AutoPartsCommissionPolicies
-                .FirstOrDefaultAsync(
-                    x => x.Id == id,
-                    cancellationToken);
+    // ============================================================
+    // UPDATE TIER
+    // ============================================================
 
-        if (policy == null)
-            return NotFound();
-
-        var activePolicies =
-            await _context.AutoPartsCommissionPolicies
-                .Where(x =>
-                    x.Currency == policy.Currency &&
-                    x.IsActive &&
-                    x.Id != policy.Id)
-                .ToListAsync(cancellationToken);
-
-        foreach (var active in activePolicies)
-        {
-            active.IsActive = false;
-            active.EffectiveTo = policy.EffectiveFrom;
-            active.UpdatedAt = DateTime.UtcNow;
-        }
-
-        policy.IsActive = true;
-        policy.UpdatedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync(cancellationToken);
-
-        return Ok(new
-        {
-            message = "Commission policy activated.",
-            policyId = policy.Id,
-            version = policy.Version
-        });
-    }
-
-    [HttpPut("tiers/{id:guid}")]
+    [HttpPut("tiers/{tierId:guid}")]
     public async Task<IActionResult> UpdateTier(
-    Guid id,
-    [FromBody] UpdateAutoPartsCommissionTierRequest request)
+        Guid tierId,
+        [FromBody] UpdateCommissionTierRequest request)
     {
+        if (request.MinimumAmount < 0)
+        {
+            return BadRequest(new
+            {
+                message = "Minimum amount cannot be negative."
+            });
+        }
+
+        if (request.MaximumAmount.HasValue &&
+            request.MaximumAmount.Value <= request.MinimumAmount)
+        {
+            return BadRequest(new
+            {
+                message =
+                    "Maximum amount must be greater than minimum amount."
+            });
+        }
+
+        if (request.CommissionPercentage < 0 ||
+            request.CommissionPercentage > 100)
+        {
+            return BadRequest(new
+            {
+                message =
+                    "Commission percentage must be between 0 and 100."
+            });
+        }
+
         var tier = await _context.AutoPartsCommissionTiers
-            .FirstOrDefaultAsync(x => x.Id == id);
+            .FirstOrDefaultAsync(x => x.Id == tierId);
 
         if (tier == null)
-            return NotFound("Commission tier not found.");
-
-        if (request.Minimum < 0)
-            return BadRequest("Minimum cannot be negative.");
-
-        if (request.Maximum.HasValue &&
-            request.Maximum.Value <= request.Minimum)
         {
-            return BadRequest(
-                "Maximum must be greater than minimum."
-            );
+            return NotFound(new
+            {
+                message = "Commission tier not found."
+            });
         }
 
-        if (request.CommissionRate < 0 ||
-            request.CommissionRate > 100)
+        // Prevent overlapping ranges with other tiers.
+        var overlappingTier =
+            await _context.AutoPartsCommissionTiers
+                .Where(x =>
+                    x.Id != tierId &&
+                    x.PolicyId == tier.PolicyId &&
+                    x.IsActive)
+                .Where(x =>
+                    request.MaximumAmount == null
+                        ? x.MaximumAmount == null ||
+                          x.MaximumAmount > request.MinimumAmount
+                        : x.MinimumAmount < request.MaximumAmount &&
+                          (x.MaximumAmount == null ||
+                           x.MaximumAmount > request.MinimumAmount))
+                .FirstOrDefaultAsync();
+
+        if (overlappingTier != null)
         {
-            return BadRequest(
-                "Commission rate must be between 0 and 100."
-            );
+            return BadRequest(new
+            {
+                message =
+                    "The commission range overlaps another active tier."
+            });
         }
 
-        tier.Minimum = request.Minimum;
-        tier.Maximum = request.Maximum;
-        tier.CommissionRate = request.CommissionRate;
+        tier.MinimumAmount = request.MinimumAmount;
+        tier.MaximumAmount = request.MaximumAmount;
+        tier.CommissionPercentage =
+            request.CommissionPercentage;
         tier.IsActive = request.IsActive;
-        tier.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
-        return Ok(tier);
+        return Ok(new
+        {
+            id = tier.Id,
+            tierOrder = tier.TierOrder,
+            minimumAmount = tier.MinimumAmount,
+            maximumAmount = tier.MaximumAmount,
+            commissionPercentage =
+                tier.CommissionPercentage,
+            isActive = tier.IsActive
+        });
     }
+
+    // ============================================================
+    // CREATE TIER
+    // ============================================================
 
     [HttpPost("policies/{policyId:guid}/tiers")]
     public async Task<IActionResult> CreateTier(
-    Guid policyId,
-    [FromBody] UpdateAutoPartsCommissionTierRequest request)
+        Guid policyId,
+        [FromBody] CreateCommissionTierRequest request)
     {
-        var policy = await _context.AutoPartsCommissionPolicies
-            .FirstOrDefaultAsync(x => x.Id == policyId);
+        if (request.MinimumAmount < 0)
+        {
+            return BadRequest(new
+            {
+                message = "Minimum amount cannot be negative."
+            });
+        }
+
+        if (request.MaximumAmount.HasValue &&
+            request.MaximumAmount.Value <= request.MinimumAmount)
+        {
+            return BadRequest(new
+            {
+                message =
+                    "Maximum amount must be greater than minimum amount."
+            });
+        }
+
+        if (request.CommissionPercentage < 0 ||
+            request.CommissionPercentage > 100)
+        {
+            return BadRequest(new
+            {
+                message =
+                    "Commission percentage must be between 0 and 100."
+            });
+        }
+
+        var policy =
+            await _context.AutoPartsCommissionPolicies
+                .Include(x => x.Tiers)
+                .FirstOrDefaultAsync(x => x.Id == policyId);
 
         if (policy == null)
-            return NotFound("Commission policy not found.");
-
-        if (request.Minimum < 0)
-            return BadRequest(
-                "Minimum cannot be negative."
-            );
-
-        if (request.Maximum.HasValue &&
-            request.Maximum.Value <= request.Minimum)
         {
-            return BadRequest(
-                "Maximum must be greater than minimum."
-            );
+            return NotFound(new
+            {
+                message = "Commission policy not found."
+            });
         }
 
-        if (request.CommissionRate < 0 ||
-            request.CommissionRate > 100)
+        var overlappingTier =
+            policy.Tiers
+                .Where(x => x.IsActive)
+                .FirstOrDefault(x =>
+                    request.MaximumAmount == null
+                        ? x.MaximumAmount == null ||
+                          x.MaximumAmount > request.MinimumAmount
+                        : x.MinimumAmount < request.MaximumAmount &&
+                          (x.MaximumAmount == null ||
+                           x.MaximumAmount > request.MinimumAmount));
+
+        if (overlappingTier != null)
         {
-            return BadRequest(
-                "Commission rate must be between 0 and 100."
-            );
+            return BadRequest(new
+            {
+                message =
+                    "The commission range overlaps another active tier."
+            });
         }
+
+        var nextTierOrder =
+            policy.Tiers
+                .Select(x => x.TierOrder)
+                .DefaultIfEmpty(0)
+                .Max() + 1;
 
         var tier = new AutoPartsCommissionTier
         {
             Id = Guid.NewGuid(),
-            PolicyId = policyId,
-            Minimum = request.Minimum,
-            Maximum = request.Maximum,
-            CommissionRate = request.CommissionRate,
+
+            PolicyId = policy.Id,
+
+            TierOrder = nextTierOrder,
+
+            MinimumAmount = request.MinimumAmount,
+
+            MaximumAmount = request.MaximumAmount,
+
+            CommissionPercentage =
+                request.CommissionPercentage,
+
             IsActive = request.IsActive,
+
             CreatedAt = DateTime.UtcNow,
+
             UpdatedAt = DateTime.UtcNow
         };
 
@@ -388,26 +337,196 @@ public class AutoPartsCommissionController : ControllerBase
             {
                 currency = policy.Currency
             },
-            tier
+            new
+            {
+                id = tier.Id,
+                tierOrder = tier.TierOrder,
+                minimumAmount = tier.MinimumAmount,
+                maximumAmount = tier.MaximumAmount,
+                commissionPercentage =
+                    tier.CommissionPercentage,
+                isActive = tier.IsActive
+            }
         );
     }
 
-    [HttpDelete("tiers/{id:guid}")]
-    public async Task<IActionResult> DeleteTier(Guid id)
+    // ============================================================
+    // DELETE / DEACTIVATE TIER
+    // ============================================================
+
+    [HttpDelete("tiers/{tierId:guid}")]
+    public async Task<IActionResult> DeleteTier(
+        Guid tierId)
     {
-        var tier = await _context.AutoPartsCommissionTiers
-            .FirstOrDefaultAsync(x => x.Id == id);
+        var tier =
+            await _context.AutoPartsCommissionTiers
+                .FirstOrDefaultAsync(x => x.Id == tierId);
 
         if (tier == null)
-            return NotFound(
-                "Commission tier not found."
-            );
+        {
+            return NotFound(new
+            {
+                message = "Commission tier not found."
+            });
+        }
 
-        _context.AutoPartsCommissionTiers.Remove(tier);
+        // Soft delete instead of physically deleting
+        // financial configuration.
+        tier.IsActive = false;
+        tier.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
-        return NoContent();
+        return Ok(new
+        {
+            message = "Commission tier deactivated successfully."
+        });
     }
 
+    // ============================================================
+    // ACTIVATE / DEACTIVATE TIER
+    // ============================================================
+
+    [HttpPatch("tiers/{tierId:guid}/status")]
+    public async Task<IActionResult> UpdateTierStatus(
+        Guid tierId,
+        [FromBody] UpdateTierStatusRequest request)
+    {
+        var tier =
+            await _context.AutoPartsCommissionTiers
+                .FirstOrDefaultAsync(x => x.Id == tierId);
+
+        if (tier == null)
+        {
+            return NotFound(new
+            {
+                message = "Commission tier not found."
+            });
+        }
+
+        tier.IsActive = request.IsActive;
+        tier.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            id = tier.Id,
+            isActive = tier.IsActive
+        });
+    }
+
+    // ============================================================
+    // UPDATE POLICY
+    // ============================================================
+
+    [HttpPut("policies/{policyId:guid}")]
+    public async Task<IActionResult> UpdatePolicy(
+        Guid policyId,
+        [FromBody] UpdateCommissionPolicyRequest request)
+    {
+        var policy =
+            await _context.AutoPartsCommissionPolicies
+                .FirstOrDefaultAsync(x => x.Id == policyId);
+
+        if (policy == null)
+        {
+            return NotFound(new
+            {
+                message = "Commission policy not found."
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.PolicyName))
+        {
+            return BadRequest(new
+            {
+                message = "Policy name is required."
+            });
+        }
+
+        policy.PolicyName = request.PolicyName.Trim();
+
+        policy.Notes = request.Notes;
+
+        policy.IsActive = request.IsActive;
+
+        policy.EffectiveFrom =
+            request.EffectiveFrom;
+
+        policy.EffectiveTo =
+            request.EffectiveTo;
+
+        policy.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            id = policy.Id,
+            policyName = policy.PolicyName,
+            currency = policy.Currency,
+            version = policy.Version,
+            isActive = policy.IsActive,
+            effectiveFrom = policy.EffectiveFrom,
+            effectiveTo = policy.EffectiveTo,
+            notes = policy.Notes
+        });
+    }
+}
+
+
+// ================================================================
+// REQUEST MODELS
+// ================================================================
+
+public sealed class CalculateCommissionRequest
+{
+    public decimal Subtotal { get; set; }
+
+    public string Currency { get; set; } = "USD";
+}
+
+
+public sealed class UpdateCommissionTierRequest
+{
+    public decimal MinimumAmount { get; set; }
+
+    public decimal? MaximumAmount { get; set; }
+
+    public decimal CommissionPercentage { get; set; }
+
+    public bool IsActive { get; set; } = true;
+}
+
+
+public sealed class CreateCommissionTierRequest
+{
+    public decimal MinimumAmount { get; set; }
+
+    public decimal? MaximumAmount { get; set; }
+
+    public decimal CommissionPercentage { get; set; }
+
+    public bool IsActive { get; set; } = true;
+}
+
+
+public sealed class UpdateTierStatusRequest
+{
+    public bool IsActive { get; set; }
+}
+
+
+public sealed class UpdateCommissionPolicyRequest
+{
+    public string PolicyName { get; set; } = string.Empty;
+
+    public string? Notes { get; set; }
+
+    public bool IsActive { get; set; }
+
+    public DateTime EffectiveFrom { get; set; }
+
+    public DateTime? EffectiveTo { get; set; }
 }
