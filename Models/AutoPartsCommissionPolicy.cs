@@ -15,13 +15,15 @@ namespace Alpha.API.Models
 
         public bool IsActive { get; set; }
 
-        public DateTime EffectiveFrom { get; set; }
+        public string? Notes { get; set; }
 
-        public DateTime? EffectiveTo { get; set; }
+        public Guid? CreatedByUserId { get; set; }
 
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public Guid? UpdatedByUserId { get; set; }
 
-        public DateTime? UpdatedAt { get; set; }
+        public DateTime CreatedAt { get; set; }
+
+        public DateTime UpdatedAt { get; set; }
 
         public ICollection<AutoPartsCommissionTier> Tiers { get; set; }
             = new List<AutoPartsCommissionTier>();

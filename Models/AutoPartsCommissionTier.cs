@@ -16,8 +16,12 @@ namespace Alpha.API.Models
 
         public decimal CommissionPercentage { get; set; }
 
-        public bool IsActive { get; set; } = true;
+        public bool IsActive { get; set; }
 
-        public AutoPartsCommissionPolicy Policy { get; set; } = null!;
+        public DateTime CreatedAt { get; set; }
+
+        public DateTime UpdatedAt { get; set; }
+
+        public AutoPartsCommissionPolicy? Policy { get; set; }
     }
 }

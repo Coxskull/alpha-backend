@@ -325,19 +325,15 @@ public class AppDbContext : DbContext
                 .HasColumnName("id");
 
             entity.Property(e => e.PolicyName)
-                .HasColumnName("policy_name");
+                .HasColumnName("policy_name")
+                .IsRequired();
 
             entity.Property(e => e.Currency)
-                .HasColumnName("currency");
+                .HasColumnName("currency")
+                .IsRequired();
 
             entity.Property(e => e.Version)
                 .HasColumnName("version");
-
-            entity.Property(e => e.EffectiveFrom)
-                .HasColumnName("effective_from");
-
-            entity.Property(e => e.EffectiveTo)
-                .HasColumnName("effective_to");
 
             entity.Property(e => e.IsActive)
                 .HasColumnName("is_active");
@@ -377,19 +373,23 @@ public class AppDbContext : DbContext
                 .HasColumnName("id");
 
             entity.Property(e => e.PolicyId)
-                .HasColumnName("policy_id");
+                .HasColumnName("policy_id")
+                .IsRequired();
 
             entity.Property(e => e.TierOrder)
                 .HasColumnName("tier_order");
 
             entity.Property(e => e.MinimumAmount)
-                .HasColumnName("minimum_amount");
+                .HasColumnName("minimum_amount")
+                .HasPrecision(18, 2);
 
             entity.Property(e => e.MaximumAmount)
-                .HasColumnName("maximum_amount");
+                .HasColumnName("maximum_amount")
+                .HasPrecision(18, 2);
 
             entity.Property(e => e.CommissionPercentage)
-                .HasColumnName("commission_percentage");
+                .HasColumnName("commission_percentage")
+                .HasPrecision(5, 2);
 
             entity.Property(e => e.IsActive)
                 .HasColumnName("is_active");
@@ -399,6 +399,12 @@ public class AppDbContext : DbContext
 
             entity.Property(e => e.UpdatedAt)
                 .HasColumnName("updated_at");
+
+            entity.HasIndex(e => new
+            {
+                e.PolicyId,
+                e.TierOrder
+            });
         });
 
         // =========================================================
