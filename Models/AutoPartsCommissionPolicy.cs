@@ -1,50 +1,29 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 
-namespace Alpha.API.Models;
-
-[Table("auto_parts_commission_policies")]
-public class AutoPartsCommissionPolicy
+namespace Alpha.API.Models
 {
-    [Key]
-    [Column("id")]
-    public Guid Id { get; set; }
+    public class AutoPartsCommissionPolicy
+    {
+        public Guid Id { get; set; }
 
-    [Column("policy_name")]
-    public string PolicyName { get; set; } = string.Empty;
+        public string PolicyName { get; set; } = string.Empty;
 
-    [Column("currency")]
-    public string Currency { get; set; } = "USD";
+        public string Currency { get; set; } = "USD";
 
-    [Column("version")]
-    public int Version { get; set; }
+        public int Version { get; set; }
 
-    [Column("effective_from")]
-    public DateTime EffectiveFrom { get; set; }
+        public bool IsActive { get; set; }
 
-    [Column("effective_to")]
-    public DateTime? EffectiveTo { get; set; }
+        public DateTime EffectiveFrom { get; set; }
 
-    [Column("is_active")]
-    public bool IsActive { get; set; }
+        public DateTime? EffectiveTo { get; set; }
 
-    [Column("notes")]
-    public string? Notes { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    [Column("created_by_user_id")]
-    public Guid? CreatedByUserId { get; set; }
+        public DateTime? UpdatedAt { get; set; }
 
-    [Column("updated_by_user_id")]
-    public Guid? UpdatedByUserId { get; set; }
-
-    [Column("created_at")]
-    public DateTime CreatedAt { get; set; }
-
-    [Column("updated_at")]
-    public DateTime UpdatedAt { get; set; }
-
-    public ICollection<AutoPartsCommissionTier> Tiers { get; set; }
-        = new List<AutoPartsCommissionTier>();
+        public ICollection<AutoPartsCommissionTier> Tiers { get; set; }
+            = new List<AutoPartsCommissionTier>();
+    }
 }
