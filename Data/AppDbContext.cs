@@ -1233,6 +1233,27 @@ public class AppDbContext : DbContext
             entity.Property(e => e.PayoutStatus).HasColumnName("payout_status");
             entity.Property(e => e.CompletionProofUrl).HasColumnName("completion_proof_url");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.AutoPartsCommission)
+    .HasColumnName("auto_parts_commission")
+    .HasPrecision(18, 2);
+
+            entity.Property(e => e.AutoPartsCommissionRate)
+                .HasColumnName("auto_parts_commission_rate")
+                .HasPrecision(8, 4);
+
+            entity.Property(e => e.AutoPartsCommissionPolicyId)
+                .HasColumnName("auto_parts_commission_policy_id");
+
+            entity.Property(e => e.AutoPartsCommissionPolicyVersion)
+                .HasColumnName("auto_parts_commission_policy_version");
+
+            entity.Property(e => e.PartsSupplierGross)
+                .HasColumnName("parts_supplier_gross")
+                .HasPrecision(18, 2);
+
+            entity.Property(e => e.PartsSupplierNet)
+                .HasColumnName("parts_supplier_net")
+                .HasPrecision(18, 2);
         });
 
         // ==========================

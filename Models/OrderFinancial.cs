@@ -109,4 +109,20 @@ public class OrderFinancial
 
     [Column("reconciliation_difference")]
     public decimal ReconciliationDifference { get; set; }
+
+    // =====================================================
+    // AUTO-PARTS MARKETPLACE COMMISSION
+    // =====================================================
+
+    public decimal AutoPartsCommission { get; set; }
+
+    public decimal AutoPartsCommissionRate { get; set; }
+
+    public Guid? AutoPartsCommissionPolicyId { get; set; }
+
+    public int? AutoPartsCommissionPolicyVersion { get; set; }
+
+    public decimal PartsSupplierGross { get; set; }
+
+    public decimal PartsSupplierNet { get; set; }
 }
