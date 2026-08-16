@@ -6,7 +6,7 @@ using System;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-
+using Alpha.API.Services.Entrepreneur;
 namespace Alpha.API.Services;
 
 public class PaymentCompletionService

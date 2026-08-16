@@ -1,5 +1,12 @@
 using System;
 using System.Threading.Tasks;
+using Alpha.API.Data;
+using Alpha.API.Models.Entrepreneur;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace Alpha.API.Controllers.Entrepreneur;
 
 [ApiController]
 [Route("api/admin/entrepreneur")]
@@ -15,8 +22,7 @@ public class EntrepreneurAdminController : ControllerBase
     }
 
     [HttpGet("configuration")]
-    public async Task<IActionResult>
-        GetConfiguration()
+    public async Task<IActionResult> GetConfiguration()
     {
         var config =
             await _context
@@ -27,10 +33,23 @@ public class EntrepreneurAdminController : ControllerBase
     }
 
     [HttpPut("configuration")]
-    public async Task<IActionResult>
-        UpdateConfiguration(
-            EntrepreneurProgramConfiguration request)
+    public async Task<IActionResult> UpdateConfiguration(
+        EntrepreneurProgramConfiguration request)
     {
+        if (request == null)
+        {
+            return BadRequest(
+                "Configuration request is required.");
+        }
+
+        if (request.DefaultCommissionRate < 0 ||
+            request.DefaultCommissionRate > 1)
+        {
+            return BadRequest(
+                "Commission rate must be between 0 and 1. " +
+                "For 5%, use 0.05.");
+        }
+
         var config =
             await _context
                 .EntrepreneurProgramConfigurations
@@ -39,6 +58,11 @@ public class EntrepreneurAdminController : ControllerBase
         if (config == null)
         {
             request.Id = Guid.NewGuid();
+
+            request.MaximumReferralLevel = 1;
+
+            request.UpdatedAt =
+                DateTime.UtcNow;
 
             _context
                 .EntrepreneurProgramConfigurations
@@ -67,8 +91,8 @@ public class EntrepreneurAdminController : ControllerBase
             config.HoldingPeriodDays =
                 request.HoldingPeriodDays;
 
-            config.MaximumReferralLevel =
-                1;
+            // Entrepreneur Network is permanently one level.
+            config.MaximumReferralLevel = 1;
 
             config.UpdatedAt =
                 DateTime.UtcNow;
@@ -76,6 +100,6 @@ public class EntrepreneurAdminController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        return Ok();
+        return Ok(config);
     }
 }
