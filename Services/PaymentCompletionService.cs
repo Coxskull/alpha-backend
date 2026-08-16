@@ -6,7 +6,6 @@ using System;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Alpha.API.Models.Entrepreneur;
 
 namespace Alpha.API.Services;
 
@@ -15,21 +14,19 @@ public class PaymentCompletionService
     private readonly AppDbContext _context;
     private readonly SettlementService _settlements;
     private readonly ReferralCommissionService _referralCommissionService;
-    private readonly DirectTransactionCostService
-    _entrepreneurDirectTransactionCostService;
+    private readonly DirectTransactionCostService _entrepreneurDirectTransactionCostService;
 
     public PaymentCompletionService(
         AppDbContext context,
         SettlementService settlements,
         ReferralCommissionService referralCommissionService,
-        DirectTransactionCostService
-    entrepreneurDirectTransactionCostService,)
+        DirectTransactionCostService entrepreneurDirectTransactionCostService)
     {
         _context = context;
         _settlements = settlements;
         _referralCommissionService = referralCommissionService;
-        private readonly DirectTransactionCostService
-    _entrepreneurDirectTransactionCostService;
+        _entrepreneurDirectTransactionCostService =
+            entrepreneurDirectTransactionCostService;
     }
 
     public async Task CompleteOrderPaymentAsync(
@@ -70,7 +67,9 @@ public class PaymentCompletionService
                 nameof(transactionReference));
         }
 
-        var normalizedGateway = gateway.Trim().ToLowerInvariant();
+        var normalizedGateway =
+            gateway.Trim().ToLowerInvariant();
+
         var normalizedPaymentMethod =
             paymentMethod.Trim().ToLowerInvariant();
 
@@ -96,8 +95,9 @@ public class PaymentCompletionService
                 "Financial record not found.");
 
         /*
-         * Makes the payment completion operation idempotent.
-         * Webhooks may be delivered more than once.
+         * Payment completion is idempotent.
+         *
+         * Payment gateways can send the same webhook more than once.
          */
         if (string.Equals(
                 payment.PaymentStatus,
@@ -137,11 +137,6 @@ public class PaymentCompletionService
 
         var now = DateTime.UtcNow;
 
-        /*
-         * The response is already supplied to this method as a string.
-         * Normalize valid JSON when possible, but retain the original
-         * response if the gateway returned non-JSON content.
-         */
         var storedGatewayResponse =
             NormalizeGatewayResponse(rawGatewayResponse);
 
@@ -151,9 +146,19 @@ public class PaymentCompletionService
 
         try
         {
+            /*
+             * ---------------------------------------------------------
+             * PAYMENT
+             * ---------------------------------------------------------
+             */
+
             payment.PaymentStatus = "paid";
-            payment.PaymentMethod = normalizedPaymentMethod;
-            payment.PaymentGateway = normalizedGateway;
+
+            payment.PaymentMethod =
+                normalizedPaymentMethod;
+
+            payment.PaymentGateway =
+                normalizedGateway;
 
             payment.TransactionReference =
                 transactionReference.Trim();
@@ -164,27 +169,55 @@ public class PaymentCompletionService
                     : gatewayPaymentId.Trim();
 
             payment.PaidAt = now;
-            payment.GatewayFee = gatewayFee ?? 0m;
-            payment.GatewayResponse =
-    string.IsNullOrWhiteSpace(
-        rawGatewayResponse)
-        ? null
-        : JsonDocument.Parse(
-            rawGatewayResponse);
+
+            payment.GatewayFee =
+                gatewayFee ?? 0m;
 
             /*
-             * Clear any previous failure information because
-             * this payment has now completed successfully.
+             * Use the normalized JSON response where possible.
              */
+            if (!string.IsNullOrWhiteSpace(storedGatewayResponse))
+            {
+                try
+                {
+                    payment.GatewayResponse =
+                        JsonDocument.Parse(
+                            storedGatewayResponse);
+                }
+                catch (JsonException)
+                {
+                    payment.GatewayResponse = null;
+                }
+            }
+            else
+            {
+                payment.GatewayResponse = null;
+            }
+
             payment.FailureReason = null;
+
+
+            /*
+             * ---------------------------------------------------------
+             * FINANCIAL
+             * ---------------------------------------------------------
+             */
 
             financial.CustomerPaid =
                 financial.TotalAmount;
 
             financial.ProcessingFee =
                 gatewayFee ?? 0m;
+
+
+            /*
+             * ---------------------------------------------------------
+             * DIRECT PAYMENT TRANSACTION COST
+             * ---------------------------------------------------------
+             */
+
             if (gatewayFee.HasValue &&
-    gatewayFee.Value > 0m)
+                gatewayFee.Value > 0m)
             {
                 _context
                     .EntrepreneurTransactionCosts
@@ -217,6 +250,12 @@ public class PaymentCompletionService
             }
 
 
+            /*
+             * ---------------------------------------------------------
+             * ORDER STATUS
+             * ---------------------------------------------------------
+             */
+
             financial.FinancialStatus =
                 "paid_pending_dispatch";
 
@@ -226,78 +265,164 @@ public class PaymentCompletionService
             order.Status =
                 OrderStatuses.WaitingForSupplier;
 
-            order.UpdatedAt = now;
+            order.UpdatedAt =
+                now;
+
+
+            /*
+             * ---------------------------------------------------------
+             * STATUS HISTORY
+             * ---------------------------------------------------------
+             */
 
             _context.StatusHistory.AddRange(
                 new StatusHistory
                 {
                     Id = Guid.NewGuid(),
-                    OrderId = order.Id,
-                    Status = OrderStatuses.PaymentPaid,
+
+                    OrderId =
+                        order.Id,
+
+                    Status =
+                        OrderStatuses.PaymentPaid,
+
                     Notes =
                         $"{normalizedGateway} payment confirmed.",
-                    CreatedAt = now
+
+                    CreatedAt =
+                        now
                 },
+
                 new StatusHistory
                 {
                     Id = Guid.NewGuid(),
-                    OrderId = order.Id,
+
+                    OrderId =
+                        order.Id,
+
                     Status =
                         OrderStatuses.WaitingForSupplier,
+
                     Notes =
                         "Order moved to supplier assignment.",
-                    CreatedAt = now
+
+                    CreatedAt =
+                        now
                 });
+
+
+            /*
+             * ---------------------------------------------------------
+             * AUDIT LOG
+             * ---------------------------------------------------------
+             */
 
             _context.AuditLogs.Add(
                 new AuditLog
                 {
                     Id = Guid.NewGuid(),
-                    OrderId = order.Id,
+
+                    OrderId =
+                        order.Id,
+
                     Action =
                         $"{normalizedGateway} Payment Confirmed",
-                    PerformedBy = normalizedGateway,
-                    CreatedAt = now
+
+                    PerformedBy =
+                        normalizedGateway,
+
+                    CreatedAt =
+                        now
                 });
+
+
+            /*
+             * ---------------------------------------------------------
+             * SAVE PAYMENT CHANGES
+             * ---------------------------------------------------------
+             */
 
             await _context.SaveChangesAsync(
                 cancellationToken);
+
+
+            /*
+             * ---------------------------------------------------------
+             * SETTLEMENT
+             * ---------------------------------------------------------
+             */
 
             await _settlements
                 .CreateOrUpdateSettlementAfterPayment(
                     order.Id);
 
+
+            /*
+             * ---------------------------------------------------------
+             * MARKETPLACE REFERRAL COMMISSION
+             *
+             * This remains separate from the Entrepreneur Network.
+             * ---------------------------------------------------------
+             */
+
             await _referralCommissionService
                 .GenerateOrderCommissionAsync(
                     sourceUserId:
                         order.CustomerId.Value,
+
                     orderId:
                         order.Id,
+
                     paymentId:
                         payment.Id,
+
                     grossAmount:
                         payment.Amount,
+
                     currency:
                         payment.Currency,
+
                     transactionType:
                         "customer_order",
+
                     description:
                         $"Completed payment for order " +
                         $"{order.OrderNumber}",
+
                     cancellationToken:
                         cancellationToken);
 
-            await transaction.CommitAsync(
-                cancellationToken);
+
+            /*
+             * ---------------------------------------------------------
+             * ENTREPRENEUR DIRECT TRANSACTION COSTS
+             * ---------------------------------------------------------
+             *
+             * These costs are calculated AFTER the marketplace
+             * transaction has been recorded.
+             */
 
             var directTransactionCosts =
-    await _entrepreneurDirectTransactionCostService
-        .CalculateAsync(
-            order.Id,
-            cancellationToken);
+                await _entrepreneurDirectTransactionCostService
+                    .CalculateAsync(
+                        order.Id,
+                        cancellationToken);
+
 
             financial.DirectTransactionCosts =
                 directTransactionCosts;
+
+
+            /*
+             * ---------------------------------------------------------
+             * ENTREPRENEUR ELIGIBLE NET PLATFORM REVENUE
+             * ---------------------------------------------------------
+             *
+             * Eligible Net Platform Revenue =
+             *
+             * Alpha Gross Platform Commission
+             * - Direct Transaction Costs
+             */
 
             financial.AlphaEligibleNetPlatformRevenue =
                 Math.Max(
@@ -305,9 +430,40 @@ public class PaymentCompletionService
                     financial.AlphaGrossPlatformCommission -
                     directTransactionCosts);
 
+
+            /*
+             * ---------------------------------------------------------
+             * ALPHA RETAINED REVENUE
+             * ---------------------------------------------------------
+             *
+             * Alpha Retained Revenue =
+             *
+             * Eligible Net Platform Revenue
+             * - Entrepreneur Commission
+             */
+
             financial.AlphaRetainedRevenue =
-    financial.AlphaEligibleNetPlatformRevenue -
-    financial.EntrepreneurCommission;
+                Math.Max(
+                    0m,
+                    financial.AlphaEligibleNetPlatformRevenue -
+                    financial.EntrepreneurCommission);
+
+
+            /*
+             * Save the Entrepreneur-related financial values.
+             */
+            await _context.SaveChangesAsync(
+                cancellationToken);
+
+
+            /*
+             * ---------------------------------------------------------
+             * COMMIT
+             * ---------------------------------------------------------
+             */
+
+            await transaction.CommitAsync(
+                cancellationToken);
         }
         catch
         {
@@ -318,6 +474,7 @@ public class PaymentCompletionService
         }
     }
 
+
     private static string? NormalizeGatewayResponse(
         string? rawGatewayResponse)
     {
@@ -326,20 +483,23 @@ public class PaymentCompletionService
             return null;
         }
 
-        var trimmedResponse = rawGatewayResponse.Trim();
+        var trimmedResponse =
+            rawGatewayResponse.Trim();
 
         try
         {
             using var document =
-                JsonDocument.Parse(trimmedResponse);
+                JsonDocument.Parse(
+                    trimmedResponse);
 
-            return document.RootElement.GetRawText();
+            return document.RootElement
+                .GetRawText();
         }
         catch (JsonException)
         {
             /*
-             * Some gateways may return plain text or HTML during
-             * an error. Preserve that response for troubleshooting.
+             * Some gateways may return plain text or HTML.
+             * Preserve the response for troubleshooting.
              */
             return trimmedResponse;
         }
