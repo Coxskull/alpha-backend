@@ -1,10 +1,12 @@
 using Alpha.API.Data;
+using Alpha.API.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
-using Alpha.API.Models;
+using Alpha.API.Services.Entrepreneur;
 namespace Alpha.API.Controllers;
 
 [ApiController]
@@ -13,10 +15,12 @@ namespace Alpha.API.Controllers;
 public class FinancialsController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly EntrepreneurCommissionService _entrepreneurCommissionService;
 
-    public FinancialsController(AppDbContext context)
+    public FinancialsController(AppDbContext context, EntrepreneurCommissionService entrepreneurCommissionService)
     {
         _context = context;
+        _entrepreneurCommissionService = entrepreneurCommissionService;
     }
 
     [HttpGet("settlement-queue")]
@@ -111,6 +115,20 @@ public class FinancialsController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
+
+        await _entrepreneurCommissionService.GenerateAsync(
+    recruitedUserId: recruitedProvider.Id,
+    entrepreneurUserId: entrepreneur.Id,
+    orderId: order.Id,
+    paymentId: payment.Id,
+    alphaGrossPlatformCommission:
+        financial.AlphaGrossPlatformCommission,
+    currency:
+        financial.Currency,
+    providerRole:
+        recruitedProvider.Role,
+    cancellationToken:
+        cancellationToken);
 
         return Ok(record);
     }

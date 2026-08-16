@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Alpha.API.Constants;
 using Alpha.API.Services;
+using Alpha.API.Services.Entrepreneur;
 using System.IO;
 using Microsoft.AspNetCore.Http;
 
@@ -21,6 +22,7 @@ public class OrdersController : ControllerBase
     private readonly ReferralCommissionService _referralCommissionService;
     private readonly CountryCurrencyService _countryCurrencyService;
     private readonly AutoPartsCommissionService _autoPartsCommissionService;
+    private readonly EntrepreneurCommissionService _entrepreneurCommissionService;
 
     public OrdersController(
         AppDbContext context,
@@ -29,6 +31,7 @@ public class OrdersController : ControllerBase
         TaxEngineService taxEngine,
         ReferralCommissionService referralCommissionService,
         AutoPartsCommissionService autoPartsCommissionService,
+        EntrepreneurCommissionService entrepreneurCommissionService,
         CountryCurrencyService countryCurrencyService)
     {
         _context = context;
@@ -38,6 +41,7 @@ public class OrdersController : ControllerBase
         _referralCommissionService = referralCommissionService;
         _countryCurrencyService = countryCurrencyService;
         _autoPartsCommissionService = autoPartsCommissionService;
+        _entrepreneurCommissionService = entrepreneurCommissionService;
     }
 
     // =========================================================
@@ -366,6 +370,34 @@ public class OrdersController : ControllerBase
             decimal supplierEarning =
     itemSubtotal -
     partsCommission.TotalCommission;
+
+            financial.AlphaGrossPartsCommission =
+    partsCommission.TotalCommission;
+
+            financial.AlphaGrossMechanicCommission =
+                0m;
+
+            financial.AlphaGrossDeliveryCommission =
+                0m;
+
+            financial.AlphaGrossPlatformCommission =
+                financial.AlphaGrossPartsCommission
+                +
+                financial.AlphaGrossMechanicCommission
+                +
+                financial.AlphaGrossDeliveryCommission;
+
+            financial.DirectTransactionCosts =
+                0m;
+
+            financial.AlphaEligibleNetPlatformRevenue =
+                financial.AlphaGrossPlatformCommission;
+
+            financial.EntrepreneurCommission =
+                0m;
+
+            financial.AlphaRetainedRevenue =
+                financial.AlphaEligibleNetPlatformRevenue;
 
             // ---------------------------------------------------------
             // 8. Apply country-specific fees
@@ -1508,6 +1540,7 @@ public class OrdersController : ControllerBase
         await AddAuditLog(
             id,
             "Delivery proof uploaded");
+
 
         return Ok(new
         {

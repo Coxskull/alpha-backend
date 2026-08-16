@@ -1,6 +1,6 @@
 ﻿using Alpha.API.Models;
 using Microsoft.EntityFrameworkCore;
-
+using Alpha.API.Models.Entrepreneur;
 namespace Alpha.API.Data;
 
 public class AppDbContext : DbContext
@@ -78,6 +78,38 @@ public class AppDbContext : DbContext
         null!;
 
 
+    public DbSet<EntrepreneurReferral>
+    EntrepreneurReferrals
+    { get; set; }
+
+    public DbSet<EntrepreneurReferralAudit>
+        EntrepreneurReferralAudits
+    { get; set; }
+
+    public DbSet<EntrepreneurEarning>
+        EntrepreneurEarnings
+    { get; set; }
+
+    public DbSet<EntrepreneurTransactionCost>
+        EntrepreneurTransactionCosts
+    { get; set; }
+
+    public DbSet<EntrepreneurProgramConfiguration>
+        EntrepreneurProgramConfigurations
+    { get; set; }
+
+    public DbSet<EntrepreneurEarningAdjustment>
+    EntrepreneurEarningAdjustments
+    { get; set; }
+
+    public DbSet<EntrepreneurPayoutBatch>
+        EntrepreneurPayoutBatches
+    { get; set; }
+
+    public DbSet<EntrepreneurMarketConfiguration>
+        EntrepreneurMarketConfigurations
+    { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -148,6 +180,173 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(x => x.RoleKey)
             .HasPrincipalKey(x => x.RoleKey);
+
+        modelBuilder.Entity<EntrepreneurReferral>(entity =>
+        {
+            entity.ToTable("entrepreneur_referrals");
+
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.ReferralCode)
+                .HasMaxLength(100)
+                .IsRequired();
+
+            entity.Property(x => x.ReferralStatus)
+                .HasMaxLength(30)
+                .IsRequired();
+
+            entity.Property(x => x.EligibilityStatus)
+                .HasMaxLength(30)
+                .IsRequired();
+
+            entity.HasIndex(x => x.RecruitedUserId)
+                .IsUnique();
+
+            entity.HasIndex(x => new
+            {
+                x.EntrepreneurUserId,
+                x.RecruitedUserId
+            });
+        });
+
+        modelBuilder.Entity<EntrepreneurEarning>(entity =>
+        {
+            entity.ToTable("entrepreneur_earnings");
+
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.AlphaGrossPlatformCommission)
+                .HasColumnName("alpha_gross_platform_commission")
+                .HasPrecision(18, 2);
+
+            entity.Property(x => x.DirectTransactionCosts)
+                .HasColumnName("direct_transaction_costs")
+                .HasPrecision(18, 2);
+
+            entity.Property(x => x.EligibleNetPlatformRevenue)
+                .HasColumnName("eligible_net_platform_revenue")
+                .HasPrecision(18, 2);
+
+            entity.Property(x => x.EntrepreneurPercentage)
+                .HasColumnName("entrepreneur_percentage")
+                .HasPrecision(10, 6);
+
+            entity.Property(x => x.EntrepreneurEarningsAmount)
+                .HasColumnName("entrepreneur_earnings_amount")
+                .HasPrecision(18, 2);
+
+            entity.Property(x => x.RefundAdjustment)
+                .HasColumnName("refund_adjustment")
+                .HasPrecision(18, 2);
+
+            entity.Property(x => x.ChargebackAdjustment)
+                .HasColumnName("chargeback_adjustment")
+                .HasPrecision(18, 2);
+
+            entity.Property(x => x.Currency)
+                .HasColumnName("currency")
+                .HasMaxLength(10);
+
+            entity.Property(x => x.EarningStatus)
+                .HasColumnName("earning_status")
+                .HasMaxLength(30);
+
+            entity.Property(x => x.TransactionId)
+                .HasColumnName("transaction_id")
+                .HasMaxLength(200);
+
+            entity.Property(x => x.ProviderRole)
+                .HasColumnName("provider_role")
+                .HasMaxLength(50);
+
+            entity.Property(x => x.PayoutReference)
+                .HasColumnName("payout_reference")
+                .HasMaxLength(200);
+
+            entity.HasIndex(x => x.OrderId);
+
+            entity.HasIndex(x => x.EntrepreneurUserId);
+
+            entity.HasIndex(x => x.RecruitedProviderId);
+
+            entity.HasIndex(x => x.PayoutBatchId);
+
+            entity.HasIndex(x => new
+            {
+                x.OrderId,
+                x.RecruitedProviderId,
+                x.EntrepreneurUserId
+            })
+            .IsUnique();
+        });
+
+        modelBuilder.Entity<EntrepreneurReferral>(entity =>
+        {
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(x =>
+                    x.EntrepreneurUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(x =>
+                    x.RecruitedUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<EntrepreneurEarning>(entity =>
+        {
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(x =>
+                    x.EntrepreneurUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<Order>()
+                .WithMany()
+                .HasForeignKey(x =>
+                    x.OrderId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<Payment>()
+                .WithMany()
+                .HasForeignKey(x =>
+                    x.PaymentId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<EntrepreneurTransactionCost>(entity =>
+        {
+            entity.ToTable("entrepreneur_transaction_costs");
+
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Amount)
+                .HasPrecision(18, 2);
+
+            entity.Property(x => x.CostType)
+                .HasMaxLength(100)
+                .IsRequired();
+
+            entity.HasIndex(x => x.OrderId);
+        });
+
+        modelBuilder.Entity<EntrepreneurProgramConfiguration>(entity =>
+        {
+            entity.ToTable("entrepreneur_program_configurations");
+
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.DefaultCommissionRate)
+                .HasPrecision(10, 6);
+
+            entity.Property(x => x.MinimumPayoutThreshold)
+                .HasPrecision(18, 2);
+
+            entity.Property(x => x.MaximumReferralLevel)
+                .HasDefaultValue(1);
+        });
 
         modelBuilder.Entity<ReferralCommissionRate>(entity =>
         {
@@ -363,6 +562,84 @@ public class AppDbContext : DbContext
                 .WithOne(e => e.Policy)
                 .HasForeignKey(e => e.PolicyId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<EntrepreneurEarningAdjustment>(entity =>
+        {
+            entity.ToTable("entrepreneur_earning_adjustments");
+
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Amount)
+                .HasPrecision(18, 2);
+
+            entity.Property(x => x.Currency)
+                .HasMaxLength(10)
+                .IsRequired();
+
+            entity.Property(x => x.AdjustmentType)
+                .HasMaxLength(50)
+                .IsRequired();
+
+            entity.Property(x => x.Reason)
+                .HasMaxLength(500)
+                .IsRequired();
+
+            entity.HasIndex(x =>
+                x.EntrepreneurEarningId);
+        });
+
+        modelBuilder.Entity<EntrepreneurEarningAdjustment>(entity =>
+        {
+            entity.ToTable("entrepreneur_earning_adjustments");
+
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Amount)
+                .HasPrecision(18, 2);
+
+            entity.Property(x => x.Currency)
+                .HasMaxLength(10)
+                .IsRequired();
+
+            entity.Property(x => x.AdjustmentType)
+                .HasMaxLength(50)
+                .IsRequired();
+
+            entity.Property(x => x.Reason)
+                .HasMaxLength(500)
+                .IsRequired();
+
+            entity.HasIndex(x =>
+                x.EntrepreneurEarningId);
+        });
+
+        modelBuilder.Entity<EntrepreneurMarketConfiguration>(entity =>
+        {
+            entity.ToTable("entrepreneur_market_configurations");
+
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.CountryCode)
+                .HasMaxLength(10)
+                .IsRequired();
+
+            entity.Property(x => x.Currency)
+                .HasMaxLength(10)
+                .IsRequired();
+
+            entity.Property(x => x.CommissionRate)
+                .HasPrecision(10, 6);
+
+            entity.Property(x => x.MinimumPayoutThreshold)
+                .HasPrecision(18, 2);
+
+            entity.HasIndex(x => new
+            {
+                x.CountryCode,
+                x.Currency
+            })
+            .IsUnique();
         });
 
         // =========================================================
@@ -1266,6 +1543,59 @@ public class AppDbContext : DbContext
             entity.Property(e => e.PartsSupplierNet)
                 .HasColumnName("parts_supplier_net")
                 .HasPrecision(18, 2);
+
+            entity.Property(e => e.AlphaGrossPartsCommission)
+    .HasColumnName("alpha_gross_parts_commission")
+    .HasPrecision(18, 2);
+
+            entity.Property(e => e.AlphaGrossMechanicCommission)
+                .HasColumnName("alpha_gross_mechanic_commission")
+                .HasPrecision(18, 2);
+
+            entity.Property(e => e.AlphaGrossDeliveryCommission)
+                .HasColumnName("alpha_gross_delivery_commission")
+                .HasPrecision(18, 2);
+
+            entity.Property(e => e.AlphaGrossPlatformCommission)
+                .HasColumnName("alpha_gross_platform_commission")
+                .HasPrecision(18, 2);
+
+            entity.Property(e => e.DirectTransactionCosts)
+                .HasColumnName("direct_transaction_costs")
+                .HasPrecision(18, 2);
+
+            entity.Property(e => e.AlphaEligibleNetPlatformRevenue)
+                .HasColumnName("alpha_eligible_net_platform_revenue")
+                .HasPrecision(18, 2);
+
+            entity.Property(e => e.EntrepreneurCommission)
+                .HasColumnName("entrepreneur_commission")
+                .HasPrecision(18, 2);
+
+            entity.Property(e => e.AlphaRetainedRevenue)
+                .HasColumnName("alpha_retained_revenue")
+                .HasPrecision(18, 2);
+
+            entity.Property(e => e.RefundAmount)
+                .HasColumnName("refund_amount")
+                .HasPrecision(18, 2);
+
+            entity.Property(e => e.ChargebackAmount)
+                .HasColumnName("chargeback_amount")
+                .HasPrecision(18, 2);
+
+            entity.Property(e => e.ChargebackFee)
+                .HasColumnName("chargeback_fee")
+                .HasPrecision(18, 2);
+
+            entity.Property(e => e.PaymentStatus)
+                .HasColumnName("payment_status");
+
+            entity.Property(e => e.ProviderPayoutStatus)
+                .HasColumnName("provider_payout_status");
+
+            entity.Property(e => e.EntrepreneurPayoutStatus)
+                .HasColumnName("entrepreneur_payout_status");
         });
 
         // ==========================

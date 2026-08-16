@@ -579,6 +579,31 @@ public class AdminRoleVerificationsController : ControllerBase
                 });
         }
 
+        if(application.Status == "approved")
+        {
+            var referral =
+    await _context
+        .EntrepreneurReferrals
+        .FirstOrDefaultAsync(
+            x =>
+                x.RecruitedUserId ==
+                    providerUserId &&
+                x.IsDirectReferral,
+            cancellationToken);
+
+            if (referral != null)
+            {
+                referral.EligibilityStatus =
+                    "eligible";
+
+                referral.ProviderActivationDate =
+                    DateTime.UtcNow;
+
+                referral.UpdatedAt =
+                    DateTime.UtcNow;
+            }
+        }
+
         return Ok(new
         {
             message =

@@ -9,6 +9,7 @@ using Microsoft.OpenApi.Models;
 using Supabase;
 using Alpha.API.Services.Providers;
 using Alpha.API.Services;
+using Alpha.API.Services.Entrepreneur;
 var builder = WebApplication.CreateBuilder(args);
 
 // Railway / Production port binding
@@ -65,6 +66,32 @@ builder.Services.AddHttpClient<PayMongoService>();
 builder.Services.AddScoped<PaymentCompletionService>();
 builder.Services.AddScoped<
     MemberBusinessActivityService>();
+
+builder.Services.AddScoped<
+    EntrepreneurEligibilityService>();
+
+builder.Services.AddScoped<
+    EntrepreneurCommissionService>();
+
+builder.Services.AddScoped<
+    EntrepreneurConfigurationService>();
+
+builder.Services.AddScoped<
+    DirectTransactionCostService>();
+
+builder.Services.AddScoped<
+    EligibleNetPlatformRevenueService>();
+
+builder.Services.AddScoped<
+    EntrepreneurAdjustmentService>();
+
+builder.Services.AddScoped<
+    EntrepreneurLedgerService>();
+
+builder.Services.AddScoped<
+    EntrepreneurPayoutService>();
+
+
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {

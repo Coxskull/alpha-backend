@@ -6,6 +6,7 @@ using System;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Alpha.API.Models.Entrepreneur;
 
 namespace Alpha.API.Services;
 
@@ -14,15 +15,21 @@ public class PaymentCompletionService
     private readonly AppDbContext _context;
     private readonly SettlementService _settlements;
     private readonly ReferralCommissionService _referralCommissionService;
+    private readonly DirectTransactionCostService
+    _entrepreneurDirectTransactionCostService;
 
     public PaymentCompletionService(
         AppDbContext context,
         SettlementService settlements,
-        ReferralCommissionService referralCommissionService)
+        ReferralCommissionService referralCommissionService,
+        DirectTransactionCostService
+    entrepreneurDirectTransactionCostService,)
     {
         _context = context;
         _settlements = settlements;
         _referralCommissionService = referralCommissionService;
+        private readonly DirectTransactionCostService
+    _entrepreneurDirectTransactionCostService;
     }
 
     public async Task CompleteOrderPaymentAsync(
@@ -176,6 +183,39 @@ public class PaymentCompletionService
 
             financial.ProcessingFee =
                 gatewayFee ?? 0m;
+            if (gatewayFee.HasValue &&
+    gatewayFee.Value > 0m)
+            {
+                _context
+                    .EntrepreneurTransactionCosts
+                    .Add(
+                        new EntrepreneurTransactionCost
+                        {
+                            Id = Guid.NewGuid(),
+
+                            OrderId =
+                                order.Id,
+
+                            PaymentId =
+                                payment.Id,
+
+                            CostType =
+                                "payment_processing_fee",
+
+                            Amount =
+                                gatewayFee.Value,
+
+                            Currency =
+                                payment.Currency,
+
+                            Description =
+                                $"{normalizedGateway} processing fee",
+
+                            CreatedAt =
+                                now
+                        });
+            }
+
 
             financial.FinancialStatus =
                 "paid_pending_dispatch";
@@ -249,6 +289,25 @@ public class PaymentCompletionService
 
             await transaction.CommitAsync(
                 cancellationToken);
+
+            var directTransactionCosts =
+    await _entrepreneurDirectTransactionCostService
+        .CalculateAsync(
+            order.Id,
+            cancellationToken);
+
+            financial.DirectTransactionCosts =
+                directTransactionCosts;
+
+            financial.AlphaEligibleNetPlatformRevenue =
+                Math.Max(
+                    0m,
+                    financial.AlphaGrossPlatformCommission -
+                    directTransactionCosts);
+
+            financial.AlphaRetainedRevenue =
+    financial.AlphaEligibleNetPlatformRevenue -
+    financial.EntrepreneurCommission;
         }
         catch
         {

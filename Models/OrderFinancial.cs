@@ -125,4 +125,79 @@ public class OrderFinancial
     public decimal PartsSupplierGross { get; set; }
 
     public decimal PartsSupplierNet { get; set; }
+
+    // =====================================================
+    // MARKETPLACE COMMISSION
+    // =====================================================
+
+    [Column("auto_parts_commission")]
+    public decimal AutoPartsCommission { get; set; }
+
+    [Column("auto_parts_commission_rate")]
+    public decimal AutoPartsCommissionRate { get; set; }
+
+    [Column("auto_parts_commission_policy_id")]
+    public Guid? AutoPartsCommissionPolicyId { get; set; }
+
+    [Column("auto_parts_commission_policy_version")]
+    public int? AutoPartsCommissionPolicyVersion { get; set; }
+
+    [Column("parts_supplier_gross")]
+    public decimal PartsSupplierGross { get; set; }
+
+    [Column("parts_supplier_net")]
+    public decimal PartsSupplierNet { get; set; }
+
+    [Column("alpha_gross_parts_commission")]
+    public decimal AlphaGrossPartsCommission { get; set; }
+
+    [Column("alpha_gross_mechanic_commission")]
+    public decimal AlphaGrossMechanicCommission { get; set; }
+
+    [Column("alpha_gross_delivery_commission")]
+    public decimal AlphaGrossDeliveryCommission { get; set; }
+
+    [Column("alpha_gross_platform_commission")]
+    public decimal AlphaGrossPlatformCommission { get; set; }
+
+    // =====================================================
+    // ENTREPRENEUR ECONOMICS
+    // =====================================================
+
+    [Column("direct_transaction_costs")]
+    public decimal DirectTransactionCosts { get; set; }
+
+    [Column("alpha_eligible_net_platform_revenue")]
+    public decimal AlphaEligibleNetPlatformRevenue { get; set; }
+
+    [Column("entrepreneur_commission")]
+    public decimal EntrepreneurCommission { get; set; }
+
+    [Column("alpha_retained_revenue")]
+    public decimal AlphaRetainedRevenue { get; set; }
+
+    // =====================================================
+    // REFUNDS / CHARGEBACKS
+    // =====================================================
+
+    [Column("chargeback_amount")]
+    public decimal ChargebackAmount { get; set; }
+
+    [Column("chargeback_fee")]
+    public decimal ChargebackFee { get; set; }
+
+    // =====================================================
+    // STATUS
+    // =====================================================
+
+    [Column("payment_status")]
+    public string PaymentStatus { get; set; } = "pending";
+
+    [Column("provider_payout_status")]
+    public string ProviderPayoutStatus { get; set; } = "pending";
+
+    [Column("entrepreneur_payout_status")]
+    public string EntrepreneurPayoutStatus { get; set; } = "pending";
+
+
 }

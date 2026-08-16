@@ -14,6 +14,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Security.Cryptography;
 using Alpha.API.Security;
+using Alpha.API.Models.Entrepreneur;
 
 namespace Alpha.API.Controllers;
 
@@ -400,6 +401,74 @@ public class AuthController : ControllerBase
                 """,
                     cancellationToken
                 );
+            }
+
+            var qualifyingRoles =
+    new[]
+    {
+        EntrepreneurRoles.Driver,
+        EntrepreneurRoles.Mechanic,
+        EntrepreneurRoles.Supplier
+    };
+
+            var recruitedProviderRole =
+                selectedRoles
+                    .FirstOrDefault(
+                        role =>
+                            qualifyingRoles.Contains(
+                                role,
+                                StringComparer.OrdinalIgnoreCase));
+
+            if (referrer != null &&
+                recruitedProviderRole != null)
+            {
+                var existingReferral =
+                    await _context
+                        .EntrepreneurReferrals
+                        .AnyAsync(
+                            x =>
+                                x.RecruitedUserId ==
+                                    user.Id,
+                            cancellationToken);
+
+                if (!existingReferral)
+                {
+                    _context
+                        .EntrepreneurReferrals
+                        .Add(
+                            new EntrepreneurReferral
+                            {
+                                Id = Guid.NewGuid(),
+
+                                EntrepreneurUserId =
+                                    referrer.Id,
+
+                                RecruitedUserId =
+                                    user.Id,
+
+                                ReferralCode =
+                                    referrer.ReferralCode
+                                    ?? string.Empty,
+
+                                ReferralDate =
+                                    now,
+
+                                ReferralStatus =
+                                    "active",
+
+                                EligibilityStatus =
+                                    "pending",
+
+                                IsDirectReferral =
+                                    true,
+
+                                CreatedAt =
+                                    now,
+
+                                UpdatedAt =
+                                    now
+                            });
+                }
             }
 
             // -----------------------------------------------------
