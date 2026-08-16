@@ -88,8 +88,6 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     EntrepreneurLedgerService>();
 
-builder.Services.AddScoped<
-    EntrepreneurPayoutService>();
 
 
 builder.Services.AddControllers()

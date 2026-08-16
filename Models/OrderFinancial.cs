@@ -107,6 +107,8 @@ public class OrderFinancial
     [Column("alpha_net_revenue")]
     public decimal AlphaNetRevenue { get; set; }
 
+    [Column("reconciliation_difference")]
+    public decimal ReconciliationDifference { get; set; }
 
     // =====================================================
     // AUTO-PARTS MARKETPLACE COMMISSION

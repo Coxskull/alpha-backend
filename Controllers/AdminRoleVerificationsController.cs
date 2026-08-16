@@ -587,7 +587,7 @@ public class AdminRoleVerificationsController : ControllerBase
         .FirstOrDefaultAsync(
             x =>
                 x.RecruitedUserId ==
-                    providerUserId &&
+                    application.UserId &&
                 x.IsDirectReferral,
             cancellationToken);
 
