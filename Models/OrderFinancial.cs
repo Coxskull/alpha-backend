@@ -107,27 +107,9 @@ public class OrderFinancial
     [Column("alpha_net_revenue")]
     public decimal AlphaNetRevenue { get; set; }
 
-    [Column("reconciliation_difference")]
-    public decimal ReconciliationDifference { get; set; }
 
     // =====================================================
     // AUTO-PARTS MARKETPLACE COMMISSION
-    // =====================================================
-
-    public decimal AutoPartsCommission { get; set; }
-
-    public decimal AutoPartsCommissionRate { get; set; }
-
-    public Guid? AutoPartsCommissionPolicyId { get; set; }
-
-    public int? AutoPartsCommissionPolicyVersion { get; set; }
-
-    public decimal PartsSupplierGross { get; set; }
-
-    public decimal PartsSupplierNet { get; set; }
-
-    // =====================================================
-    // MARKETPLACE COMMISSION
     // =====================================================
 
     [Column("auto_parts_commission")]
@@ -148,6 +130,11 @@ public class OrderFinancial
     [Column("parts_supplier_net")]
     public decimal PartsSupplierNet { get; set; }
 
+
+    // =====================================================
+    // MARKETPLACE COMMISSION
+    // =====================================================
+
     [Column("alpha_gross_parts_commission")]
     public decimal AlphaGrossPartsCommission { get; set; }
 
@@ -159,6 +146,7 @@ public class OrderFinancial
 
     [Column("alpha_gross_platform_commission")]
     public decimal AlphaGrossPlatformCommission { get; set; }
+
 
     // =====================================================
     // ENTREPRENEUR ECONOMICS
@@ -176,6 +164,7 @@ public class OrderFinancial
     [Column("alpha_retained_revenue")]
     public decimal AlphaRetainedRevenue { get; set; }
 
+
     // =====================================================
     // REFUNDS / CHARGEBACKS
     // =====================================================
@@ -185,6 +174,7 @@ public class OrderFinancial
 
     [Column("chargeback_fee")]
     public decimal ChargebackFee { get; set; }
+
 
     // =====================================================
     // STATUS
@@ -198,6 +188,4 @@ public class OrderFinancial
 
     [Column("entrepreneur_payout_status")]
     public string EntrepreneurPayoutStatus { get; set; } = "pending";
-
-
 }
