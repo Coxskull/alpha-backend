@@ -66,8 +66,8 @@ public class EntrepreneurAdminController : ControllerBase
 
         if (config == null)
         {
-            // C# property is Id, not id.
-            request.Id = Guid.NewGuid();
+            // C# property is id, not id.
+            request.id = Guid.NewGuid();
 
             // Entrepreneur Network is permanently one level.
             request.MaximumReferralLevel = 1;
@@ -135,9 +135,9 @@ public class EntrepreneurAdminController : ControllerBase
             .OrderByDescending(x => x.CreatedAt)
             .Select(x => new
             {
-                // C# property is Id.
+                // C# property is id.
                 // EF mapping should map this to PostgreSQL "id".
-                x.Id,
+                x.id,
 
                 x.EntrepreneurUserId,
                 x.RecruitedUserId,
@@ -167,8 +167,8 @@ public class EntrepreneurAdminController : ControllerBase
             .OrderByDescending(x => x.TransactionDate)
             .Select(x => new
             {
-                // C# property is Id.
-                x.Id,
+                // C# property is id.
+                x.id,
 
                 x.EntrepreneurUserId,
                 x.RecruiterId,

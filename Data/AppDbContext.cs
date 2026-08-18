@@ -336,7 +336,7 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("entrepreneur_program_configurations");
 
-            entity.HasKey(x => x.Id);
+            entity.HasKey(x => x.id);
 
             entity.Property(x => x.DefaultCommissionRate)
                 .HasPrecision(10, 6);
