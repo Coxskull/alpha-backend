@@ -185,28 +185,46 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("entrepreneur_referrals");
 
-            entity.HasKey(x => x.id);
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Id)
+                .HasColumnName("id");
+
+            entity.Property(x => x.EntrepreneurUserId)
+                .HasColumnName("entrepreneur_user_id");
+
+            entity.Property(x => x.RecruitedUserId)
+                .HasColumnName("recruited_user_id");
 
             entity.Property(x => x.ReferralCode)
-                .HasMaxLength(100)
-                .IsRequired();
+                .HasColumnName("referral_code");
+
+            entity.Property(x => x.ReferralDate)
+                .HasColumnName("referral_date");
+
+            entity.Property(x => x.ProviderActivationDate)
+                .HasColumnName("provider_activation_date");
 
             entity.Property(x => x.ReferralStatus)
-                .HasMaxLength(30)
-                .IsRequired();
+                .HasColumnName("referral_status");
+
+            entity.Property(x => x.IsDirectReferral)
+                .HasColumnName("is_direct_referral");
+
+            entity.Property(x => x.EndedAt)
+                .HasColumnName("ended_at");
+
+            entity.Property(x => x.CreatedAt)
+                .HasColumnName("created_at");
+
+            entity.Property(x => x.UpdatedAt)
+                .HasColumnName("updated_at");
 
             entity.Property(x => x.EligibilityStatus)
-                .HasMaxLength(30)
-                .IsRequired();
+                .HasColumnName("eligibility_status");
 
-            entity.HasIndex(x => x.RecruitedUserId)
-                .IsUnique();
-
-            entity.HasIndex(x => new
-            {
-                x.EntrepreneurUserId,
-                x.RecruitedUserId
-            });
+            entity.Property(x => x.EntrepreneurEligibilityStatus)
+                .HasColumnName("entrepreneur_eligibility_status");
         });
 
         modelBuilder.Entity<EntrepreneurEarning>(entity =>
