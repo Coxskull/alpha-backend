@@ -185,10 +185,8 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("entrepreneur_referrals");
 
-            entity.HasKey(x => x.Id);
+            entity.HasKey(x => x.id);
 
-            entity.Property(x => x.Id)
-                .HasColumnName("id");
 
             entity.Property(x => x.EntrepreneurUserId)
                 .HasColumnName("entrepreneur_user_id");
