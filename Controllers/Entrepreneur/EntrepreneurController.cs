@@ -116,7 +116,7 @@ public class EntrepreneurController : ControllerBase
                     x => x.ReferralDate)
                 .Select(x => new
                 {
-                    x.Id,
+                    x.id,
                     x.EntrepreneurUserId,
                     x.RecruitedUserId,
 
@@ -165,7 +165,7 @@ public class EntrepreneurController : ControllerBase
                     x => x.TransactionDate)
                 .Select(x => new
                 {
-                    x.Id,
+                    x.id,
 
                     x.EntrepreneurUserId,
 

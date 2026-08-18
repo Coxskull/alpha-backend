@@ -438,7 +438,7 @@ public class AuthController : ControllerBase
                         .Add(
                             new EntrepreneurReferral
                             {
-                                Id = Guid.NewGuid(),
+                                id = Guid.NewGuid(),
 
                                 EntrepreneurUserId =
                                     referrer.Id,
