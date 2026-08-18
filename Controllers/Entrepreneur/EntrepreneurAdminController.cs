@@ -57,7 +57,7 @@ public class EntrepreneurAdminController : ControllerBase
 
         if (config == null)
         {
-            request.Id = Guid.NewGuid();
+            request.id = Guid.NewGuid();
 
             request.MaximumReferralLevel = 1;
 
@@ -112,7 +112,7 @@ public class EntrepreneurAdminController : ControllerBase
                 .OrderByDescending(x => x.CreatedAt)
                 .Select(x => new
                 {
-                    x.Id,
+                    x.id,
                     x.EntrepreneurUserId,
                     x.RecruitedUserId,
                     x.ReferralCode,
@@ -137,7 +137,7 @@ public class EntrepreneurAdminController : ControllerBase
                 .OrderByDescending(x => x.TransactionDate)
                 .Select(x => new
                 {
-                    x.Id,
+                    x.id,
                     x.EntrepreneurUserId,
                     x.RecruiterId,
                     x.RecruitedProviderId,
