@@ -102,7 +102,6 @@ public class EntrepreneurAdminController : ControllerBase
 
         return Ok(config);
     }
-
     [HttpGet("referrals")]
     public async Task<IActionResult> GetReferrals()
     {
@@ -121,7 +120,6 @@ public class EntrepreneurAdminController : ControllerBase
                     x.ProviderActivationDate,
                     x.ReferralStatus,
                     x.IsDirectReferral,
-                    x.StartedAt,
                     x.EndedAt
                 })
                 .ToListAsync();
