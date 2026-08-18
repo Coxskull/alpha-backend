@@ -57,7 +57,7 @@ public class EntrepreneurAdjustmentService
                     Id = Guid.NewGuid(),
 
                     EntrepreneurEarningId =
-                        earning.Id,
+                        earning.id,
 
                     AdjustmentType =
                         "REFUND",
