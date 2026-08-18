@@ -27,4 +27,7 @@ public class EntrepreneurReferral
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("entrepreneur_eligibility_status")]
+    public string EntrepreneurEligibilityStatus { get; set; } = "pending";
 }
