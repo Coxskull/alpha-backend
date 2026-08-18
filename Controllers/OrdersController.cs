@@ -371,33 +371,6 @@ public class OrdersController : ControllerBase
     itemSubtotal -
     partsCommission.TotalCommission;
 
-            financial.AlphaGrossPartsCommission =
-    partsCommission.TotalCommission;
-
-            financial.AlphaGrossMechanicCommission =
-                0m;
-
-            financial.AlphaGrossDeliveryCommission =
-                0m;
-
-            financial.AlphaGrossPlatformCommission =
-                financial.AlphaGrossPartsCommission
-                +
-                financial.AlphaGrossMechanicCommission
-                +
-                financial.AlphaGrossDeliveryCommission;
-
-            financial.DirectTransactionCosts =
-                0m;
-
-            financial.AlphaEligibleNetPlatformRevenue =
-                financial.AlphaGrossPlatformCommission;
-
-            financial.EntrepreneurCommission =
-                0m;
-
-            financial.AlphaRetainedRevenue =
-                financial.AlphaEligibleNetPlatformRevenue;
 
             // ---------------------------------------------------------
             // 8. Apply country-specific fees
@@ -722,6 +695,34 @@ public class OrdersController : ControllerBase
         CreatedBy = "system"
     };
 
+            financial.AlphaGrossPartsCommission =
+    partsCommission.TotalCommission;
+
+            financial.AlphaGrossMechanicCommission =
+                0m;
+
+            financial.AlphaGrossDeliveryCommission =
+                0m;
+
+            financial.AlphaGrossPlatformCommission =
+                financial.AlphaGrossPartsCommission
+                +
+                financial.AlphaGrossMechanicCommission
+                +
+                financial.AlphaGrossDeliveryCommission;
+
+            financial.DirectTransactionCosts =
+                0m;
+
+            financial.AlphaEligibleNetPlatformRevenue =
+                financial.AlphaGrossPlatformCommission;
+
+            financial.EntrepreneurCommission =
+                0m;
+
+            financial.AlphaRetainedRevenue =
+                financial.AlphaEligibleNetPlatformRevenue;
+           
             _context.AutoPartsCommissionCalculations
                 .Add(calculation);
 

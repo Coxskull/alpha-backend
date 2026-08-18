@@ -116,20 +116,6 @@ public class FinancialsController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        await _entrepreneurCommissionService.GenerateAsync(
-    recruitedUserId: recruitedProvider.Id,
-    entrepreneurUserId: entrepreneur.Id,
-    orderId: order.Id,
-    paymentId: payment.Id,
-    alphaGrossPlatformCommission:
-        financial.AlphaGrossPlatformCommission,
-    currency:
-        financial.Currency,
-    providerRole:
-        recruitedProvider.Role,
-    cancellationToken:
-        cancellationToken);
-
         return Ok(record);
     }
 
