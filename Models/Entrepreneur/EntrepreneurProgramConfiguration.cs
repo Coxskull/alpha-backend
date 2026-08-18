@@ -4,7 +4,7 @@ namespace Alpha.API.Models.Entrepreneur;
 
 public class EntrepreneurProgramConfiguration
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid id { get; set; } = Guid.NewGuid();
 
     public bool ProgramEnabled { get; set; } = true;
 
