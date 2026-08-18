@@ -185,7 +185,7 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("entrepreneur_referrals");
 
-            entity.HasKey(x => x.Id);
+            entity.HasKey(x => x.id);
 
             entity.Property(x => x.ReferralCode)
                 .HasMaxLength(100)
@@ -213,7 +213,7 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("entrepreneur_earnings");
 
-            entity.HasKey(x => x.Id);
+            entity.HasKey(x => x.id);
 
             entity.Property(x => x.AlphaGrossPlatformCommission)
                 .HasColumnName("alpha_gross_platform_commission")
