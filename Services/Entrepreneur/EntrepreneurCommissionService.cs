@@ -310,13 +310,13 @@ public class EntrepreneurCommissionService
                 await _context.Suppliers
                     .AsNoTracking()
                     .FirstOrDefaultAsync(
-                        x => x.Id == order.SupplierId,
+                        x => x.Id == order.SupplierId.Value,
                         cancellationToken);
 
-            if (supplier != null)
+            if (supplier != null && supplier.UserId.HasValue)
             {
                 await GenerateForProviderUserAsync(
-                    supplier.UserId,
+                    supplier.UserId.Value,
                     order,
                     financial,
                     payment,
@@ -332,13 +332,13 @@ public class EntrepreneurCommissionService
                 await _context.Drivers
                     .AsNoTracking()
                     .FirstOrDefaultAsync(
-                        x => x.Id == order.DriverId,
+                        x => x.Id == order.DriverId.Value,
                         cancellationToken);
 
-            if (driver != null)
+            if (driver != null && driver.UserId.HasValue)
             {
                 await GenerateForProviderUserAsync(
-                    driver.UserId,
+                    driver.UserId.Value,
                     order,
                     financial,
                     payment,
