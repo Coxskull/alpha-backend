@@ -336,16 +336,46 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("entrepreneur_program_configurations");
 
-            entity.HasKey(x => x.id);
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Id)
+                .HasColumnName("id");
+
+            entity.Property(x => x.ProgramEnabled)
+                .HasColumnName("program_enabled");
 
             entity.Property(x => x.DefaultCommissionRate)
-                .HasPrecision(10, 6);
+                .HasColumnName("default_commission_rate");
 
             entity.Property(x => x.MinimumPayoutThreshold)
-                .HasPrecision(18, 2);
+                .HasColumnName("minimum_payout_threshold");
+
+            entity.Property(x => x.PayoutFrequency)
+                .HasColumnName("payout_frequency");
+
+            entity.Property(x => x.QualifyingProviderRoles)
+                .HasColumnName("qualifying_provider_roles");
+
+            entity.Property(x => x.QualifyingTransactionTypes)
+                .HasColumnName("qualifying_transaction_types");
+
+            entity.Property(x => x.HoldingPeriodDays)
+                .HasColumnName("holding_period_days");
+
+            entity.Property(x => x.ProgramStartDate)
+                .HasColumnName("program_start_date");
+
+            entity.Property(x => x.ProgramEndDate)
+                .HasColumnName("program_end_date");
 
             entity.Property(x => x.MaximumReferralLevel)
-                .HasDefaultValue(1);
+                .HasColumnName("maximum_referral_level");
+
+            entity.Property(x => x.UpdatedAt)
+                .HasColumnName("updated_at");
+
+            entity.Property(x => x.UpdatedByUserId)
+                .HasColumnName("updated_by_user_id");
         });
 
         modelBuilder.Entity<ReferralCommissionRate>(entity =>

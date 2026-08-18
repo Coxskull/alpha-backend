@@ -4,7 +4,7 @@ namespace Alpha.API.Models.Entrepreneur;
 
 public class EntrepreneurProgramConfiguration
 {
-    public Guid id { get; set; } = Guid.NewGuid();
+    public Guid Id { get; set; } = Guid.NewGuid();
 
     public bool ProgramEnabled { get; set; } = true;
 
@@ -12,7 +12,8 @@ public class EntrepreneurProgramConfiguration
 
     public decimal MinimumPayoutThreshold { get; set; } = 0m;
 
-    public string PayoutFrequency { get; set; } = "TWICE_MONTHLY";
+    public string PayoutFrequency { get; set; }
+        = "TWICE_MONTHLY";
 
     public string QualifyingProviderRoles { get; set; }
         = "driver,mechanic,supplier";
@@ -28,7 +29,8 @@ public class EntrepreneurProgramConfiguration
 
     public int MaximumReferralLevel { get; set; } = 1;
 
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; }
+        = DateTime.UtcNow;
 
     public Guid? UpdatedByUserId { get; set; }
 }
