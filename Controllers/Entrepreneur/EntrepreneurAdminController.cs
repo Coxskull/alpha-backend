@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Alpha.API.Data;
 using Alpha.API.Models.Entrepreneur;
@@ -15,26 +16,33 @@ public class EntrepreneurAdminController : ControllerBase
 {
     private readonly AppDbContext _context;
 
-    public EntrepreneurAdminController(
-        AppDbContext context)
+    public EntrepreneurAdminController(AppDbContext context)
     {
         _context = context;
     }
 
+    // ============================================================
+    // GET CONFIGURATION
+    // ============================================================
+
     [HttpGet("configuration")]
     public async Task<IActionResult> GetConfiguration()
     {
-        var config =
-            await _context
-                .EntrepreneurProgramConfigurations
-                .FirstOrDefaultAsync();
+        var config = await _context
+            .EntrepreneurProgramConfigurations
+            .AsNoTracking()
+            .FirstOrDefaultAsync();
 
         return Ok(config);
     }
 
+    // ============================================================
+    // UPDATE CONFIGURATION
+    // ============================================================
+
     [HttpPut("configuration")]
     public async Task<IActionResult> UpdateConfiguration(
-        EntrepreneurProgramConfiguration request)
+        [FromBody] EntrepreneurProgramConfiguration request)
     {
         if (request == null)
         {
@@ -42,6 +50,8 @@ public class EntrepreneurAdminController : ControllerBase
                 "Configuration request is required.");
         }
 
+        // Rate is stored as decimal:
+        // 5% = 0.05
         if (request.DefaultCommissionRate < 0 ||
             request.DefaultCommissionRate > 1)
         {
@@ -50,19 +60,19 @@ public class EntrepreneurAdminController : ControllerBase
                 "For 5%, use 0.05.");
         }
 
-        var config =
-            await _context
-                .EntrepreneurProgramConfigurations
-                .FirstOrDefaultAsync();
+        var config = await _context
+            .EntrepreneurProgramConfigurations
+            .FirstOrDefaultAsync();
 
         if (config == null)
         {
-            request.id = Guid.NewGuid();
+            // C# property is Id, not id.
+            request.Id = Guid.NewGuid();
 
+            // Entrepreneur Network is permanently one level.
             request.MaximumReferralLevel = 1;
 
-            request.UpdatedAt =
-                DateTime.UtcNow;
+            request.UpdatedAt = DateTime.UtcNow;
 
             _context
                 .EntrepreneurProgramConfigurations
@@ -94,89 +104,118 @@ public class EntrepreneurAdminController : ControllerBase
             // Entrepreneur Network is permanently one level.
             config.MaximumReferralLevel = 1;
 
+            config.ProgramStartDate =
+                request.ProgramStartDate;
+
+            config.ProgramEndDate =
+                request.ProgramEndDate;
+
             config.UpdatedAt =
                 DateTime.UtcNow;
+
+            config.UpdatedByUserId =
+                request.UpdatedByUserId;
         }
 
         await _context.SaveChangesAsync();
 
         return Ok(config);
     }
+
+    // ============================================================
+    // GET REFERRALS
+    // ============================================================
+
     [HttpGet("referrals")]
     public async Task<IActionResult> GetReferrals()
     {
-        var referrals =
-            await _context
-                .EntrepreneurReferrals
-                .AsNoTracking()
-                .OrderByDescending(x => x.CreatedAt)
-                .Select(x => new
-                {
-                    x.id,
-                    x.EntrepreneurUserId,
-                    x.RecruitedUserId,
-                    x.ReferralCode,
-                    x.ReferralDate,
-                    x.ProviderActivationDate,
-                    x.ReferralStatus,
-                    x.IsDirectReferral,
-                    x.EndedAt
-                })
-                .ToListAsync();
+        var referrals = await _context
+            .EntrepreneurReferrals
+            .AsNoTracking()
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => new
+            {
+                // C# property is Id.
+                // EF mapping should map this to PostgreSQL "id".
+                x.Id,
+
+                x.EntrepreneurUserId,
+                x.RecruitedUserId,
+                x.ReferralCode,
+                x.ReferralDate,
+                x.ProviderActivationDate,
+                x.ReferralStatus,
+                x.IsDirectReferral,
+                x.EndedAt,
+                x.CreatedAt
+            })
+            .ToListAsync();
 
         return Ok(referrals);
     }
 
+    // ============================================================
+    // GET EARNINGS
+    // ============================================================
+
     [HttpGet("earnings")]
     public async Task<IActionResult> GetEarnings()
     {
-        var earnings =
-            await _context
-                .EntrepreneurEarnings
-                .AsNoTracking()
-                .OrderByDescending(x => x.TransactionDate)
-                .Select(x => new
-                {
-                    x.id,
-                    x.EntrepreneurUserId,
-                    x.RecruiterId,
-                    x.RecruitedProviderId,
-                    x.ProviderRole,
-                    x.OrderId,
-                    x.TransactionId,
-                    x.PaymentId,
-                    x.TransactionDate,
-                    x.AlphaGrossPlatformCommission,
-                    x.DirectTransactionCosts,
-                    x.EligibleNetPlatformRevenue,
-                    x.EntrepreneurPercentage,
-                    x.EntrepreneurEarningsAmount,
-                    x.Currency,
-                    x.EarningStatus,
-                    x.RefundAdjustment,
-                    x.ChargebackAdjustment,
-                    x.CreatedAt,
-                    x.UpdatedAt
-                })
-                .ToListAsync();
+        var earnings = await _context
+            .EntrepreneurEarnings
+            .AsNoTracking()
+            .OrderByDescending(x => x.TransactionDate)
+            .Select(x => new
+            {
+                // C# property is Id.
+                x.Id,
+
+                x.EntrepreneurUserId,
+                x.RecruiterId,
+                x.RecruitedProviderId,
+                x.ProviderRole,
+                x.OrderId,
+                x.TransactionId,
+                x.PaymentId,
+                x.TransactionDate,
+
+                x.AlphaGrossPlatformCommission,
+                x.DirectTransactionCosts,
+                x.EligibleNetPlatformRevenue,
+
+                x.EntrepreneurPercentage,
+                x.EntrepreneurEarningsAmount,
+
+                x.Currency,
+                x.EarningStatus,
+
+                x.RefundAdjustment,
+                x.ChargebackAdjustment,
+
+                x.CreatedAt,
+                x.UpdatedAt
+            })
+            .ToListAsync();
 
         return Ok(earnings);
     }
 
+    // ============================================================
+    // GET SUMMARY
+    // ============================================================
+
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary()
     {
-        var referrals =
-            await _context
-                .EntrepreneurReferrals
-                .AsNoTracking()
-                .ToListAsync();
+        var referrals = await _context
+            .EntrepreneurReferrals
+            .AsNoTracking()
+            .ToListAsync();
 
-        var earnings =
-            await _context
-                .EntrepreneurEarnings
-                .AsNoTracking()
-                .ToListAsync();
+        var earnings = await _context
+            .EntrepreneurEarnings
+            .AsNoTracking()
+            .ToListAsync();
 
         var summary = new
         {
