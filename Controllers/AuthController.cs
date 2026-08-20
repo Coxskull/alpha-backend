@@ -1142,13 +1142,10 @@ public class AuthController : ControllerBase
             StringComparer.OrdinalIgnoreCase))
         {
             supplierId = await _context.Suppliers
-                .AsNoTracking()
-                .Where(supplier =>
-                    supplier.UserId == user.Id)
-                .Select(supplier =>
-                    (Guid?)supplier.Id)
-                .FirstOrDefaultAsync(
-                    cancellationToken);
+    .AsNoTracking()
+    .Where(supplier => supplier.UserId == user.Id)
+    .Select(supplier => (Guid?)supplier.Id)
+    .FirstOrDefaultAsync(cancellationToken);
         }
 
         if (selectedRoles.Contains(
@@ -1156,13 +1153,12 @@ public class AuthController : ControllerBase
             StringComparer.OrdinalIgnoreCase))
         {
             driverId = await _context.Drivers
-                .AsNoTracking()
-                .Where(driver =>
-                    driver.UserId == user.Id)
-                .Select(driver =>
-                    (Guid?)driver.Id)
-                .FirstOrDefaultAsync(
-                    cancellationToken);
+      .AsNoTracking()
+      .Where(driver => driver.UserId == user.Id)
+      .Select(driver => (Guid?)driver.Id)
+      .FirstOrDefaultAsync(cancellationToken);
+
+            
         }
 
         if (selectedRoles.Contains(
@@ -1170,13 +1166,10 @@ public class AuthController : ControllerBase
             StringComparer.OrdinalIgnoreCase))
         {
             mechanicId = await _context.Mechanics
-                .AsNoTracking()
-                .Where(mechanic =>
-                    mechanic.UserId == user.Id)
-                .Select(mechanic =>
-                    (Guid?)mechanic.Id)
-                .FirstOrDefaultAsync(
-                    cancellationToken);
+                 .AsNoTracking()
+                 .Where(mechanic => mechanic.UserId == user.Id)
+                 .Select(mechanic => (Guid?)mechanic.Id)
+                 .FirstOrDefaultAsync(cancellationToken);
         }
 
         return Ok(new
