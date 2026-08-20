@@ -105,8 +105,6 @@ public class PaymentsController : ControllerBase
             _ => gateway
         };
 
-        var provider =
-    _factory.Get(gateway);
 
 
       

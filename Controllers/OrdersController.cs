@@ -419,14 +419,24 @@ public class OrdersController : ControllerBase
             // 9. Calculate preliminary earnings
             // ---------------------------------------------------------
 
-           
+
+
+            decimal supplierEarning = Math.Round(
+    itemSubtotal - partsCommission.TotalCommission,
+    2,
+    MidpointRounding.AwayFromZero);
+
+            if (supplierEarning < 0)
+            {
+                supplierEarning = 0m;
+            }
 
             decimal driverEarning = Math.Round(
                 deliveryFee * 0.70m,
                 2,
                 MidpointRounding.AwayFromZero);
 
-           
+
 
             // ---------------------------------------------------------
             // 10. Get customer ID from authenticated user
