@@ -223,120 +223,118 @@ public class EntrepreneurController : ControllerBase
     [HttpGet("dashboard")]
     public async Task<IActionResult> GetDashboard()
     {
-        var entrepreneurUserId =
-            GetCurrentUserId();
+        var entrepreneurUserId = GetCurrentUserId();
 
         if (!entrepreneurUserId.HasValue)
         {
-            return Unauthorized();
+            return Unauthorized(new
+            {
+                message = "Authenticated user ID was not found."
+            });
         }
 
-        var referrals =
-            await _context
+        try
+        {
+            var referrals = await _context
                 .EntrepreneurReferrals
                 .AsNoTracking()
                 .Where(x =>
-                    x.EntrepreneurUserId ==
-                    entrepreneurUserId.Value &&
+                    x.EntrepreneurUserId == entrepreneurUserId.Value &&
                     x.IsDirectReferral &&
                     x.EndedAt == null)
                 .ToListAsync();
 
-        var earnings =
-            await _context
+            var earnings = await _context
                 .EntrepreneurEarnings
                 .AsNoTracking()
                 .Where(x =>
-                    x.EntrepreneurUserId ==
-                    entrepreneurUserId.Value)
+                    x.EntrepreneurUserId == entrepreneurUserId.Value)
                 .ToListAsync();
 
-        var config =
-            await _context
+            var config = await _context
                 .EntrepreneurProgramConfigurations
                 .AsNoTracking()
                 .FirstOrDefaultAsync();
 
-        var directRecruits =
-            referrals.Count;
+            var directRecruits = referrals.Count;
 
-        var activeProviders =
-            referrals.Count(x =>
+            var activeProviders = referrals.Count(x =>
                 string.Equals(
                     x.ReferralStatus,
                     "active",
                     StringComparison.OrdinalIgnoreCase));
 
-        var qualifyingTransactions =
-            earnings
+            var qualifyingTransactions = earnings
                 .Select(x => x.OrderId)
                 .Distinct()
                 .Count();
 
-        var eligibleNetPlatformRevenue =
-            earnings.Sum(
-                x => x.EligibleNetPlatformRevenue);
+            var eligibleNetPlatformRevenue =
+                earnings.Sum(x => x.EligibleNetPlatformRevenue);
 
-        var pendingEarnings =
-            earnings
+            var pendingEarnings = earnings
                 .Where(x =>
                     string.Equals(
                         x.EarningStatus,
                         "PENDING",
                         StringComparison.OrdinalIgnoreCase))
-                .Sum(x =>
-                    x.EntrepreneurEarningsAmount);
+                .Sum(x => x.EntrepreneurEarningsAmount);
 
-        var approvedEarnings =
-            earnings
+            var approvedEarnings = earnings
                 .Where(x =>
                     string.Equals(
                         x.EarningStatus,
                         "APPROVED",
                         StringComparison.OrdinalIgnoreCase))
-                .Sum(x =>
-                    x.EntrepreneurEarningsAmount);
+                .Sum(x => x.EntrepreneurEarningsAmount);
 
-        var paidEarnings =
-            earnings
+            var paidEarnings = earnings
                 .Where(x =>
                     string.Equals(
                         x.EarningStatus,
                         "PAID",
                         StringComparison.OrdinalIgnoreCase))
-                .Sum(x =>
-                    x.EntrepreneurEarningsAmount);
+                .Sum(x => x.EntrepreneurEarningsAmount);
 
-        return Ok(new
+            return Ok(new
+            {
+                directRecruits,
+                activeProviders,
+                qualifyingTransactions,
+                eligibleNetPlatformRevenue,
+
+                currentRate =
+                    config?.DefaultCommissionRate ?? 0m,
+
+                pendingEarnings,
+                approvedEarnings,
+                paidEarnings,
+
+                currency =
+                    earnings
+                        .Select(x => x.Currency)
+                        .FirstOrDefault()
+                    ?? "USD",
+
+                programEnabled =
+                    config?.ProgramEnabled ?? false,
+
+                nextPayoutDate = (DateTime?)null
+            });
+        }
+        catch (Exception ex)
         {
-            directRecruits,
+            Console.Error.WriteLine(
+                $"Entrepreneur dashboard failed for user {entrepreneurUserId}");
 
-            activeProviders,
+            Console.Error.WriteLine(ex.ToString());
 
-            qualifyingTransactions,
-
-            eligibleNetPlatformRevenue,
-
-            currentRate =
-                config?.DefaultCommissionRate ?? 0m,
-
-            pendingEarnings,
-
-            approvedEarnings,
-
-            paidEarnings,
-
-            currency =
-                earnings
-                    .Select(x => x.Currency)
-                    .FirstOrDefault()
-                ?? "USD",
-
-            programEnabled =
-                config?.ProgramEnabled ?? false,
-
-            nextPayoutDate =
-                (DateTime?)null
-        });
+            return StatusCode(500, new
+            {
+                message = "Failed to load Entrepreneur dashboard.",
+                detail = ex.Message,
+                innerDetail = ex.InnerException?.Message
+            });
+        }
     }
 }
