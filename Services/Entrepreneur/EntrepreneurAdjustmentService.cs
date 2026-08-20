@@ -28,7 +28,7 @@ public class EntrepreneurAdjustmentService
             await _context
                 .EntrepreneurEarnings
                 .FirstOrDefaultAsync(
-                    x => x.id == earningId,
+                    x => x.Id == earningId,
                     cancellationToken);
 
         if (earning == null)
