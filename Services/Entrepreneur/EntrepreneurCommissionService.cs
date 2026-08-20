@@ -182,7 +182,7 @@ public class EntrepreneurCommissionService
         var earning =
             new EntrepreneurEarning
             {
-                id = Guid.NewGuid(),
+                Id = Guid.NewGuid(),
 
                 EntrepreneurUserId =
                     entrepreneurUserId,
