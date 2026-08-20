@@ -256,6 +256,19 @@ public class EntrepreneurController : ControllerBase
                 .AsNoTracking()
                 .FirstOrDefaultAsync();
 
+            // Get the entrepreneur's referral code.
+            //
+            // We look for the first active/direct referral that has
+            // a referral code.
+            var referralCode = referrals
+                .Select(x => x.ReferralCode)
+                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+
+            // Build the referral link only when a code exists.
+            var referralLink = !string.IsNullOrWhiteSpace(referralCode)
+                ? $"https://alphaauto.app/register?ref={Uri.EscapeDataString(referralCode)}"
+                : null;
+
             var directRecruits = referrals.Count;
 
             var activeProviders = referrals.Count(x =>
@@ -301,7 +314,12 @@ public class EntrepreneurController : ControllerBase
                 directRecruits,
                 activeProviders,
                 qualifyingTransactions,
+
                 eligibleNetPlatformRevenue,
+
+                // Referral information
+                referralCode,
+                referralLink,
 
                 currentRate =
                     config?.DefaultCommissionRate ?? 0m,
