@@ -57,50 +57,48 @@ public class EntrepreneurPayoutController
                         userId.Value)
                 .OrderByDescending(
                     x => x.TransactionDate)
-                .Select(
-                    x => new
-                    {
-                        id = x.id,
+                .Select(x => new
+                {
+                    id = x.id,
 
-                        entrepreneurId =
-                            x.EntrepreneurUserId,
+                    entrepreneurId =
+        x.EntrepreneurUserId,
 
-                        periodStart =
-                            x.TransactionDate,
+                    periodStart =
+        x.TransactionDate,
 
-                        periodEnd =
-                            x.TransactionDate,
+                    periodEnd =
+        x.TransactionDate,
 
-                        eligibleRevenue =
-                            x.EligibleNetPlatformRevenue,
+                    eligibleRevenue =
+        x.EligibleNetPlatformRevenue,
 
-                        rewardRate =
-                            x.EntrepreneurPercentage,
+                    rewardRate =
+        x.EntrepreneurPercentage,
 
-                        rewardAmount =
-                            x.EntrepreneurEarningsAmount,
+                    rewardAmount =
+        x.EntrepreneurEarningsAmount,
 
-                        status =
-                            x.EarningStatus,
+                    status =
+        x.EarningStatus,
 
-                        approvedAt =
-                            x.EarningStatus ==
-                            "APPROVED"
-                                ? x.UpdatedAt
-                                : null,
+                    approvedAt =
+        x.EarningStatus == "APPROVED"
+            ? (DateTime?)x.UpdatedAt
+            : null,
 
-                        paidAt =
-                            x.PayoutDate,
+                    paidAt =
+        x.PayoutDate,
 
-                        createdAt =
-                            x.CreatedAt,
+                    createdAt =
+        x.CreatedAt,
 
-                        payoutReference =
-                            x.PayoutReference,
+                    payoutReference =
+        x.PayoutReference,
 
-                        currency =
-                            x.Currency
-                    })
+                    currency =
+        x.Currency
+                })
                 .ToListAsync(
                     cancellationToken);
 
