@@ -968,7 +968,7 @@ public class StripeWebhookController : ControllerBase
 
             await _entrepreneurAdjustmentService
                 .ApplyRefundAsync(
-                    earning.id,
+                    earning.Id,
                     commissionAdjustment,
                     $"Stripe refund for payment {payment.Id}",
                     payment.Id,

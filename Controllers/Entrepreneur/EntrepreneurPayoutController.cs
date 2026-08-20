@@ -59,7 +59,7 @@ public class EntrepreneurPayoutController
                     x => x.TransactionDate)
                 .Select(x => new
                 {
-                    id = x.id,
+                    id = x.Id,
 
                     entrepreneurId =
         x.EntrepreneurUserId,

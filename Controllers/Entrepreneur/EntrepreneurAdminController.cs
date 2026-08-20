@@ -227,7 +227,7 @@ public class EntrepreneurAdminController : ControllerBase
             .Select(x => new
             {
                 // C# property is id.
-                x.id,
+                x.Id,
 
                 x.EntrepreneurUserId,
                 x.RecruiterId,
