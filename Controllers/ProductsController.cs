@@ -110,10 +110,10 @@ public class ProductsController : ControllerBase
 
         return Ok(products);
     }
-
     [HttpPost("upload")]
     [RequestSizeLimit(10_000_000)]
-    public async Task<IActionResult> UploadProduct([FromForm] CreateProductUploadDto dto)
+    public async Task<IActionResult> UploadProduct(
+        [FromForm] CreateProductUploadDto dto)
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
@@ -121,16 +121,28 @@ public class ProductsController : ControllerBase
         if (dto.SupplierId == Guid.Empty)
             return BadRequest("SupplierId is required.");
 
-        var supplierExists = await _context.Suppliers
-            .AnyAsync(s => s.Id == dto.SupplierId);
+        // First try Supplier.Id
+        var supplier = await _context.Suppliers
+            .FirstOrDefaultAsync(s => s.Id == dto.SupplierId);
 
-        if (!supplierExists)
+        // If not found, try Supplier.user_id
+        if (supplier == null)
+        {
+            supplier = await _context.Suppliers
+                .FirstOrDefaultAsync(s => s.UserId == dto.SupplierId);
+        }
+
+        if (supplier == null)
             return BadRequest("Supplier not found.");
 
         string imageUrl = "";
 
         if (dto.Image != null && dto.Image.Length > 0)
         {
+            // Optional but recommended validation
+            if (!dto.Image.ContentType.StartsWith("image/"))
+                return BadRequest("Only image files are allowed.");
+
             await using var ms = new MemoryStream();
             await dto.Image.CopyToAsync(ms);
 
@@ -142,28 +154,38 @@ public class ProductsController : ControllerBase
         var product = new Product
         {
             Id = Guid.NewGuid(),
-            SupplierId = dto.SupplierId,
-            PartNumber = dto.PartNumber ?? string.Empty,
-            Brand = dto.Brand ?? string.Empty,
-            Name = dto.Name ?? string.Empty,
-            Description = dto.Description ?? string.Empty,
+
+            // IMPORTANT:
+            // Always save the actual suppliers.Id
+            SupplierId = supplier.Id,
+
+            PartNumber = dto.PartNumber?.Trim() ?? string.Empty,
+            Brand = dto.Brand?.Trim() ?? string.Empty,
+            Name = dto.Name?.Trim() ?? string.Empty,
+            Description = dto.Description?.Trim() ?? string.Empty,
+
             ImageUrl = string.IsNullOrWhiteSpace(imageUrl)
-        ? "/uploads/products/default-product.png"
-        : imageUrl,
+                ? "/uploads/products/default-product.png"
+                : imageUrl,
+
             Price = dto.Price,
             QuantityAvailable = dto.QuantityAvailable,
+
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
+
             Currency = string.IsNullOrWhiteSpace(dto.Currency)
-        ? "MXN"
-        : dto.Currency.Trim().ToUpperInvariant(),
+                ? "MXN"
+                : dto.Currency.Trim().ToUpperInvariant(),
+
             CountryCode = string.IsNullOrWhiteSpace(dto.CountryCode)
-        ? "MX"
-        : dto.CountryCode.Trim().ToUpperInvariant()
+                ? "MX"
+                : dto.CountryCode.Trim().ToUpperInvariant()
         };
 
         _context.Products.Add(product);
+
         await _context.SaveChangesAsync();
 
         return Ok(product);
@@ -173,8 +195,22 @@ public class ProductsController : ControllerBase
     [RequestSizeLimit(10_000_000)]
     public async Task<IActionResult> UpdateProduct(Guid id, [FromForm] UpdateProductUploadDto dto)
     {
+        var supplier = await _context.Suppliers
+     .FirstOrDefaultAsync(s => s.Id == dto.SupplierId);
+
+        if (supplier == null)
+        {
+            supplier = await _context.Suppliers
+                .FirstOrDefaultAsync(s => s.UserId == dto.SupplierId);
+        }
+
+        if (supplier == null)
+            return BadRequest("Supplier not found.");
+
         var product = await _context.Products
-            .FirstOrDefaultAsync(x => x.Id == id && x.SupplierId == dto.SupplierId);
+            .FirstOrDefaultAsync(x =>
+                x.Id == id &&
+                x.SupplierId == supplier.Id);
 
         if (product == null)
             return NotFound("Product not found or does not belong to this supplier.");
