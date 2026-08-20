@@ -270,7 +270,7 @@ public class ProductsController : ControllerBase
     public async Task<IActionResult> GetSupplierProductsByUser(Guid userId)
     {
         var supplier = await _context.Suppliers
-            .FirstOrDefaultAsync(s => s.user_id == userId);
+            .FirstOrDefaultAsync(s => s.UserId == userId);
 
         if (supplier == null)
             return NotFound("Supplier profile not found.");
