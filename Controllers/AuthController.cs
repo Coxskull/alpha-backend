@@ -1196,6 +1196,10 @@ public class AuthController : ControllerBase
                 roles = activeRoles,
                 roleStatuses = allRoleStatuses,
 
+                supplierId,
+                driverId,
+                mechanicId,
+
                 verificationRequired,
                 nextStep
             }
