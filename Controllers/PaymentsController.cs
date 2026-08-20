@@ -109,11 +109,7 @@ public class PaymentsController : ControllerBase
     _factory.Get(gateway);
 
 
-        /*
-         * IMPORTANT:
-         * Do not trust the amount supplied by the frontend.
-         * The database financial total is authoritative.
-         */
+      
         var amount =
             financial.TotalAmount;
 
