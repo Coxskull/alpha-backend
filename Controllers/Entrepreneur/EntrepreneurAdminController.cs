@@ -1,11 +1,12 @@
-using System;
-using System.Linq;
-using System.Threading.Tasks;
 using Alpha.API.Data;
 using Alpha.API.Models.Entrepreneur;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Alpha.API.Controllers.Entrepreneur;
 
@@ -15,10 +16,67 @@ namespace Alpha.API.Controllers.Entrepreneur;
 public class EntrepreneurAdminController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly EntrepreneurLedgerService _ledgerService;
+    private readonly EntrepreneurPayoutService _payoutService;
 
-    public EntrepreneurAdminController(AppDbContext context)
+    public EntrepreneurAdminController(
+    AppDbContext context,
+    EntrepreneurLedgerService ledgerService,
+    EntrepreneurPayoutService payoutService)
     {
         _context = context;
+        _ledgerService = ledgerService;
+        _payoutService = payoutService;
+    }
+
+    public class PayEntrepreneurEarningRequest
+    {
+        public string PayoutReference { get; set; }
+            = string.Empty;
+    }
+
+    [HttpPost("earnings/{earningId:guid}/pay")]
+    public async Task<IActionResult> PayEarning(
+    Guid earningId,
+    [FromBody] PayEntrepreneurEarningRequest request,
+    CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(
+                request.PayoutReference))
+        {
+            return BadRequest(new
+            {
+                message =
+                    "Payout reference is required."
+            });
+        }
+
+        var claim =
+            User.FindFirst(
+                System.Security.Claims.ClaimTypes.NameIdentifier);
+
+        if (claim == null ||
+            !Guid.TryParse(
+                claim.Value,
+                out var adminUserId))
+        {
+            return Unauthorized();
+        }
+
+        await _payoutService.MarkPaidAsync(
+            earningId,
+            request.PayoutReference.Trim(),
+            adminUserId,
+            cancellationToken);
+
+        return Ok(new
+        {
+            success = true,
+            earningId,
+            status = "PAID",
+            payoutReference =
+                request.PayoutReference.Trim()
+        });
     }
 
     // ============================================================
@@ -264,5 +322,22 @@ public class EntrepreneurAdminController : ControllerBase
         };
 
         return Ok(summary);
+    }
+
+    [HttpPost("approve-eligible")]
+    public async Task<IActionResult>
+    ApproveEligible(
+        CancellationToken cancellationToken)
+    {
+        await _ledgerService
+            .ApproveEligibleEarningsAsync(
+                cancellationToken);
+
+        return Ok(new
+        {
+            success = true,
+            message =
+                "Eligible Entrepreneur earnings approved."
+        });
     }
 }

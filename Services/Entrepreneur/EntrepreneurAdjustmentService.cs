@@ -81,18 +81,10 @@ public class EntrepreneurAdjustmentService
         earning.RefundAdjustment +=
             adjustment;
 
-        if (earning.EarningStatus ==
-            "PAID")
+        if (earning.EarningStatus == "PAID")
         {
             earning.EarningStatus =
                 "ADJUSTED";
-        }
-        else if (
-            earning.EarningStatus ==
-            "PENDING")
-        {
-            earning.EarningStatus =
-                "CANCELED";
         }
         else
         {

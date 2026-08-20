@@ -9,6 +9,7 @@ using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Alpha.API.Services.Entrepreneur;
 
 namespace Alpha.API.Controllers;
 
@@ -20,17 +21,24 @@ public class StripeWebhookController : ControllerBase
     private readonly PaymentCompletionService _paymentCompletionService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<StripeWebhookController> _logger;
+    private readonly EntrepreneurAdjustmentService _entrepreneurAdjustmentService;
 
     public StripeWebhookController(
-        AppDbContext context,
-        PaymentCompletionService paymentCompletionService,
-        IConfiguration configuration,
-        ILogger<StripeWebhookController> logger)
+    AppDbContext context,
+    PaymentCompletionService paymentCompletionService,
+    IConfiguration configuration,
+    ILogger<StripeWebhookController> logger,
+    EntrepreneurAdjustmentService entrepreneurAdjustmentService)
     {
         _context = context;
-        _paymentCompletionService = paymentCompletionService;
+        _paymentCompletionService =
+            paymentCompletionService;
+
         _configuration = configuration;
         _logger = logger;
+
+        _entrepreneurAdjustmentService =
+            entrepreneurAdjustmentService;
     }
 
     // ============================================================
@@ -849,21 +857,15 @@ public class StripeWebhookController : ControllerBase
     // ============================================================
 
     private async Task ProcessChargeRefunded(
-    Event stripeEvent,
-    string rawJson,
-    CancellationToken cancellationToken)
+     Event stripeEvent,
+     string rawJson,
+     CancellationToken cancellationToken)
     {
         var charge =
             stripeEvent.Data.Object as Charge;
 
         if (charge == null)
-        {
             return;
-        }
-
-        // --------------------------------------------------------
-        // Stripe Charge contains the PaymentIntent ID
-        // --------------------------------------------------------
 
         var paymentIntentId =
             charge.PaymentIntentId;
@@ -871,17 +873,8 @@ public class StripeWebhookController : ControllerBase
         if (string.IsNullOrWhiteSpace(
                 paymentIntentId))
         {
-            _logger.LogWarning(
-                "Refunded Stripe charge {ChargeId} " +
-                "does not have a PaymentIntentId.",
-                charge.Id);
-
             return;
         }
-
-        // --------------------------------------------------------
-        // Find our payment
-        // --------------------------------------------------------
 
         var payment =
             await _context.Payments
@@ -892,52 +885,108 @@ public class StripeWebhookController : ControllerBase
                     cancellationToken);
 
         if (payment == null)
-        {
-            _logger.LogWarning(
-                "Payment not found for refunded " +
-                "Stripe PaymentIntent {PaymentIntentId}.",
-                paymentIntentId);
+            return;
 
+        var originalAmount =
+            charge.Amount / 100m;
+
+        var cumulativeRefund =
+            charge.AmountRefunded / 100m;
+
+        var previousRefund =
+            payment.RefundedAmount;
+
+        var refundDelta =
+            Math.Max(
+                0m,
+                cumulativeRefund -
+                previousRefund);
+
+        if (refundDelta <= 0m)
+        {
             return;
         }
 
-        // --------------------------------------------------------
-        // Determine full vs partial refund
-        // --------------------------------------------------------
+        /*
+         * ---------------------------------------------------------
+         * PAYMENT REFUND
+         * ---------------------------------------------------------
+         */
 
-        var amountRefunded =
-            charge.AmountRefunded;
+        payment.RefundedAmount =
+            cumulativeRefund;
 
-        var originalAmount =
-            charge.Amount;
+        payment.RefundStatus =
+            cumulativeRefund >= originalAmount
+                ? "full"
+                : "partial";
 
-        if (originalAmount > 0 &&
-            amountRefunded >= originalAmount)
-        {
-            payment.PaymentStatus =
-                "refunded";
-        }
-        else
-        {
-            payment.PaymentStatus =
-                "partially_refunded";
-        }
+        payment.RefundReference =
+            charge.Id;
 
-        // --------------------------------------------------------
-        // Save complete Stripe webhook payload
-        // --------------------------------------------------------
+        payment.RefundedAt =
+            DateTime.UtcNow;
 
         payment.GatewayResponse =
             JsonDocument.Parse(rawJson);
+
+        payment.PaymentStatus =
+            cumulativeRefund >= originalAmount
+                ? "refunded"
+                : "partially_refunded";
+
+        /*
+         * ---------------------------------------------------------
+         * ENTREPRENEUR EARNING
+         * ---------------------------------------------------------
+         */
+
+        var earning =
+            await _context
+                .EntrepreneurEarnings
+                .FirstOrDefaultAsync(
+                    x =>
+                        x.PaymentId == payment.Id,
+                    cancellationToken);
+
+        if (earning != null)
+        {
+            var originalCommission =
+                earning.EntrepreneurEarningsAmount;
+
+            var refundRatio =
+                originalAmount > 0m
+                    ? refundDelta / originalAmount
+                    : 0m;
+
+            var commissionAdjustment =
+                decimal.Round(
+                    originalCommission *
+                    refundRatio,
+                    2,
+                    MidpointRounding.AwayFromZero);
+
+            await _entrepreneurAdjustmentService
+                .ApplyRefundAsync(
+                    earning.id,
+                    commissionAdjustment,
+                    $"Stripe refund for payment {payment.Id}",
+                    payment.Id,
+                    cancellationToken);
+        }
 
         await _context.SaveChangesAsync(
             cancellationToken);
 
         _logger.LogInformation(
             "Stripe refund processed. " +
-            "PaymentIntentId={PaymentIntentId}, " +
-            "AmountRefunded={AmountRefunded}",
+            "PaymentIntent={PaymentIntentId}, " +
+            "RefundDelta={RefundDelta}, " +
+            "EntrepreneurAdjustment={Adjustment}",
             paymentIntentId,
-            amountRefunded);
+            refundDelta,
+            earning == null
+                ? 0m
+                : earning.EntrepreneurEarningsAmount);
     }
 }

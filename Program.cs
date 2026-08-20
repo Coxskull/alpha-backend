@@ -50,6 +50,8 @@ builder.Services
             };
     });
 builder.Services.AddScoped<AutoPartsCommissionService>();
+builder.Services.AddScoped<
+    EntrepreneurPayoutService>();
 builder.Services.AddScoped<TaxEngineService>();
 builder.Services.AddScoped<SettlementService>();
 builder.Services.AddScoped<OrderWorkflowService>();

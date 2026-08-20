@@ -434,40 +434,43 @@ public class AuthController : ControllerBase
                 if (!existingReferral)
                 {
                     _context
-                        .EntrepreneurReferrals
-                        .Add(
-                            new EntrepreneurReferral
-                            {
-                                id = Guid.NewGuid(),
+    .EntrepreneurReferrals
+    .Add(
+        new EntrepreneurReferral
+        {
+            id = Guid.NewGuid(),
 
-                                EntrepreneurUserId =
-                                    referrer.Id,
+            EntrepreneurUserId =
+                referrer.Id,
 
-                                RecruitedUserId =
-                                    user.Id,
+            RecruitedUserId =
+                user.Id,
 
-                                ReferralCode =
-                                    referrer.ReferralCode
-                                    ?? string.Empty,
+            ReferralCode =
+                referrer.ReferralCode
+                ?? string.Empty,
 
-                                ReferralDate =
-                                    now,
+            ReferralDate =
+                now,
 
-                                ReferralStatus =
-                                    "active",
+            ReferralStatus =
+                "pending",
 
-                                EligibilityStatus =
-                                    "pending",
+            EligibilityStatus =
+                "pending",
 
-                                IsDirectReferral =
-                                    true,
+            EntrepreneurEligibilityStatus =
+                "pending",
 
-                                CreatedAt =
-                                    now,
+            IsDirectReferral =
+                true,
 
-                                UpdatedAt =
-                                    now
-                            });
+            CreatedAt =
+                now,
+
+            UpdatedAt =
+                now
+        });
                 }
             }
 

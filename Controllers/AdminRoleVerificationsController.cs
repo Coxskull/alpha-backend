@@ -579,21 +579,30 @@ public class AdminRoleVerificationsController : ControllerBase
                 });
         }
 
-        if(application.Status == "approved")
+        if (application.Status == "approved")
         {
             var referral =
-    await _context
-        .EntrepreneurReferrals
-        .FirstOrDefaultAsync(
-            x =>
-                x.RecruitedUserId ==
-                    application.UserId &&
-                x.IsDirectReferral,
-            cancellationToken);
+                await _context
+                    .EntrepreneurReferrals
+                    .FirstOrDefaultAsync(
+                        x =>
+                            x.RecruitedUserId ==
+                                application.UserId
+                            &&
+                            x.IsDirectReferral
+                            &&
+                            x.EndedAt == null,
+                        cancellationToken);
 
             if (referral != null)
             {
+                referral.ReferralStatus =
+                    "active";
+
                 referral.EligibilityStatus =
+                    "eligible";
+
+                referral.EntrepreneurEligibilityStatus =
                     "eligible";
 
                 referral.ProviderActivationDate =
@@ -601,6 +610,9 @@ public class AdminRoleVerificationsController : ControllerBase
 
                 referral.UpdatedAt =
                     DateTime.UtcNow;
+
+                await _context.SaveChangesAsync(
+                    cancellationToken);
             }
         }
 

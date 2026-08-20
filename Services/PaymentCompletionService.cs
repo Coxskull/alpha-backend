@@ -16,18 +16,25 @@ public class PaymentCompletionService
     private readonly SettlementService _settlements;
     private readonly ReferralCommissionService _referralCommissionService;
     private readonly DirectTransactionCostService _entrepreneurDirectTransactionCostService;
+    private readonly EntrepreneurCommissionService _entrepreneurCommissionService;
 
     public PaymentCompletionService(
-        AppDbContext context,
-        SettlementService settlements,
-        ReferralCommissionService referralCommissionService,
-        DirectTransactionCostService entrepreneurDirectTransactionCostService)
+     AppDbContext context,
+     SettlementService settlements,
+     ReferralCommissionService referralCommissionService,
+     DirectTransactionCostService entrepreneurDirectTransactionCostService,
+     EntrepreneurCommissionService entrepreneurCommissionService)
     {
         _context = context;
         _settlements = settlements;
-        _referralCommissionService = referralCommissionService;
+        _referralCommissionService =
+            referralCommissionService;
+
         _entrepreneurDirectTransactionCostService =
             entrepreneurDirectTransactionCostService;
+
+        _entrepreneurCommissionService =
+            entrepreneurCommissionService;
     }
 
     public async Task CompleteOrderPaymentAsync(
@@ -395,13 +402,10 @@ public class PaymentCompletionService
 
 
             /*
-             * ---------------------------------------------------------
-             * ENTREPRENEUR DIRECT TRANSACTION COSTS
-             * ---------------------------------------------------------
-             *
-             * These costs are calculated AFTER the marketplace
-             * transaction has been recorded.
-             */
+  * ---------------------------------------------------------
+  * ENTREPRENEUR DIRECT TRANSACTION COSTS
+  * ---------------------------------------------------------
+  */
 
             var directTransactionCosts =
                 await _entrepreneurDirectTransactionCostService
@@ -409,20 +413,41 @@ public class PaymentCompletionService
                         order.Id,
                         cancellationToken);
 
-
             financial.DirectTransactionCosts =
                 directTransactionCosts;
 
+            /*
+             * ---------------------------------------------------------
+             * ENTREPRENEUR COMMISSION
+             * ---------------------------------------------------------
+             *
+             * This is the critical connection between the
+             * real Alpha payment workflow and the Entrepreneur Network.
+             */
+
+            await _entrepreneurCommissionService
+                .GenerateForOrderAsync(
+                    order.Id,
+                    cancellationToken);
 
             /*
              * ---------------------------------------------------------
-             * ENTREPRENEUR ELIGIBLE NET PLATFORM REVENUE
+             * LOAD THE RESULTING ENTREPRENEUR EARNING
              * ---------------------------------------------------------
-             *
-             * Eligible Net Platform Revenue =
-             *
-             * Alpha Gross Platform Commission
-             * - Direct Transaction Costs
+             */
+
+            var entrepreneurEarning =
+                await _context
+                    .EntrepreneurEarnings
+                    .FirstOrDefaultAsync(
+                        x =>
+                            x.OrderId == order.Id,
+                        cancellationToken);
+
+            /*
+             * ---------------------------------------------------------
+             * ELIGIBLE NET PLATFORM REVENUE
+             * ---------------------------------------------------------
              */
 
             financial.AlphaEligibleNetPlatformRevenue =
@@ -431,16 +456,21 @@ public class PaymentCompletionService
                     financial.AlphaGrossPlatformCommission -
                     directTransactionCosts);
 
+            /*
+             * ---------------------------------------------------------
+             * ENTREPRENEUR COMMISSION
+             * ---------------------------------------------------------
+             */
+
+            financial.EntrepreneurCommission =
+                entrepreneurEarning?
+                    .EntrepreneurEarningsAmount
+                    ?? 0m;
 
             /*
              * ---------------------------------------------------------
              * ALPHA RETAINED REVENUE
              * ---------------------------------------------------------
-             *
-             * Alpha Retained Revenue =
-             *
-             * Eligible Net Platform Revenue
-             * - Entrepreneur Commission
              */
 
             financial.AlphaRetainedRevenue =
@@ -450,6 +480,38 @@ public class PaymentCompletionService
                     financial.EntrepreneurCommission);
 
 
+            financial.CustomerPaid =
+    financial.TotalAmount;
+
+            financial.SupplierNetPayable =
+                financial.SupplierEarning;
+
+            financial.AlphaGrossPlatformCommission =
+                financial.AlphaGrossPartsCommission
+                +
+                financial.AlphaGrossMechanicCommission
+                +
+                financial.AlphaGrossDeliveryCommission;
+
+            financial.DirectTransactionCosts =
+                directTransactionCosts;
+
+            financial.AlphaEligibleNetPlatformRevenue =
+                Math.Max(
+                    0m,
+                    financial.AlphaGrossPlatformCommission -
+                    directTransactionCosts);
+
+            financial.EntrepreneurCommission =
+                entrepreneurEarning?
+                    .EntrepreneurEarningsAmount
+                    ?? 0m;
+
+            financial.AlphaRetainedRevenue =
+                Math.Max(
+                    0m,
+                    financial.AlphaEligibleNetPlatformRevenue -
+                    financial.EntrepreneurCommission);
             /*
              * Save the Entrepreneur-related financial values.
              */
@@ -465,6 +527,8 @@ public class PaymentCompletionService
 
             await transaction.CommitAsync(
                 cancellationToken);
+
+
         }
         catch
         {
