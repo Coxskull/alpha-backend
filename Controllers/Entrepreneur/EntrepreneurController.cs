@@ -235,40 +235,70 @@ public class EntrepreneurController : ControllerBase
 
         try
         {
+            var userId = entrepreneurUserId.Value;
+
+            // ---------------------------------------------------------
+            // Get the entrepreneur's own referral code
+            // ---------------------------------------------------------
+            var entrepreneur = await _context
+                .Users
+                .AsNoTracking()
+                .Where(x => x.Id == userId)
+                .Select(x => new
+                {
+                    x.Id,
+                    x.ReferralCode
+                })
+                .FirstOrDefaultAsync();
+
+            if (entrepreneur == null)
+            {
+                return NotFound(new
+                {
+                    message = "Entrepreneur user account was not found."
+                });
+            }
+
+            var referralCode = entrepreneur.ReferralCode;
+
+            // Build the registration/referral URL.
+            var referralLink = !string.IsNullOrWhiteSpace(referralCode)
+                ? $"https://alphaauto.app/register?ref={Uri.EscapeDataString(referralCode)}"
+                : null;
+
+            // ---------------------------------------------------------
+            // Get direct entrepreneur referrals
+            // ---------------------------------------------------------
             var referrals = await _context
                 .EntrepreneurReferrals
                 .AsNoTracking()
                 .Where(x =>
-                    x.EntrepreneurUserId == entrepreneurUserId.Value &&
+                    x.EntrepreneurUserId == userId &&
                     x.IsDirectReferral &&
                     x.EndedAt == null)
                 .ToListAsync();
 
+            // ---------------------------------------------------------
+            // Get entrepreneur earnings
+            // ---------------------------------------------------------
             var earnings = await _context
                 .EntrepreneurEarnings
                 .AsNoTracking()
                 .Where(x =>
-                    x.EntrepreneurUserId == entrepreneurUserId.Value)
+                    x.EntrepreneurUserId == userId)
                 .ToListAsync();
 
+            // ---------------------------------------------------------
+            // Program configuration
+            // ---------------------------------------------------------
             var config = await _context
                 .EntrepreneurProgramConfigurations
                 .AsNoTracking()
                 .FirstOrDefaultAsync();
 
-            // Get the entrepreneur's referral code.
-            //
-            // We look for the first active/direct referral that has
-            // a referral code.
-            var referralCode = referrals
-                .Select(x => x.ReferralCode)
-                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
-
-            // Build the referral link only when a code exists.
-            var referralLink = !string.IsNullOrWhiteSpace(referralCode)
-                ? $"https://alphaauto.app/register?ref={Uri.EscapeDataString(referralCode)}"
-                : null;
-
+            // ---------------------------------------------------------
+            // Referral statistics
+            // ---------------------------------------------------------
             var directRecruits = referrals.Count;
 
             var activeProviders = referrals.Count(x =>
@@ -277,6 +307,9 @@ public class EntrepreneurController : ControllerBase
                     "active",
                     StringComparison.OrdinalIgnoreCase));
 
+            // ---------------------------------------------------------
+            // Transaction statistics
+            // ---------------------------------------------------------
             var qualifyingTransactions = earnings
                 .Select(x => x.OrderId)
                 .Distinct()
@@ -285,6 +318,9 @@ public class EntrepreneurController : ControllerBase
             var eligibleNetPlatformRevenue =
                 earnings.Sum(x => x.EligibleNetPlatformRevenue);
 
+            // ---------------------------------------------------------
+            // Earnings statistics
+            // ---------------------------------------------------------
             var pendingEarnings = earnings
                 .Where(x =>
                     string.Equals(
@@ -309,15 +345,18 @@ public class EntrepreneurController : ControllerBase
                         StringComparison.OrdinalIgnoreCase))
                 .Sum(x => x.EntrepreneurEarningsAmount);
 
+            // ---------------------------------------------------------
+            // Return dashboard
+            // ---------------------------------------------------------
             return Ok(new
             {
                 directRecruits,
                 activeProviders,
                 qualifyingTransactions,
-
                 eligibleNetPlatformRevenue,
 
-                // Referral information
+                // IMPORTANT:
+                // These now come from users.referral_code
                 referralCode,
                 referralLink,
 
