@@ -282,4 +282,26 @@ public class ProductsController : ControllerBase
 
         return Ok(products);
     }
+
+    [HttpGet("supplier/by-user/{userId:guid}")]
+    public async Task<IActionResult> GetSupplierByUser(Guid userId)
+    {
+        var supplier = await _context.Suppliers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.UserId == userId);
+
+        if (supplier == null)
+        {
+            return NotFound(new
+            {
+                message = "Supplier profile not found."
+            });
+        }
+
+        return Ok(new
+        {
+            id = supplier.Id,
+            userId = supplier.UserId
+        });
+    }
 }
