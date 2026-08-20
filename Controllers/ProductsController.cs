@@ -25,6 +25,7 @@ public class ProductsController : ControllerBase
     public async Task<IActionResult> GetProducts()
     {
         var products = await _context.Products
+            .AsNoTracking()
             .Where(x =>
                 x.IsActive &&
                 x.QuantityAvailable > 0)
@@ -42,13 +43,16 @@ public class ProductsController : ControllerBase
     public async Task<IActionResult> GetProduct(Guid id)
     {
         var product = await _context.Products
+            .AsNoTracking()
             .FirstOrDefaultAsync(x =>
                 x.Id == id &&
-                x.IsActive &&
-                x.QuantityAvailable > 0);
+                x.IsActive);
 
         if (product == null)
-            return NotFound("Product not found.");
+            return NotFound(new
+            {
+                message = "Product not found."
+            });
 
         return Ok(product);
     }
@@ -62,15 +66,24 @@ public class ProductsController : ControllerBase
         [FromQuery] string keyword)
     {
         if (string.IsNullOrWhiteSpace(keyword))
-            return BadRequest("Keyword is required.");
+        {
+            return BadRequest(new
+            {
+                message = "Keyword is required."
+            });
+        }
+
+        keyword = keyword.Trim();
 
         var products = await _context.Products
+            .AsNoTracking()
             .Where(x =>
                 x.IsActive &&
                 x.QuantityAvailable > 0 &&
                 (
                     x.Name.Contains(keyword) ||
-                    x.Brand.Contains(keyword)
+                    x.Brand.Contains(keyword) ||
+                    x.PartNumber.Contains(keyword)
                 ))
             .OrderByDescending(x => x.CreatedAt)
             .ToListAsync();
@@ -84,14 +97,41 @@ public class ProductsController : ControllerBase
 
     [HttpPost]
     public async Task<IActionResult> CreateProduct(
-        CreateProductDto dto)
+        [FromBody] CreateProductDto dto)
     {
-        var supplier = await _context.Suppliers
-            .FirstOrDefaultAsync(s =>
-                s.Id == dto.SupplierId);
+        if (dto.SupplierId == Guid.Empty)
+        {
+            return BadRequest(new
+            {
+                message = "SupplierId is required."
+            });
+        }
+
+        var supplier = await FindSupplier(dto.SupplierId);
 
         if (supplier == null)
-            return NotFound("Supplier not found.");
+        {
+            return NotFound(new
+            {
+                message = "Supplier not found."
+            });
+        }
+
+        if (dto.Price <= 0)
+        {
+            return BadRequest(new
+            {
+                message = "Price must be greater than zero."
+            });
+        }
+
+        if (dto.QuantityAvailable < 0)
+        {
+            return BadRequest(new
+            {
+                message = "Quantity cannot be negative."
+            });
+        }
 
         var product = new Product
         {
@@ -99,13 +139,14 @@ public class ProductsController : ControllerBase
 
             SupplierId = supplier.Id,
 
-            PartNumber = dto.PartNumber ?? string.Empty,
-            Brand = dto.Brand ?? string.Empty,
-            Name = dto.Name ?? string.Empty,
-            Description = dto.Description ?? string.Empty,
+            PartNumber = dto.PartNumber?.Trim() ?? string.Empty,
+            Brand = dto.Brand?.Trim() ?? string.Empty,
+            Name = dto.Name?.Trim() ?? string.Empty,
+            Description = dto.Description?.Trim() ?? string.Empty,
 
-            ImageUrl = dto.ImageUrl ??
-                       "/uploads/products/default-product.png",
+            ImageUrl = string.IsNullOrWhiteSpace(dto.ImageUrl)
+                ? "/uploads/products/default-product.png"
+                : dto.ImageUrl,
 
             Price = dto.Price,
             QuantityAvailable = dto.QuantityAvailable,
@@ -115,58 +156,57 @@ public class ProductsController : ControllerBase
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
 
-            Currency = string.IsNullOrWhiteSpace(dto.Currency)
-                ? "MXN"
-                : dto.Currency.Trim().ToUpperInvariant(),
-
-            CountryCode = string.IsNullOrWhiteSpace(dto.CountryCode)
-                ? "MX"
-                : dto.CountryCode.Trim().ToUpperInvariant()
+            Currency = NormalizeCurrency(dto.Currency),
+            CountryCode = NormalizeCountry(dto.CountryCode)
         };
 
         _context.Products.Add(product);
 
         await _context.SaveChangesAsync();
 
-        return Ok(product);
+        return CreatedAtAction(
+            nameof(GetProduct),
+            new { id = product.Id },
+            product);
     }
 
     // ============================================================
-    // GET PRODUCTS BY ACTUAL SUPPLIER ID
+    // GET PRODUCTS BY SUPPLIER ID
     // ============================================================
 
     [HttpGet("supplier/{supplierId:guid}")]
     public async Task<IActionResult> GetSupplierProducts(
         Guid supplierId)
     {
-        var supplierExists = await _context.Suppliers
-            .AnyAsync(s => s.Id == supplierId);
+        var supplier = await _context.Suppliers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == supplierId);
 
-        if (!supplierExists)
-            return NotFound("Supplier not found.");
+        if (supplier == null)
+        {
+            return NotFound(new
+            {
+                message = "Supplier not found.",
+                supplierId
+            });
+        }
 
         var products = await _context.Products
+            .AsNoTracking()
             .Where(x =>
-                x.SupplierId == supplierId &&
+                x.SupplierId == supplier.Id &&
                 x.IsActive)
             .OrderByDescending(x => x.CreatedAt)
             .ToListAsync();
 
+        // IMPORTANT:
+        // Return an ARRAY because the frontend inventory page
+        // expects response.data to be Product[].
         return Ok(products);
     }
 
     // ============================================================
-    // GET SUPPLIER + PRODUCTS BY USER ID
-    //
-    // This is the important endpoint for the frontend.
-    //
-    // alpha_user.id
-    //       ↓
-    // Suppliers.UserId
-    //       ↓
-    // Suppliers.Id
-    //       ↓
-    // Products.SupplierId
+    // GET SUPPLIER PRODUCTS BY USER ID
     // ============================================================
 
     [HttpGet("supplier/user/{userId:guid}")]
@@ -174,6 +214,7 @@ public class ProductsController : ControllerBase
         Guid userId)
     {
         var supplier = await _context.Suppliers
+            .AsNoTracking()
             .FirstOrDefaultAsync(s =>
                 s.UserId == userId);
 
@@ -187,17 +228,45 @@ public class ProductsController : ControllerBase
         }
 
         var products = await _context.Products
+            .AsNoTracking()
             .Where(x =>
                 x.SupplierId == supplier.Id &&
                 x.IsActive)
             .OrderByDescending(x => x.CreatedAt)
             .ToListAsync();
 
+        // IMPORTANT:
+        // Return only products so the frontend can directly
+        // consume response.data as Product[].
+        return Ok(products);
+    }
+
+    // ============================================================
+    // GET SUPPLIER ID BY USER ID
+    // ============================================================
+
+    [HttpGet("supplier-id/user/{userId:guid}")]
+    public async Task<IActionResult> GetSupplierIdByUser(
+        Guid userId)
+    {
+        var supplier = await _context.Suppliers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s =>
+                s.UserId == userId);
+
+        if (supplier == null)
+        {
+            return NotFound(new
+            {
+                message = "Supplier profile not found.",
+                userId
+            });
+        }
+
         return Ok(new
         {
             supplierId = supplier.Id,
-            userId = supplier.UserId,
-            products
+            userId = supplier.UserId
         });
     }
 
@@ -214,53 +283,91 @@ public class ProductsController : ControllerBase
             return BadRequest(ModelState);
 
         if (dto.SupplierId == Guid.Empty)
-            return BadRequest("SupplierId is required.");
-
-        // First: assume supplied ID is Suppliers.Id
-        var supplier = await _context.Suppliers
-            .FirstOrDefaultAsync(s =>
-                s.Id == dto.SupplierId);
-
-        // Second: allow supplied ID to be Users.Id
-        if (supplier == null)
         {
-            supplier = await _context.Suppliers
-                .FirstOrDefaultAsync(s =>
-                    s.UserId == dto.SupplierId);
+            return BadRequest(new
+            {
+                message = "SupplierId is required."
+            });
         }
 
-        if (supplier == null)
-            return BadRequest("Supplier not found.");
+        if (string.IsNullOrWhiteSpace(dto.Name))
+        {
+            return BadRequest(new
+            {
+                message = "Product name is required."
+            });
+        }
 
-        string imageUrl = "";
+        if (string.IsNullOrWhiteSpace(dto.Brand))
+        {
+            return BadRequest(new
+            {
+                message = "Brand is required."
+            });
+        }
+
+        if (dto.Price <= 0)
+        {
+            return BadRequest(new
+            {
+                message = "Price must be greater than zero."
+            });
+        }
+
+        if (dto.QuantityAvailable < 0)
+        {
+            return BadRequest(new
+            {
+                message = "Quantity cannot be negative."
+            });
+        }
+
+        var supplier = await FindSupplier(dto.SupplierId);
+
+        if (supplier == null)
+        {
+            return BadRequest(new
+            {
+                message = "Supplier not found."
+            });
+        }
+
+        string imageUrl =
+            "/uploads/products/default-product.png";
+
+        string? imageBase64 = null;
 
         if (dto.Image != null &&
             dto.Image.Length > 0)
         {
             if (!dto.Image.ContentType
-                .StartsWith("image/"))
+                .StartsWith("image/", StringComparison.OrdinalIgnoreCase))
             {
-                return BadRequest(
-                    "Only image files are allowed.");
+                return BadRequest(new
+                {
+                    message = "Only image files are allowed."
+                });
             }
 
-            await using var ms =
-                new MemoryStream();
+            await using var ms = new MemoryStream();
 
             await dto.Image.CopyToAsync(ms);
 
-            var base64 =
-                Convert.ToBase64String(ms.ToArray());
+            var bytes = ms.ToArray();
 
-            imageUrl =
+            var base64 = Convert.ToBase64String(bytes);
+
+            imageBase64 =
                 $"data:{dto.Image.ContentType};base64,{base64}";
+
+            imageUrl = imageBase64;
         }
 
         var product = new Product
         {
             Id = Guid.NewGuid(),
 
-            // ALWAYS store actual Suppliers.Id
+            // Always store the actual Supplier.Id.
             SupplierId = supplier.Id,
 
             PartNumber =
@@ -279,10 +386,10 @@ public class ProductsController : ControllerBase
                 dto.Description?.Trim() ??
                 string.Empty,
 
-            ImageUrl =
-                string.IsNullOrWhiteSpace(imageUrl)
-                    ? "/uploads/products/default-product.png"
-                    : imageUrl,
+            ImageUrl = imageUrl,
+
+            // Your database has image_base64 as well.
+            ImageBase64 = imageBase64,
 
             Price = dto.Price,
 
@@ -294,26 +401,18 @@ public class ProductsController : ControllerBase
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
 
-            Currency =
-                string.IsNullOrWhiteSpace(dto.Currency)
-                    ? "MXN"
-                    : dto.Currency
-                        .Trim()
-                        .ToUpperInvariant(),
-
-            CountryCode =
-                string.IsNullOrWhiteSpace(dto.CountryCode)
-                    ? "MX"
-                    : dto.CountryCode
-                        .Trim()
-                        .ToUpperInvariant()
+            Currency = NormalizeCurrency(dto.Currency),
+            CountryCode = NormalizeCountry(dto.CountryCode)
         };
 
         _context.Products.Add(product);
 
         await _context.SaveChangesAsync();
 
-        return Ok(product);
+        return CreatedAtAction(
+            nameof(GetProduct),
+            new { id = product.Id },
+            product);
     }
 
     // ============================================================
@@ -327,23 +426,22 @@ public class ProductsController : ControllerBase
         [FromForm] UpdateProductUploadDto dto)
     {
         if (dto.SupplierId == Guid.Empty)
-            return BadRequest("SupplierId is required.");
-
-        // Try actual Suppliers.Id
-        var supplier = await _context.Suppliers
-            .FirstOrDefaultAsync(s =>
-                s.Id == dto.SupplierId);
-
-        // Otherwise try Users.Id
-        if (supplier == null)
         {
-            supplier = await _context.Suppliers
-                .FirstOrDefaultAsync(s =>
-                    s.UserId == dto.SupplierId);
+            return BadRequest(new
+            {
+                message = "SupplierId is required."
+            });
         }
 
+        var supplier = await FindSupplier(dto.SupplierId);
+
         if (supplier == null)
-            return BadRequest("Supplier not found.");
+        {
+            return BadRequest(new
+            {
+                message = "Supplier not found."
+            });
+        }
 
         var product = await _context.Products
             .FirstOrDefaultAsync(x =>
@@ -352,8 +450,43 @@ public class ProductsController : ControllerBase
 
         if (product == null)
         {
-            return NotFound(
-                "Product not found or does not belong to this supplier.");
+            return NotFound(new
+            {
+                message =
+                    "Product not found or does not belong to this supplier."
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(dto.Name))
+        {
+            return BadRequest(new
+            {
+                message = "Product name is required."
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(dto.Brand))
+        {
+            return BadRequest(new
+            {
+                message = "Brand is required."
+            });
+        }
+
+        if (dto.Price <= 0)
+        {
+            return BadRequest(new
+            {
+                message = "Price must be greater than zero."
+            });
+        }
+
+        if (dto.QuantityAvailable < 0)
+        {
+            return BadRequest(new
+            {
+                message = "Quantity cannot be negative."
+            });
         }
 
         product.PartNumber =
@@ -372,17 +505,14 @@ public class ProductsController : ControllerBase
             dto.Description?.Trim() ??
             string.Empty;
 
-        product.Price =
-            dto.Price;
+        product.Price = dto.Price;
 
         product.QuantityAvailable =
             dto.QuantityAvailable;
 
-        product.IsActive =
-            dto.IsActive;
+        product.IsActive = dto.IsActive;
 
-        product.UpdatedAt =
-            DateTime.UtcNow;
+        product.UpdatedAt = DateTime.UtcNow;
 
         if (!string.IsNullOrWhiteSpace(dto.Currency))
         {
@@ -404,10 +534,12 @@ public class ProductsController : ControllerBase
             dto.Image.Length > 0)
         {
             if (!dto.Image.ContentType
-                .StartsWith("image/"))
+                .StartsWith("image/", StringComparison.OrdinalIgnoreCase))
             {
-                return BadRequest(
-                    "Only image files are allowed.");
+                return BadRequest(new
+                {
+                    message = "Only image files are allowed."
+                });
             }
 
             await using var ms =
@@ -415,11 +547,16 @@ public class ProductsController : ControllerBase
 
             await dto.Image.CopyToAsync(ms);
 
-            var base64 =
-                Convert.ToBase64String(ms.ToArray());
+            var bytes = ms.ToArray();
 
-            product.ImageUrl =
+            var base64 =
+                Convert.ToBase64String(bytes);
+
+            var dataUrl =
                 $"data:{dto.Image.ContentType};base64,{base64}";
+
+            product.ImageUrl = dataUrl;
+            product.ImageBase64 = dataUrl;
         }
 
         await _context.SaveChangesAsync();
@@ -430,9 +567,8 @@ public class ProductsController : ControllerBase
     // ============================================================
     // DELETE PRODUCT
     //
-    // Accepts either:
-    // - actual Suppliers.Id
-    // - logged-in Users.Id
+    // Soft delete:
+    // IsActive = false
     // ============================================================
 
     [HttpDelete("{id:guid}/supplier/{supplierId:guid}")]
@@ -440,21 +576,15 @@ public class ProductsController : ControllerBase
         Guid id,
         Guid supplierId)
     {
-        // First try actual Suppliers.Id
-        var supplier = await _context.Suppliers
-            .FirstOrDefaultAsync(s =>
-                s.Id == supplierId);
+        var supplier = await FindSupplier(supplierId);
 
-        // Otherwise try Users.Id
         if (supplier == null)
         {
-            supplier = await _context.Suppliers
-                .FirstOrDefaultAsync(s =>
-                    s.UserId == supplierId);
+            return NotFound(new
+            {
+                message = "Supplier not found."
+            });
         }
-
-        if (supplier == null)
-            return NotFound("Supplier not found.");
 
         var product = await _context.Products
             .FirstOrDefaultAsync(x =>
@@ -463,8 +593,11 @@ public class ProductsController : ControllerBase
 
         if (product == null)
         {
-            return NotFound(
-                "Product not found or does not belong to this supplier.");
+            return NotFound(new
+            {
+                message =
+                    "Product not found or does not belong to this supplier."
+            });
         }
 
         product.IsActive = false;
@@ -474,27 +607,51 @@ public class ProductsController : ControllerBase
 
         return Ok(new
         {
-            message = "Product deleted successfully."
+            message = "Product deleted successfully.",
+            productId = product.Id
         });
     }
 
-    [HttpGet("supplier-id/user/{userId:guid}")]
-    public async Task<IActionResult> GetSupplierIdByUser(Guid userId)
+    // ============================================================
+    // PRIVATE SUPPLIER RESOLUTION
+    //
+    // Accepts either:
+    // 1. Suppliers.Id
+    // 2. Users.Id
+    // ============================================================
+
+    private async Task<Supplier?> FindSupplier(
+        Guid id)
     {
         var supplier = await _context.Suppliers
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.UserId == userId);
+            .FirstOrDefaultAsync(s =>
+                s.Id == id);
 
-        if (supplier == null)
-            return NotFound(new
-            {
-                message = "Supplier profile not found.",
-                userId
-            });
+        if (supplier != null)
+            return supplier;
 
-        return Ok(new
-        {
-            supplierId = supplier.Id
-        });
+        return await _context.Suppliers
+            .FirstOrDefaultAsync(s =>
+                s.UserId == id);
+    }
+
+    // ============================================================
+    // NORMALIZATION
+    // ============================================================
+
+    private static string NormalizeCurrency(
+        string? currency)
+    {
+        return string.IsNullOrWhiteSpace(currency)
+            ? "PHP"
+            : currency.Trim().ToUpperInvariant();
+    }
+
+    private static string NormalizeCountry(
+        string? countryCode)
+    {
+        return string.IsNullOrWhiteSpace(countryCode)
+            ? "PH"
+            : countryCode.Trim().ToUpperInvariant();
     }
 }
