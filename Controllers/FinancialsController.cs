@@ -183,31 +183,43 @@ public class FinancialsController : ControllerBase
                     cancellationToken);
 
         if (financial == null)
+        {
             return NotFound(new
             {
                 message = "Financial record not found."
             });
+        }
+
+        if (!financial.OrderId.HasValue)
+        {
+            return BadRequest(new
+            {
+                message = "Financial record has no order ID."
+            });
+        }
 
         var order =
             await _context.Orders
                 .FirstOrDefaultAsync(
-                    x => x.Id == financial.OrderId,
+                    x => x.Id == financial.OrderId.Value,
                     cancellationToken);
 
         if (order == null)
+        {
             return NotFound(new
             {
                 message = "Order not found."
             });
+        }
 
-        // 1. Mark settlement paid
+        // Mark this settlement as paid
         settlement.Status = "paid";
         settlement.ReviewedAt = DateTime.UtcNow;
         settlement.ReviewedBy =
             User.Identity?.Name ?? "admin";
 
-        // 2. Check whether ALL settlement rows
-        // for this financial record are now paid.
+        // Check whether all settlement rows
+        // belonging to this order are now paid.
         var remainingSettlements =
             await _context.SettlementQueue
                 .AnyAsync(
@@ -220,20 +232,21 @@ public class FinancialsController : ControllerBase
                         x.Status != "paid",
                     cancellationToken);
 
+        // Only mark the complete financial settlement
+        // as paid when every settlement row is paid.
         if (!remainingSettlements)
         {
             financial.PayoutStatus = "paid";
             financial.SettlementStatus = "paid";
             financial.ProviderPayoutStatus = "paid";
-
-            financial.UpdatedAt = DateTime.UtcNow;
         }
 
         await _context.SaveChangesAsync(
             cancellationToken);
 
-        // 3. Only generate entrepreneur commission
-        // AFTER the settlement has actually been paid.
+        // Generate entrepreneur commission ONLY
+        // after every settlement for this order has
+        // been paid.
         if (!remainingSettlements)
         {
             await _entrepreneurCommissionService

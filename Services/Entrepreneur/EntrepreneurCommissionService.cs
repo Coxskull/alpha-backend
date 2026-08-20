@@ -347,28 +347,7 @@ public class EntrepreneurCommissionService
             }
         }
 
-        // Mechanic
-        if (order.MechanicId.HasValue)
-        {
-            var mechanic =
-                await _context.Mechanics
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(
-                        x => x.Id == order.MechanicId.Value,
-                        cancellationToken);
-
-            if (mechanic != null &&
-                mechanic.UserId.HasValue)
-            {
-                await GenerateForProviderUserAsync(
-                    mechanic.UserId.Value,
-                    order,
-                    financial,
-                    payment,
-                    "mechanic",
-                    cancellationToken);
-            }
-        }
+       
     }
 
     private async Task GenerateForProviderUserAsync(
