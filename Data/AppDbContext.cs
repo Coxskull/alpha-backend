@@ -229,71 +229,76 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("entrepreneur_earnings");
 
-            entity.HasKey(x => x.id);
+            entity.HasKey(e => e.Id);
 
-            entity.Property(x => x.AlphaGrossPlatformCommission)
-                .HasColumnName("alpha_gross_platform_commission")
-                .HasPrecision(18, 2);
+            entity.Property(e => e.Id)
+                .HasColumnName("id");
 
-            entity.Property(x => x.DirectTransactionCosts)
-                .HasColumnName("direct_transaction_costs")
-                .HasPrecision(18, 2);
+            entity.Property(e => e.EntrepreneurUserId)
+                .HasColumnName("entrepreneur_user_id");
 
-            entity.Property(x => x.EligibleNetPlatformRevenue)
-                .HasColumnName("eligible_net_platform_revenue")
-                .HasPrecision(18, 2);
+            entity.Property(e => e.RecruiterId)
+                .HasColumnName("recruiter_id");
 
-            entity.Property(x => x.EntrepreneurPercentage)
-                .HasColumnName("entrepreneur_percentage")
-                .HasPrecision(10, 6);
+            entity.Property(e => e.RecruitedProviderId)
+                .HasColumnName("recruited_provider_id");
 
-            entity.Property(x => x.EntrepreneurEarningsAmount)
-                .HasColumnName("entrepreneur_earnings_amount")
-                .HasPrecision(18, 2);
+            entity.Property(e => e.ProviderRole)
+                .HasColumnName("provider_role");
 
-            entity.Property(x => x.RefundAdjustment)
-                .HasColumnName("refund_adjustment")
-                .HasPrecision(18, 2);
+            entity.Property(e => e.OrderId)
+                .HasColumnName("order_id");
 
-            entity.Property(x => x.ChargebackAdjustment)
-                .HasColumnName("chargeback_adjustment")
-                .HasPrecision(18, 2);
+            entity.Property(e => e.TransactionId)
+                .HasColumnName("transaction_id");
 
-            entity.Property(x => x.Currency)
-                .HasColumnName("currency")
-                .HasMaxLength(10);
+            entity.Property(e => e.PaymentId)
+                .HasColumnName("payment_id");
 
-            entity.Property(x => x.EarningStatus)
-                .HasColumnName("earning_status")
-                .HasMaxLength(30);
+            entity.Property(e => e.TransactionDate)
+                .HasColumnName("transaction_date");
 
-            entity.Property(x => x.TransactionId)
-                .HasColumnName("transaction_id")
-                .HasMaxLength(200);
+            entity.Property(e => e.AlphaGrossPlatformCommission)
+                .HasColumnName("alpha_gross_platform_commission");
 
-            entity.Property(x => x.ProviderRole)
-                .HasColumnName("provider_role")
-                .HasMaxLength(50);
+            entity.Property(e => e.DirectTransactionCosts)
+                .HasColumnName("direct_transaction_costs");
 
-            entity.Property(x => x.PayoutReference)
-                .HasColumnName("payout_reference")
-                .HasMaxLength(200);
+            entity.Property(e => e.EligibleNetPlatformRevenue)
+                .HasColumnName("eligible_net_platform_revenue");
 
-            entity.HasIndex(x => x.OrderId);
+            entity.Property(e => e.EntrepreneurPercentage)
+                .HasColumnName("entrepreneur_percentage");
 
-            entity.HasIndex(x => x.EntrepreneurUserId);
+            entity.Property(e => e.EntrepreneurEarningsAmount)
+                .HasColumnName("entrepreneur_earnings_amount");
 
-            entity.HasIndex(x => x.RecruitedProviderId);
+            entity.Property(e => e.Currency)
+                .HasColumnName("currency");
 
-            entity.HasIndex(x => x.PayoutBatchId);
+            entity.Property(e => e.EarningStatus)
+                .HasColumnName("earning_status");
 
-            entity.HasIndex(x => new
-            {
-                x.OrderId,
-                x.RecruitedProviderId,
-                x.EntrepreneurUserId
-            })
-            .IsUnique();
+            entity.Property(e => e.RefundAdjustment)
+                .HasColumnName("refund_adjustment");
+
+            entity.Property(e => e.ChargebackAdjustment)
+                .HasColumnName("chargeback_adjustment");
+
+            entity.Property(e => e.PayoutBatchId)
+                .HasColumnName("payout_batch_id");
+
+            entity.Property(e => e.PayoutDate)
+                .HasColumnName("payout_date");
+
+            entity.Property(e => e.PayoutReference)
+                .HasColumnName("payout_reference");
+
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("created_at");
+
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnName("updated_at");
         });
 
         modelBuilder.Entity<EntrepreneurReferral>(entity =>
