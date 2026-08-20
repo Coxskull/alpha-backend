@@ -477,4 +477,24 @@ public class ProductsController : ControllerBase
             message = "Product deleted successfully."
         });
     }
+
+    [HttpGet("supplier-id/user/{userId:guid}")]
+    public async Task<IActionResult> GetSupplierIdByUser(Guid userId)
+    {
+        var supplier = await _context.Suppliers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.UserId == userId);
+
+        if (supplier == null)
+            return NotFound(new
+            {
+                message = "Supplier profile not found.",
+                userId
+            });
+
+        return Ok(new
+        {
+            supplierId = supplier.Id
+        });
+    }
 }
