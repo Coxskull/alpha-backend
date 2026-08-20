@@ -360,16 +360,29 @@ public class OrdersController : ControllerBase
                 2,
                 MidpointRounding.AwayFromZero);
 
-            var partsCommission =
-    await _autoPartsCommissionService.CalculateAsync(
-        itemSubtotal,
-        currency,
-        DateTime.UtcNow,
-        cancellationToken);
+            AutoPartsCommissionResultDtos partsCommission;
 
-            decimal supplierEarning =
-    itemSubtotal -
-    partsCommission.TotalCommission;
+            try
+            {
+                partsCommission =
+                    await _autoPartsCommissionService.CalculateAsync(
+                        itemSubtotal,
+                        currency,
+                        DateTime.UtcNow,
+                        cancellationToken);
+            }
+            catch (InvalidOperationException ex)
+            {
+                await databaseTransaction.RollbackAsync(
+                    CancellationToken.None);
+
+                return UnprocessableEntity(new
+                {
+                    message = ex.Message,
+                    code = "AUTO_PARTS_COMMISSION_POLICY_ERROR",
+                    currency = currency
+                });
+            }
 
 
             // ---------------------------------------------------------

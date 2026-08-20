@@ -90,18 +90,24 @@ public class PaymentsController : ControllerBase
         }
 
         var gateway =
-            dto.Gateway
-                .Trim()
-                .ToLowerInvariant();
+    dto.Gateway
+        .Trim()
+        .ToLowerInvariant();
 
-        if (gateway != "stripe")
+        gateway = gateway switch
         {
-            return BadRequest(new
-            {
-                message =
-                    "This endpoint currently supports Stripe."
-            });
-        }
+            "paymongo_gcash" => "paymongo",
+            "paypal" => "paypal",
+            "stripe" => "stripe",
+            "maya" => "maya",
+            "xendit" => "xendit",
+            "hitpay" => "hitpay",
+            _ => gateway
+        };
+
+        var provider =
+    _factory.Get(gateway);
+
 
         /*
          * IMPORTANT:
