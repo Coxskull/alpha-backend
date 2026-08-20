@@ -1562,16 +1562,56 @@ public class OrdersController : ControllerBase
             OrderStatuses.ProofUploaded);
 
         await AddAuditLog(
-            id,
-            "Delivery proof uploaded");
+    id,
+    "Delivery proof uploaded");
 
+        OrderFinancial? settlementFinancial = null;
+
+        try
+        {
+            settlementFinancial =
+                await _settlements.VerifySettlementAfterProof(
+                    id);
+
+            if (
+                settlementFinancial.FinancialStatus ==
+                    "verified" &&
+                settlementFinancial.SettlementStatus ==
+                    "ready_for_payout")
+            {
+                await _entrepreneurCommissionService
+                    .GenerateForOrderAsync(
+                        id,
+                        cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            await AddAuditLog(
+                id,
+                $"Post-delivery financial processing failed: {ex.Message}");
+        }
 
         return Ok(new
         {
             message =
-                "Delivery proof uploaded successfully.",
+         "Delivery proof uploaded successfully.",
+
             imageUrl,
-            status = order.Status
+
+            status = order.Status,
+
+            settlementStatus =
+         settlementFinancial?.SettlementStatus,
+
+            payoutStatus =
+         settlementFinancial?.PayoutStatus,
+
+            financialStatus =
+         settlementFinancial?.FinancialStatus,
+
+            reconciliationDifference =
+         settlementFinancial?.ReconciliationDifference
         });
     }
 

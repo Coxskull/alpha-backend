@@ -16,11 +16,16 @@ public class FinancialsController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly EntrepreneurCommissionService _entrepreneurCommissionService;
+    private readonly SettlementService _settlementService;
 
-    public FinancialsController(AppDbContext context, EntrepreneurCommissionService entrepreneurCommissionService)
+    public FinancialsController(
+     AppDbContext context,
+     EntrepreneurCommissionService entrepreneurCommissionService,
+     SettlementService settlementService)
     {
         _context = context;
         _entrepreneurCommissionService = entrepreneurCommissionService;
+        _settlementService = settlementService;
     }
 
     [HttpGet("settlement-queue")]
@@ -206,5 +211,46 @@ public class FinancialsController : ControllerBase
             pending,
             items = orderEarnings
         });
+    }
+
+    [HttpPost("orders/{orderId}/verify-settlement")]
+    [Authorize(Roles = "admin,dispatcher")]
+    public async Task<IActionResult> VerifySettlement(
+    Guid orderId,
+    CancellationToken cancellationToken)
+    {
+        try
+        {
+            var financial =
+                await _settlementService.VerifySettlementAfterProof(
+                    orderId);
+
+            if (financial == null)
+            {
+                return NotFound(new
+                {
+                    message = "Financial record not found."
+                });
+            }
+
+            return Ok(new
+            {
+                message = "Settlement verification completed.",
+                orderId,
+                financialStatus = financial.FinancialStatus,
+                payoutStatus = financial.PayoutStatus,
+                settlementStatus = financial.SettlementStatus,
+                reconciliationDifference =
+                    financial.ReconciliationDifference
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new
+            {
+                message = ex.Message,
+                orderId
+            });
+        }
     }
 }

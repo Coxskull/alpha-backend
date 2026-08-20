@@ -54,7 +54,9 @@ public class SettlementService
         return financial;
     }
 
-    public async Task<OrderFinancial> VerifySettlement(Guid orderId)
+    public async Task<OrderFinancial> VerifySettlement(
+    Guid orderId,
+    CancellationToken cancellationToken = default)
     {
         var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
 
@@ -92,7 +94,11 @@ public class SettlementService
             return financial;
         }
 
-        await EnsureTaxCalculated(orderId);
+        await EnsureTaxCalculated(
+     orderId,
+     order.CountryCode,
+     order.Currency,
+     cancellationToken);
 
         financial.CustomerPaid = payment.Amount;
         financial.ProcessingFee = 0;
@@ -122,45 +128,79 @@ public class SettlementService
         return financial;
     }
 
-    private async Task EnsureTaxCalculated(Guid orderId)
+    private async Task EnsureTaxCalculated(
+    Guid orderId,
+    string countryCode,
+    string currency,
+    CancellationToken cancellationToken = default)
     {
-        var alreadyCalculated = await _context.TaxCalculations
-            .AnyAsync(x => x.OrderId == orderId);
+        var alreadyCalculated =
+            await _context.TaxCalculations
+                .AnyAsync(
+                    x => x.OrderId == orderId,
+                    cancellationToken);
 
         if (alreadyCalculated)
             return;
 
         await _taxEngine.CalculateOrderTaxes(
             orderId: orderId,
-            country: "MX",
+            country: countryCode,
             region: null,
-            currency: "MXN"
+            currency: currency,
+            cancellationToken: cancellationToken
         );
     }
 
-    private void ApplyTaxAwareSettlement(OrderFinancial financial)
+    private void ApplyTaxAwareSettlement(
+     OrderFinancial financial)
     {
-        financial.TaxCollected = financial.Tax;
+        financial.TaxCollected =
+            financial.Tax;
 
-        financial.SupplierNetPayable = Math.Max(
-            0,
-            financial.SupplierAmount - financial.TaxWithheld
-        );
+        financial.SupplierNetPayable =
+            Math.Max(
+                0m,
+                financial.SupplierAmount -
+                financial.TaxWithheld
+            );
 
-        financial.DriverNetPayable = Math.Max(
-            0,
-            financial.DriverAmount
-        );
+        financial.DriverNetPayable =
+            Math.Max(
+                0m,
+                financial.DriverAmount
+            );
 
-        financial.MechanicNetPayable = Math.Max(
-            0,
-            financial.MechanicAmount
-        );
+        financial.MechanicNetPayable =
+            Math.Max(
+                0m,
+                financial.MechanicAmount
+            );
 
-        financial.AlphaNetRevenue = Math.Max(
-            0,
-            financial.AlphaPlatformFee + financial.ServiceFee - financial.ProcessingFee
-        );
+        // Driver receives 70% of delivery fee.
+        // Alpha retains the remaining 30%.
+        var alphaDeliveryRevenue =
+            Math.Max(
+                0m,
+                financial.DeliveryFee -
+                financial.DriverNetPayable
+            );
+
+        financial.AlphaGrossDeliveryCommission =
+            alphaDeliveryRevenue;
+
+        financial.AlphaGrossPlatformCommission =
+            financial.AlphaGrossPartsCommission +
+            financial.AlphaGrossMechanicCommission +
+            financial.AlphaGrossDeliveryCommission;
+
+        financial.AlphaNetRevenue =
+            Math.Max(
+                0m,
+                financial.AlphaGrossPlatformCommission +
+                financial.ServiceFee -
+                financial.ProcessingFee
+            );
 
         financial.TotalAmount =
             financial.ItemSubtotal +
@@ -216,52 +256,62 @@ public class SettlementService
 
     private async Task CreateSettlementQueueItems(OrderFinancial financial, Order order)
     {
-        var exists = await _context.SettlementQueue
-            .AnyAsync(x => x.OrderFinancialId == financial.Id);
+        var existingPayees =
+     await _context.SettlementQueue
+         .Where(x =>
+             x.OrderFinancialId == financial.Id)
+         .Select(x => x.PayeeType)
+         .ToListAsync();
 
-        if (exists)
-            return;
-
-        if (financial.SupplierNetPayable > 0)
+        if (
+    financial.SupplierNetPayable > 0 &&
+    !existingPayees.Contains("supplier"))
         {
-            _context.SettlementQueue.Add(new SettlementQueue
-            {
-                Id = Guid.NewGuid(),
-                OrderFinancialId = financial.Id,
-                PayeeType = "supplier",
-                PayeeId = order.SupplierId,
-                Amount = financial.SupplierNetPayable,
-                Status = "ready_for_payout",
-                CreatedAt = DateTime.UtcNow
-            });
+            _context.SettlementQueue.Add(
+                new SettlementQueue
+                {
+                    Id = Guid.NewGuid(),
+                    OrderFinancialId = financial.Id,
+                    PayeeType = "supplier",
+                    PayeeId = order.SupplierId,
+                    Amount = financial.SupplierNetPayable,
+                    Status = "ready_for_payout",
+                    CreatedAt = DateTime.UtcNow
+                });
         }
 
-        if (financial.DriverNetPayable > 0)
+        if (
+    financial.DriverNetPayable > 0 &&
+    !existingPayees.Contains("driver"))
         {
-            _context.SettlementQueue.Add(new SettlementQueue
-            {
-                Id = Guid.NewGuid(),
-                OrderFinancialId = financial.Id,
-                PayeeType = "driver",
-                PayeeId = order.DriverId,
-                Amount = financial.DriverNetPayable,
-                Status = "ready_for_payout",
-                CreatedAt = DateTime.UtcNow
-            });
+            _context.SettlementQueue.Add(
+                new SettlementQueue
+                {
+                    Id = Guid.NewGuid(),
+                    OrderFinancialId = financial.Id,
+                    PayeeType = "driver",
+                    PayeeId = order.DriverId,
+                    Amount = financial.DriverNetPayable,
+                    Status = "ready_for_payout",
+                    CreatedAt = DateTime.UtcNow
+                });
         }
 
-        if (financial.MechanicNetPayable > 0)
+        if (
+    financial.MechanicNetPayable > 0 &&
+    !existingPayees.Contains("mechanic"))
         {
-            _context.SettlementQueue.Add(new SettlementQueue
-            {
-                Id = Guid.NewGuid(),
-                OrderFinancialId = financial.Id,
-                PayeeType = "mechanic",
-                PayeeId = null,
-                Amount = financial.MechanicNetPayable,
-                Status = "ready_for_payout",
-                CreatedAt = DateTime.UtcNow
-            });
+            _context.SettlementQueue.Add(
+                new SettlementQueue
+                {
+                    Id = Guid.NewGuid(),
+                    OrderFinancialId = financial.Id,
+                    PayeeType = "mechanic",
+                    PayeeId = null,
+                    Amount = financial.MechanicNetPayable,
+                    Status = "ready_for_payout",
+                    CreatedAt = DateTime.UtcNow
+                });
         }
     }
 
