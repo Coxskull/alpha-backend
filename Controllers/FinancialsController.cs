@@ -144,18 +144,112 @@ public class FinancialsController : ControllerBase
 
     [HttpPost("settlement/{id}/mark-paid")]
     [Authorize(Roles = "admin")]
-    public async Task<IActionResult> MarkSettlementPaid(Guid id)
+    public async Task<IActionResult> MarkSettlementPaid(
+    Guid id,
+    CancellationToken cancellationToken)
     {
-        var settlement = await _context.SettlementQueue.FindAsync(id);
-        if (settlement == null) return NotFound();
+        var settlement = await _context.SettlementQueue
+            .FirstOrDefaultAsync(
+                x => x.Id == id,
+                cancellationToken);
 
+        if (settlement == null)
+            return NotFound();
+
+        if (settlement.Status == "paid")
+        {
+            return Ok(new
+            {
+                success = true,
+                message = "Settlement is already marked as paid.",
+                settlementId = settlement.Id
+            });
+        }
+
+        if (settlement.Status != "pending_payout" &&
+            settlement.Status != "ready_for_payout")
+        {
+            return BadRequest(new
+            {
+                message =
+                    $"Settlement cannot be paid from status '{settlement.Status}'."
+            });
+        }
+
+        var financial =
+            await _context.OrderFinancials
+                .FirstOrDefaultAsync(
+                    x => x.Id == settlement.OrderFinancialId,
+                    cancellationToken);
+
+        if (financial == null)
+            return NotFound(new
+            {
+                message = "Financial record not found."
+            });
+
+        var order =
+            await _context.Orders
+                .FirstOrDefaultAsync(
+                    x => x.Id == financial.OrderId,
+                    cancellationToken);
+
+        if (order == null)
+            return NotFound(new
+            {
+                message = "Order not found."
+            });
+
+        // 1. Mark settlement paid
         settlement.Status = "paid";
         settlement.ReviewedAt = DateTime.UtcNow;
-        settlement.ReviewedBy = User.Identity?.Name ?? "admin";
+        settlement.ReviewedBy =
+            User.Identity?.Name ?? "admin";
 
-        await _context.SaveChangesAsync();
+        // 2. Check whether ALL settlement rows
+        // for this financial record are now paid.
+        var remainingSettlements =
+            await _context.SettlementQueue
+                .AnyAsync(
+                    x =>
+                        x.OrderFinancialId ==
+                            settlement.OrderFinancialId
+                        &&
+                        x.Id != settlement.Id
+                        &&
+                        x.Status != "paid",
+                    cancellationToken);
 
-        return Ok(settlement);
+        if (!remainingSettlements)
+        {
+            financial.PayoutStatus = "paid";
+            financial.SettlementStatus = "paid";
+            financial.ProviderPayoutStatus = "paid";
+
+            financial.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await _context.SaveChangesAsync(
+            cancellationToken);
+
+        // 3. Only generate entrepreneur commission
+        // AFTER the settlement has actually been paid.
+        if (!remainingSettlements)
+        {
+            await _entrepreneurCommissionService
+                .GenerateForOrderAsync(
+                    order.Id,
+                    cancellationToken);
+        }
+
+        return Ok(new
+        {
+            success = true,
+            settlementId = settlement.Id,
+            settlementStatus = settlement.Status,
+            orderId = order.Id,
+            allSettlementsPaid = !remainingSettlements
+        });
     }
 
     [HttpGet("supplier/{supplierId}/earnings")]
