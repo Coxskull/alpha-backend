@@ -8,6 +8,7 @@ using Alpha.API.Services;
 using Alpha.API.Services.Entrepreneur;
 using System.IO;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Authorization;
 
 namespace Alpha.API.Controllers;
 

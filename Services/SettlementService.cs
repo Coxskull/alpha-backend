@@ -3,7 +3,7 @@ using Alpha.API.Models;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Threading.Tasks;
-
+using Alpha.API.Services.Entrepreneur;
 namespace Alpha.API.Services;
 
 public class SettlementService
