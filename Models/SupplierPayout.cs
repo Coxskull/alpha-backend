@@ -12,7 +12,9 @@ namespace Alpha.API.Models
 
 		public decimal Amount { get; set; }
 
-		public string Status { get; set; } = "pending";
+		public string Currency { get; set; } = "PHP";
+
+		public string PayoutStatus { get; set; } = "pending";
 
 		public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

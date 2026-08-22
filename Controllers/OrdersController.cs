@@ -9,6 +9,7 @@ using Alpha.API.Services.Entrepreneur;
 using System.IO;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Authorization;
+using Alpha.API.Extensions;
 
 namespace Alpha.API.Controllers;
 

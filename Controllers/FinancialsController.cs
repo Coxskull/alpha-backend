@@ -8,6 +8,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Alpha.API.Services.Entrepreneur;
 using Alpha.API.Services;
+using Alpha.API.Extensions;
+
 namespace Alpha.API.Controllers;
 
 [ApiController]
