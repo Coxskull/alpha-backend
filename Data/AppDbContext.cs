@@ -183,6 +183,68 @@ public class AppDbContext : DbContext
             .HasForeignKey(x => x.RoleKey)
             .HasPrincipalKey(x => x.RoleKey);
 
+        modelBuilder.Entity<SupplierPayout>(entity =>
+        {
+            entity.ToTable("supplier_payouts");
+
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Id)
+                .HasColumnName("id");
+
+            entity.Property(x => x.SupplierId)
+                .HasColumnName("supplier_id");
+
+            entity.Property(x => x.OrderId)
+                .HasColumnName("order_id");
+
+            entity.Property(x => x.Amount)
+                .HasColumnName("amount");
+
+            entity.Property(x => x.Currency)
+                .HasColumnName("currency");
+
+            entity.Property(x => x.PayoutStatus)
+                .HasColumnName("payout_status");
+
+            entity.Property(x => x.PaidAt)
+                .HasColumnName("paid_at");
+
+            entity.Property(x => x.CreatedAt)
+                .HasColumnName("created_at");
+        });
+
+        modelBuilder.Entity<DriverPayout>(entity =>
+        {
+            entity.ToTable("driver_payouts");
+
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Id)
+                .HasColumnName("id");
+
+            entity.Property(x => x.DriverId)
+                .HasColumnName("driver_id");
+
+            entity.Property(x => x.OrderId)
+                .HasColumnName("order_id");
+
+            entity.Property(x => x.Amount)
+                .HasColumnName("amount");
+
+            entity.Property(x => x.Currency)
+                .HasColumnName("currency");
+
+            entity.Property(x => x.PayoutStatus)
+                .HasColumnName("payout_status");
+
+            entity.Property(x => x.PaidAt)
+                .HasColumnName("paid_at");
+
+            entity.Property(x => x.CreatedAt)
+                .HasColumnName("created_at");
+        });
+
         modelBuilder.Entity<EntrepreneurReferral>(entity =>
         {
             entity.ToTable("entrepreneur_referrals");
