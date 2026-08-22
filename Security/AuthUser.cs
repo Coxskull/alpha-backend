@@ -1,6 +1,5 @@
 using System;
 using System.Security.Claims;
-using Alpha.API.Extensions;
 namespace Alpha.API.Security;
 
 public static class AuthUser
