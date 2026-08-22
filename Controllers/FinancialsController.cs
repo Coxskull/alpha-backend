@@ -14,7 +14,6 @@ namespace Alpha.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "admin,dispatcher")]
 public class FinancialsController : ControllerBase
 {
     private readonly AppDbContext _context;
