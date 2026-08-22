@@ -67,6 +67,8 @@ public class AppDbContext : DbContext
     public DbSet<AutoPartsCommissionCalculation> AutoPartsCommissionCalculations { get; set; }
     public DbSet<AutoPartsCommissionCalculationLine> AutoPartsCommissionCalculationLines { get; set; }
     public DbSet<AutoPartsCommissionAuditLog> AutoPartsCommissionAuditLogs { get; set; }
+    public DbSet<SupplierPayout> SupplierPayouts { get; set; }
+    public DbSet<DriverPayout> DriverPayouts { get; set; }
 
     public DbSet<RoleVerificationApplication>
     RoleVerificationApplications
