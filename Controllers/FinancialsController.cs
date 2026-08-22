@@ -232,6 +232,25 @@ public class FinancialsController : ControllerBase
                         x.Status != "paid",
                     cancellationToken);
 
+        if (!remainingSettlements)
+        {
+            financial.PayoutStatus = "paid";
+            financial.SettlementStatus = "paid";
+            financial.ProviderPayoutStatus = "paid";
+
+            await _entrepreneurCommissionService
+                .GenerateForOrderAfterSettlementPaidAsync(
+                    order.Id,
+                    cancellationToken);
+        }
+
+
+        await _entrepreneurCommissionService
+    .GenerateForPaidSettlementAsync(
+        settlement,
+        order,
+        financial,
+        cancellationToken);
         // Only mark the complete financial settlement
         // as paid when every settlement row is paid.
         if (!remainingSettlements)
@@ -239,6 +258,117 @@ public class FinancialsController : ControllerBase
             financial.PayoutStatus = "paid";
             financial.SettlementStatus = "paid";
             financial.ProviderPayoutStatus = "paid";
+        }
+        if (settlement.PayeeType == "supplier")
+        {
+            if (!settlement.PayeeId.HasValue)
+            {
+                return BadRequest(new
+                {
+                    message = "Supplier settlement has no supplier ID."
+                });
+            }
+
+            var supplier = await _context.Suppliers
+                .FirstOrDefaultAsync(
+                    x => x.Id == settlement.PayeeId.Value,
+                    cancellationToken);
+
+            if (supplier == null)
+            {
+                return BadRequest(new
+                {
+                    message = "Supplier not found."
+                });
+            }
+
+            var existingPayout =
+                await _context.SupplierPayouts
+                    .FirstOrDefaultAsync(
+                        x =>
+                            x.OrderId == order.Id &&
+                            x.SupplierId == supplier.Id,
+                        cancellationToken);
+
+            if (existingPayout == null)
+            {
+                _context.SupplierPayouts.Add(
+                    new SupplierPayout
+                    {
+                        Id = Guid.NewGuid(),
+
+                        SupplierId = supplier.Id,
+
+                        OrderId = order.Id,
+
+                        Amount = settlement.Amount,
+
+                        Currency = financial.Currency,
+
+                        PayoutStatus = "paid",
+
+                        PaidAt = DateTime.UtcNow,
+
+                        CreatedAt = DateTime.UtcNow
+                    }
+                );
+            }
+        }
+
+        if (settlement.PayeeType == "driver")
+        {
+            if (!settlement.PayeeId.HasValue)
+            {
+                return BadRequest(new
+                {
+                    message = "Driver settlement has no driver ID."
+                });
+            }
+
+            var driver = await _context.Drivers
+                .FirstOrDefaultAsync(
+                    x => x.Id == settlement.PayeeId.Value,
+                    cancellationToken);
+
+            if (driver == null)
+            {
+                return BadRequest(new
+                {
+                    message = "Driver not found."
+                });
+            }
+
+            var existingPayout =
+                await _context.DriverPayouts
+                    .FirstOrDefaultAsync(
+                        x =>
+                            x.OrderId == order.Id &&
+                            x.DriverId == driver.Id,
+                        cancellationToken);
+
+            if (existingPayout == null)
+            {
+                _context.DriverPayouts.Add(
+                    new DriverPayout
+                    {
+                        Id = Guid.NewGuid(),
+
+                        DriverId = driver.Id,
+
+                        OrderId = order.Id,
+
+                        Amount = settlement.Amount,
+
+                        Currency = financial.Currency,
+
+                        PayoutStatus = "paid",
+
+                        PaidAt = DateTime.UtcNow,
+
+                        CreatedAt = DateTime.UtcNow
+                    }
+                );
+            }
         }
 
         await _context.SaveChangesAsync(
@@ -267,25 +397,59 @@ public class FinancialsController : ControllerBase
 
     [HttpGet("supplier/{supplierId}/earnings")]
     [Authorize(Roles = "admin,dispatcher,supplier,provider")]
-    public async Task<IActionResult> GetSupplierEarnings(Guid supplierId)
+    public async Task<IActionResult> GetSupplierEarnings(
+     Guid supplierId,
+     CancellationToken cancellationToken)
     {
-        var records = await _context.OrderFinancials
-            .Where(x => x.SupplierAmount > 0)
+        var userId = User.GetUserId();
+        var role = User.GetRole()
+            .Trim()
+            .ToLowerInvariant();
+
+        if (role == "supplier" || role == "provider")
+        {
+            var supplier = await _context.Suppliers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x => x.UserId == userId,
+                    cancellationToken);
+
+            if (supplier == null)
+                return Forbid();
+
+            if (supplier.Id != supplierId)
+                return Forbid();
+        }
+
+        var payouts = await _context.SupplierPayouts
+            .AsNoTracking()
+            .Where(x => x.SupplierId == supplierId)
             .OrderByDescending(x => x.CreatedAt)
             .Select(x => new
             {
                 x.Id,
                 x.OrderId,
-                x.ServiceRequestId,
-                amount = x.SupplierAmount,
+                x.SupplierId,
+                x.Amount,
                 x.Currency,
-                x.FinancialStatus,
                 x.PayoutStatus,
+                x.PaidAt,
                 x.CreatedAt
             })
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
-        return Ok(records);
+        return Ok(new
+        {
+            totalPaid = payouts
+                .Where(x => x.PayoutStatus == "paid")
+                .Sum(x => x.Amount),
+
+            pending = payouts
+                .Where(x => x.PayoutStatus != "paid")
+                .Sum(x => x.Amount),
+
+            items = payouts
+        });
     }
 
     [HttpGet("driver/{driverId}/wallet")]
@@ -360,5 +524,105 @@ public class FinancialsController : ControllerBase
                 orderId
             });
         }
+    }
+
+    [HttpGet("my-supplier-earnings")]
+    [Authorize(Roles = "supplier,provider")]
+    public async Task<IActionResult> GetMySupplierEarnings(
+    CancellationToken cancellationToken)
+    {
+        Guid userId;
+
+        try
+        {
+            userId = User.GetUserId();
+        }
+        catch
+        {
+            return Unauthorized();
+        }
+
+        var supplier = await _context.Suppliers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                x => x.UserId == userId,
+                cancellationToken);
+
+        if (supplier == null)
+            return NotFound("Supplier profile not found.");
+
+        var payouts = await _context.SupplierPayouts
+            .AsNoTracking()
+            .Where(x => x.SupplierId == supplier.Id)
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => new
+            {
+                x.Id,
+                x.OrderId,
+                x.Amount,
+                x.Currency,
+                x.PayoutStatus,
+                x.PaidAt,
+                x.CreatedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        return Ok(new
+        {
+            totalPaid = payouts
+                .Where(x => x.PayoutStatus == "paid")
+                .Sum(x => x.Amount),
+
+            pending = payouts
+                .Where(x => x.PayoutStatus != "paid")
+                .Sum(x => x.Amount),
+
+            items = payouts
+        });
+    }
+
+    [HttpGet("my-driver-wallet")]
+    [Authorize(Roles = "driver")]
+    public async Task<IActionResult> GetMyDriverWallet(
+    CancellationToken cancellationToken)
+    {
+        Guid userId;
+
+        try
+        {
+            userId = User.GetUserId();
+        }
+        catch
+        {
+            return Unauthorized();
+        }
+
+        var driver = await _context.Drivers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                x => x.UserId == userId,
+                cancellationToken);
+
+        if (driver == null)
+            return NotFound("Driver profile not found.");
+
+        var payouts = await _context.DriverPayouts
+            .AsNoTracking()
+            .Where(x => x.DriverId == driver.Id)
+            .OrderByDescending(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        return Ok(new
+        {
+            totalPaid = payouts
+                .Where(x => x.PayoutStatus == "paid")
+                .Sum(x => x.Amount),
+
+            pending = payouts
+                .Where(x => x.PayoutStatus != "paid")
+                .Sum(x => x.Amount),
+
+            items = payouts
+        });
     }
 }

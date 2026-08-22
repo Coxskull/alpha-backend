@@ -10,11 +10,18 @@ public class SettlementService
 {
     private readonly AppDbContext _context;
     private readonly TaxEngineService _taxEngine;
+    private readonly EntrepreneurCommissionService
+        _entrepreneurCommissionService;
 
-    public SettlementService(AppDbContext context, TaxEngineService taxEngine)
+    public SettlementService(
+        AppDbContext context,
+        TaxEngineService taxEngine,
+        EntrepreneurCommissionService entrepreneurCommissionService)
     {
         _context = context;
         _taxEngine = taxEngine;
+        _entrepreneurCommissionService =
+            entrepreneurCommissionService;
     }
 
     public async Task<OrderFinancial> CreateOrUpdateSettlementAfterPayment(Guid orderId)
@@ -72,17 +79,24 @@ public class SettlementService
         if (payment == null || financial == null)
             throw new Exception("Missing payment or financial record.");
 
-        var paymentSuccessful = payment.PaymentStatus == "paid";
-        var supplierComplete = order.SupplierId != null;
+        var paymentSuccessful =
+    payment.PaymentStatus == "paid";
+
+        var supplierComplete =
+            await _context.OrderItems
+                .AnyAsync(
+                    x =>
+                        x.OrderId == orderId &&
+                        x.SupplierId != Guid.Empty,
+                    cancellationToken);
 
         var driverComplete =
             order.DriverId != null &&
-            (order.Status == "delivered" || order.Status == "proof_uploaded");
+            order.Status == "completed";
 
         var hasProof =
-            proofUploaded ||
-            order.Status == "proof_uploaded" ||
-            order.Status == "delivered";
+    proofUploaded &&
+    order.Status == "completed";
 
         if (!paymentSuccessful || !supplierComplete || !driverComplete || !hasProof)
         {
@@ -254,64 +268,203 @@ public class SettlementService
         });
     }
 
-    private async Task CreateSettlementQueueItems(OrderFinancial financial, Order order)
+    private async Task CreateSettlementQueueItems(
+    OrderFinancial financial,
+    Order order)
     {
-        var existingPayees =
-     await _context.SettlementQueue
-         .Where(x =>
-             x.OrderFinancialId == financial.Id)
-         .Select(x => x.PayeeType)
-         .ToListAsync();
+        // Get all suppliers that own products/items
+        // contained in this order.
+        var supplierIds = await _context.OrderItems
+            .Where(x => x.OrderId == order.Id)
+            .Select(x => x.SupplierId)
+            .Distinct()
+            .ToListAsync();
 
-        if (
-    financial.SupplierNetPayable > 0 &&
-    !existingPayees.Contains("supplier"))
+        // Get existing settlement payees for this financial record.
+        // We use PayeeId as well because multiple suppliers
+        // can now exist in the same order.
+        var existingPayees = await _context.SettlementQueue
+            .Where(x => x.OrderFinancialId == financial.Id)
+            .Select(x => new
+            {
+                x.PayeeType,
+                x.PayeeId
+            })
+            .ToListAsync();
+
+
+        // ============================================================
+        // SUPPLIER SETTLEMENTS
+        // ============================================================
+
+        var supplierGroups = await _context.OrderItems
+    .Where(x => x.OrderId == order.Id)
+    .GroupBy(x => x.SupplierId)
+    .Select(g => new
+    {
+        SupplierId = g.Key,
+        GrossAmount = g.Sum(x =>
+            (x.UnitPrice ?? 0m) * x.Quantity)
+    })
+    .Where(x => x.GrossAmount > 0)
+    .ToListAsync();
+
+        var totalSupplierGross =
+            supplierGroups.Sum(x => x.GrossAmount);
+
+        var supplierPayable =
+            financial.SupplierNetPayable;
+
+        decimal allocatedSupplierAmount = 0m;
+
+        foreach (var supplierGroup in supplierGroups)
         {
+            if (supplierGroup.SupplierId == Guid.Empty)
+                continue;
+
+            var alreadyExists = existingPayees.Any(x =>
+                x.PayeeType == "supplier" &&
+                x.PayeeId == supplierGroup.SupplierId);
+
+            if (alreadyExists)
+                continue;
+
+            decimal supplierAmount;
+
+            var isLastSupplier =
+                supplierGroup.SupplierId ==
+                supplierGroups.Last().SupplierId;
+
+            if (isLastSupplier)
+            {
+                // Prevent rounding differences.
+                supplierAmount =
+                    Math.Round(
+                        supplierPayable -
+                        allocatedSupplierAmount,
+                        2,
+                        MidpointRounding.AwayFromZero);
+            }
+            else
+            {
+                supplierAmount =
+                    Math.Round(
+                        supplierPayable *
+                        supplierGroup.GrossAmount /
+                        totalSupplierGross,
+                        2,
+                        MidpointRounding.AwayFromZero);
+            }
+
+            if (supplierAmount <= 0)
+                continue;
+
+            allocatedSupplierAmount += supplierAmount;
+
             _context.SettlementQueue.Add(
                 new SettlementQueue
                 {
                     Id = Guid.NewGuid(),
-                    OrderFinancialId = financial.Id,
-                    PayeeType = "supplier",
-                    PayeeId = order.SupplierId,
-                    Amount = financial.SupplierNetPayable,
-                    Status = "ready_for_payout",
-                    CreatedAt = DateTime.UtcNow
+
+                    OrderFinancialId =
+                        financial.Id,
+
+                    PayeeType =
+                        "supplier",
+
+                    PayeeId =
+                        supplierGroup.SupplierId,
+
+                    Amount =
+                        supplierAmount,
+
+                    Status =
+                        "ready_for_payout",
+
+                    CreatedAt =
+                        DateTime.UtcNow
                 });
         }
 
-        if (
-    financial.DriverNetPayable > 0 &&
-    !existingPayees.Contains("driver"))
-        {
-            _context.SettlementQueue.Add(
-                new SettlementQueue
-                {
-                    Id = Guid.NewGuid(),
-                    OrderFinancialId = financial.Id,
-                    PayeeType = "driver",
-                    PayeeId = order.DriverId,
-                    Amount = financial.DriverNetPayable,
-                    Status = "ready_for_payout",
-                    CreatedAt = DateTime.UtcNow
-                });
-        }
+
+        // ============================================================
+        // DRIVER SETTLEMENT
+        // ============================================================
 
         if (
-    financial.MechanicNetPayable > 0 &&
-    !existingPayees.Contains("mechanic"))
+            financial.DriverNetPayable > 0 &&
+            order.DriverId.HasValue)
         {
-            _context.SettlementQueue.Add(
-                new SettlementQueue
-                {
-                    Id = Guid.NewGuid(),
-                    OrderFinancialId = financial.Id,
-                    PayeeType = "mechanic",
-                    PayeeId = null,
-                    Amount = financial.MechanicNetPayable,
-                    Status = "ready_for_payout",
-                    CreatedAt = DateTime.UtcNow
-                });
+            var driverAlreadyExists =
+                existingPayees.Any(x =>
+                    x.PayeeType == "driver" &&
+                    x.PayeeId == order.DriverId);
+
+            if (!driverAlreadyExists)
+            {
+                _context.SettlementQueue.Add(
+                    new SettlementQueue
+                    {
+                        Id = Guid.NewGuid(),
+
+                        OrderFinancialId =
+                            financial.Id,
+
+                        PayeeType =
+                            "driver",
+
+                        PayeeId =
+                            order.DriverId,
+
+                        Amount =
+                            financial.DriverNetPayable,
+
+                        Status =
+                            "ready_for_payout",
+
+                        CreatedAt =
+                            DateTime.UtcNow
+                    });
+            }
+        }
+
+
+        // ============================================================
+        // MECHANIC SETTLEMENT
+        // ============================================================
+
+        if (financial.MechanicNetPayable > 0)
+        {
+            var mechanicAlreadyExists =
+                existingPayees.Any(x =>
+                    x.PayeeType == "mechanic");
+
+            if (!mechanicAlreadyExists)
+            {
+                _context.SettlementQueue.Add(
+                    new SettlementQueue
+                    {
+                        Id = Guid.NewGuid(),
+
+                        OrderFinancialId =
+                            financial.Id,
+
+                        PayeeType =
+                            "mechanic",
+
+                        PayeeId =
+                            null,
+
+                        Amount =
+                            financial.MechanicNetPayable,
+
+                        Status =
+                            "ready_for_payout",
+
+                        CreatedAt =
+                            DateTime.UtcNow
+                    });
+            }
         }
     }
 

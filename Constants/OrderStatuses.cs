@@ -18,7 +18,7 @@ public static class OrderStatuses
     public const string ProofUploaded = "proof_uploaded";
     public const string SettlementPending = "settlement_pending";
     public const string ReadyForPayout = "ready_for_payout";
-
+    public const string Completed = "completed";
     public const string SupplierDeclined = "supplier_declined";
     public const string DriverDeclined = "driver_declined";
     public const string SupplierUnavailable = "supplier_unavailable";

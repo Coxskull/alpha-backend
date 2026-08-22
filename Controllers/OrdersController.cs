@@ -544,9 +544,15 @@ public class OrdersController : ControllerBase
                 var orderItem = new OrderItem
                 {
                     Id = Guid.NewGuid(),
+
                     OrderId = order.Id,
+
                     ProductId = product.Id,
+
+                    SupplierId = product.SupplierId,
+
                     Quantity = item.Quantity,
+
                     UnitPrice = product.Price
                 };
 
@@ -1343,49 +1349,78 @@ public class OrdersController : ControllerBase
     // PICKED UP
     // POST: /api/Orders/{id}/picked-up
     // =========================================================
-    [HttpPost("{id}/picked-up")]
-    public async Task<IActionResult> PickedUp(Guid id)
+    [HttpPost("{id:guid}/picked-up")]
+    [Authorize(Roles = "driver")]
+    public async Task<IActionResult> PickedUp(
+    Guid id,
+    CancellationToken cancellationToken)
     {
-        var order = await _context.Orders.FindAsync(id);
+        var driver =
+            await GetCurrentDriver(cancellationToken);
+
+        if (driver == null)
+            return Forbid();
+
+        var order =
+            await GetDriverOrder(
+                id,
+                driver.Id,
+                cancellationToken);
 
         if (order == null)
-            return NotFound();
-
-        if (order.Status != OrderStatuses.WaitingForPickup &&
-    order.Status != OrderStatuses.DriverAccepted)
         {
-            return BadRequest(
-                "Order must have assigned driver before pickup."
-            );
+            return NotFound(
+                new
+                {
+                    message =
+                        "Order not found or is not assigned to you."
+                });
         }
 
-        if (order.DriverId == null)
+        // IMPORTANT:
+        // Driver can only pick up after supplier
+        // has marked the order ready for pickup.
+        if (order.Status != OrderStatuses.WaitingForPickup)
         {
             return BadRequest(
-                "No driver assigned."
-            );
+                new
+                {
+                    message =
+                        $"Order cannot be picked up while " +
+                        $"status is '{order.Status}'. " +
+                        $"Expected '{OrderStatuses.WaitingForPickup}'."
+                });
         }
-        order.Status = OrderStatuses.PickedUp;
-        order.UpdatedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
+        order.Status =
+            OrderStatuses.PickedUp;
 
-        await AddStatusHistory(id, OrderStatuses.PickedUp);
-        await AddAuditLog(id, "Order Picked Up");
+        order.UpdatedAt =
+            DateTime.UtcNow;
 
-        order.Status = OrderStatuses.EnRoute;
-        order.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync(
+            cancellationToken);
 
-        await _context.SaveChangesAsync();
+        await AddOrderStatusHistory(
+            id,
+            OrderStatuses.PickedUp,
+            $"Picked up by driver {driver.Id}.",
+            cancellationToken);
 
-        await AddStatusHistory(id, OrderStatuses.EnRoute);
-        await AddAuditLog(id, "Driver En Route");
+        await AddOrderAuditLog(
+            id,
+            $"Driver {driver.Id} picked up order.",
+            cancellationToken);
 
-        return Ok(new
-        {
-            message = "Order picked up and driver is now en route",
-            status = order.Status
-        });
+        return Ok(
+            new
+            {
+                success = true,
+                orderId = order.Id,
+                driverId = driver.Id,
+                status = order.Status,
+                updatedAt = order.UpdatedAt
+            });
     }
 
     // =========================================================
@@ -1393,89 +1428,154 @@ public class OrdersController : ControllerBase
     // POST: /api/Orders/{id}/en-route
     // =========================================================
 
-    [HttpPost("{id}/en-route")]
-    public async Task<IActionResult> EnRoute(Guid id)
+    [HttpPost("{id:guid}/en-route")]
+    [Authorize(Roles = "driver")]
+    public async Task<IActionResult> EnRoute(
+    Guid id,
+    CancellationToken cancellationToken)
     {
-        var order = await _context.Orders.FindAsync(id);
+        var driver =
+            await GetCurrentDriver(cancellationToken);
+
+        if (driver == null)
+            return Forbid();
+
+        var order =
+            await GetDriverOrder(
+                id,
+                driver.Id,
+                cancellationToken);
 
         if (order == null)
-            return NotFound();
+        {
+            return NotFound(
+                new
+                {
+                    message =
+                        "Order not found or is not assigned to you."
+                });
+        }
 
+        // IMPORTANT:
+        // Driver must have picked up the order first.
         if (order.Status != OrderStatuses.PickedUp)
         {
             return BadRequest(
-                "Order must be picked up first."
-            );
+                new
+                {
+                    message =
+                        $"Order cannot be marked en-route while " +
+                        $"status is '{order.Status}'. " +
+                        $"Expected '{OrderStatuses.PickedUp}'."
+                });
         }
 
-        order.Status = OrderStatuses.EnRoute;
+        order.Status =
+            OrderStatuses.EnRoute;
 
-        order.UpdatedAt = DateTime.UtcNow;
+        order.UpdatedAt =
+            DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(
+            cancellationToken);
 
-        await AddStatusHistory(id, OrderStatuses.EnRoute);
+        await AddOrderStatusHistory(
+            id,
+            OrderStatuses.EnRoute,
+            $"Driver {driver.Id} is en-route.",
+            cancellationToken);
 
-        await AddAuditLog(id, "Order En Route");
+        await AddOrderAuditLog(
+            id,
+            $"Driver {driver.Id} marked order en-route.",
+            cancellationToken);
 
-        return Ok(new
-        {
-            message = "Order is now en route",
-            status = order.Status
-        });
+        return Ok(
+            new
+            {
+                success = true,
+                orderId = order.Id,
+                driverId = driver.Id,
+                status = order.Status,
+                updatedAt = order.UpdatedAt
+            });
     }
 
     // =========================================================
     // DELIVERED
     // POST: /api/Orders/{id}/delivered
     // =========================================================
-    [HttpPost("{id}/delivered")]
-    public async Task<IActionResult> Delivered(Guid id)
+    [HttpPost("{id:guid}/delivered")]
+    [Authorize(Roles = "driver")]
+    public async Task<IActionResult> Delivered(
+     Guid id,
+     CancellationToken cancellationToken)
     {
-        var order = await _context.Orders
-            .Include(o => o.Driver)
-            .Include(o => o.Supplier)
-            .FirstOrDefaultAsync(o => o.Id == id);
+        var driver =
+            await GetCurrentDriver(cancellationToken);
+
+        if (driver == null)
+            return Forbid();
+
+        var order =
+            await GetDriverOrder(
+                id,
+                driver.Id,
+                cancellationToken);
 
         if (order == null)
-            return NotFound();
+        {
+            return NotFound(
+                new
+                {
+                    message =
+                        "Order not found or is not assigned to you."
+                });
+        }
 
+        // IMPORTANT:
+        // Driver must be en-route before delivery.
         if (order.Status != OrderStatuses.EnRoute)
-            return BadRequest("Order must be en route before delivery.");
-
-        order.Status = OrderStatuses.Delivered;
-        order.UpdatedAt = DateTime.UtcNow;
-
-        if (order.Driver != null)
         {
-            order.Driver.ActiveJobs--;
-
-            if (order.Driver.ActiveJobs < 0)
-                order.Driver.ActiveJobs = 0;
-
-            order.Driver.AvailabilityStatus = "available";
+            return BadRequest(
+                new
+                {
+                    message =
+                        $"Order cannot be marked delivered while " +
+                        $"status is '{order.Status}'. " +
+                        $"Expected '{OrderStatuses.EnRoute}'."
+                });
         }
 
-        if (order.Supplier != null)
-        {
-            order.Supplier.CurrentWorkload--;
+        order.Status =
+            OrderStatuses.Delivered;
 
-            if (order.Supplier.CurrentWorkload < 0)
-                order.Supplier.CurrentWorkload = 0;
+        order.UpdatedAt =
+            DateTime.UtcNow;
 
-            order.Supplier.AvailabilityStatus = "available";
-        }
+        await _context.SaveChangesAsync(
+            cancellationToken);
 
-        await _context.SaveChangesAsync();
+        await AddOrderStatusHistory(
+            id,
+            OrderStatuses.Delivered,
+            $"Driver {driver.Id} marked order delivered.",
+            cancellationToken);
 
-        await AddStatusHistory(id, OrderStatuses.Delivered);
-        await AddAuditLog(id, "Order Delivered");
+        await AddOrderAuditLog(
+            id,
+            $"Driver {driver.Id} marked order delivered.",
+            cancellationToken);
 
-        return Ok(new
-        {
-            message = "Order delivered successfully. Waiting for proof upload.",
-            status = order.Status
-        });
+        return Ok(
+            new
+            {
+                success = true,
+                orderId = order.Id,
+                driverId = driver.Id,
+                status = order.Status,
+                updatedAt = order.UpdatedAt
+            });
     }
 
     // =========================================================
@@ -1548,22 +1648,27 @@ public class OrdersController : ControllerBase
 
         _context.DeliveryProofs.Add(proof);
 
-        order.Status =
-            OrderStatuses.ProofUploaded;
+        var financial = await _context.OrderFinancials
+    .FirstOrDefaultAsync(
+        x => x.OrderId == id,
+        cancellationToken);
 
-        order.UpdatedAt =
-            DateTime.UtcNow;
+        if (financial != null)
+        {
+            financial.CompletionProofUrl = imageUrl;
+        }
+        order.Status = OrderStatuses.Completed;
+        order.UpdatedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync(
-            cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
 
         await AddStatusHistory(
             id,
-            OrderStatuses.ProofUploaded);
+            OrderStatuses.Completed);
 
         await AddAuditLog(
     id,
-    "Delivery proof uploaded");
+    "Delivery proof uploaded. Order Completed.");
 
         OrderFinancial? settlementFinancial = null;
 
@@ -1771,35 +1876,119 @@ public class OrdersController : ControllerBase
         });
     }
     [HttpPost("{id}/supplier-accept")]
-    public async Task<IActionResult> SupplierAccept(Guid id)
+    [Authorize(Roles = "supplier,provider")]
+    public async Task<IActionResult> SupplierAccept(
+    Guid id,
+    CancellationToken cancellationToken)
     {
-        var order = await _context.Orders.FindAsync(id);
+        Guid userId;
+
+        try
+        {
+            userId = User.GetUserId();
+        }
+        catch
+        {
+            return Unauthorized();
+        }
+
+        var supplier = await _context.Suppliers
+            .FirstOrDefaultAsync(
+                x => x.UserId == userId,
+                cancellationToken);
+
+        if (supplier == null)
+            return Forbid();
+
+        var order = await _context.Orders
+            .FirstOrDefaultAsync(
+                x => x.Id == id,
+                cancellationToken);
 
         if (order == null)
             return NotFound();
 
+        var ownsItem = await _context.OrderItems
+            .AnyAsync(
+                x =>
+                    x.OrderId == id &&
+                    x.SupplierId == supplier.Id,
+                cancellationToken);
+
+        if (!ownsItem)
+        {
+            return Forbid();
+        }
+
+        if (order.Status != OrderStatuses.SupplierAssigned &&
+            order.Status != OrderStatuses.PaymentPaid &&
+            order.Status != OrderStatuses.WaitingForSupplier)
+        {
+            return BadRequest(
+                $"Supplier cannot accept order while status is {order.Status}.");
+        }
+
+        order.SupplierId = supplier.Id;
         order.Status = OrderStatuses.SupplierAccepted;
         order.UpdatedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
-        await AddStatusHistory(id, OrderStatuses.SupplierAccepted);
-        await AddAuditLog(id, "Supplier Accepted Order");
+        await AddStatusHistory(
+            id,
+            OrderStatuses.SupplierAccepted);
 
-        order.Status = OrderStatuses.WaitingForDriver;
-        order.UpdatedAt = DateTime.UtcNow;
+        await AddAuditLog(
+            id,
+            $"Supplier {supplier.Id} accepted order.");
 
-        await _context.SaveChangesAsync();
-
-        await AddStatusHistory(id, OrderStatuses.WaitingForDriver);
-        await AddAuditLog(id, "Order Waiting For Driver");
-
-        return Ok(order);
+        return Ok(new
+        {
+            success = true,
+            orderId = id,
+            supplierId = supplier.Id,
+            status = order.Status
+        });
     }
     [HttpPost("{id}/ready-for-pickup")]
-    public async Task<IActionResult> ReadyForPickup(Guid id)
+    [Authorize(Roles = "supplier,provider")]
+    public async Task<IActionResult> ReadyForPickup(
+    Guid id,
+    CancellationToken cancellationToken)
     {
-        var order = await _context.Orders.FindAsync(id);
+        Guid userId;
+
+        try
+        {
+            userId = User.GetUserId();
+        }
+        catch
+        {
+            return Unauthorized();
+        }
+
+        var supplier = await _context.Suppliers
+            .FirstOrDefaultAsync(
+                x => x.UserId == userId,
+                cancellationToken);
+
+        if (supplier == null)
+            return Forbid();
+
+        var ownsItem = await _context.OrderItems
+            .AnyAsync(
+                x =>
+                    x.OrderId == id &&
+                    x.SupplierId == supplier.Id,
+                cancellationToken);
+
+        if (!ownsItem)
+            return Forbid();
+
+        var order = await _context.Orders
+            .FirstOrDefaultAsync(
+                x => x.Id == id,
+                cancellationToken);
 
         if (order == null)
             return NotFound();
@@ -1807,38 +1996,375 @@ public class OrdersController : ControllerBase
         order.Status = OrderStatuses.WaitingForPickup;
         order.UpdatedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
-        await AddStatusHistory(id, OrderStatuses.WaitingForPickup);
-        await AddAuditLog(id, "Order Ready For Pickup");
+        await AddStatusHistory(
+            id,
+            OrderStatuses.WaitingForPickup);
 
-        return Ok(order);
+        await AddAuditLog(
+            id,
+            $"Supplier {supplier.Id} marked order ready for pickup.");
+
+        return Ok(new
+        {
+            success = true,
+            orderId = id,
+            supplierId = supplier.Id,
+            status = order.Status
+        });
     }
     [HttpPost("{id}/driver-accept")]
-    public async Task<IActionResult> DriverAccept(Guid id)
+    [Authorize(Roles = "driver")]
+    public async Task<IActionResult> DriverAccept(
+    Guid id,
+    CancellationToken cancellationToken)
     {
-        var order = await _context.Orders.FindAsync(id);
+        var driver =
+            await GetCurrentDriver(cancellationToken);
+
+        if (driver == null)
+            return Forbid();
+
+        var order = await _context.Orders
+            .FirstOrDefaultAsync(
+                x => x.Id == id,
+                cancellationToken);
 
         if (order == null)
             return NotFound();
 
-        order.Status = OrderStatuses.DriverAccepted;
-        order.UpdatedAt = DateTime.UtcNow;
+        if (order.DriverId != driver.Id)
+        {
+            return Forbid();
+        }
 
-        await _context.SaveChangesAsync();
+        if (order.Status != OrderStatuses.DriverAssigned)
+        {
+            return BadRequest(
+                "This order is not assigned to this driver.");
+        }
 
-        await AddStatusHistory(id, OrderStatuses.DriverAccepted);
-        await AddAuditLog(id, "Driver Accepted Order");
+        order.Status =
+            OrderStatuses.DriverAccepted;
 
-        order.Status = OrderStatuses.WaitingForPickup;
-        order.UpdatedAt = DateTime.UtcNow;
+        order.UpdatedAt =
+            DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(
+            cancellationToken);
 
-        await AddStatusHistory(id, OrderStatuses.WaitingForPickup);
-        await AddAuditLog(id, "Order Waiting For Pickup");
+        await AddStatusHistory(
+            id,
+            OrderStatuses.DriverAccepted);
 
-        return Ok(order);
+        await AddAuditLog(
+            id,
+            $"Driver {driver.Id} accepted order.");
+
+        return Ok(new
+        {
+            success = true,
+            orderId = id,
+            driverId = driver.Id,
+            status = order.Status
+        });
     }
 
+    [HttpGet("my-assigned")]
+    [Authorize(Roles = "supplier,provider,driver,admin,dispatcher")]
+    public async Task<IActionResult> GetMyAssignedOrders(
+    CancellationToken cancellationToken)
+    {
+        Guid userId;
+
+        try
+        {
+            userId = User.GetUserId();
+        }
+        catch
+        {
+            return Unauthorized();
+        }
+
+        var role = User.GetRole()
+            .Trim()
+            .ToLowerInvariant();
+
+        Guid? supplierId = null;
+        Guid? driverId = null;
+
+        if (role == "supplier" || role == "provider")
+        {
+            var supplier = await _context.Suppliers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x => x.UserId == userId,
+                    cancellationToken);
+
+            if (supplier == null)
+                return NotFound("Supplier profile not found.");
+
+            supplierId = supplier.Id;
+        }
+
+        if (role == "driver")
+        {
+            var driver = await _context.Drivers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x => x.UserId == userId,
+                    cancellationToken);
+
+            if (driver == null)
+                return NotFound("Driver profile not found.");
+
+            driverId = driver.Id;
+        }
+
+        var query = _context.Orders
+            .AsNoTracking()
+            .Include(x => x.Driver)
+            .Include(x => x.Supplier)
+            .AsQueryable();
+
+        if (supplierId.HasValue)
+        {
+            query = query.Where(order =>
+                order.SupplierId == supplierId.Value
+                ||
+                _context.OrderItems.Any(item =>
+                    item.OrderId == order.Id &&
+                    item.SupplierId == supplierId.Value
+                ));
+        }
+
+        if (driverId.HasValue)
+        {
+            query = query.Where(
+                order => order.DriverId == driverId.Value);
+        }
+
+        var orders = await query
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(order => new
+            {
+                id = order.Id,
+                orderNumber = order.OrderNumber,
+                customerName = order.CustomerName,
+                pickupAddress = order.PickupAddress,
+                deliveryAddress = order.DeliveryAddress,
+                zone = order.Zone,
+                status = order.Status,
+                createdAt = order.CreatedAt,
+                updatedAt = order.UpdatedAt,
+
+                supplierId = order.SupplierId,
+                driverId = order.DriverId,
+
+                items = _context.OrderItems
+                    .Where(item =>
+                        item.OrderId == order.Id &&
+                        (
+                            !supplierId.HasValue ||
+                            item.SupplierId == supplierId.Value
+                        ))
+                    .Select(item => new
+                    {
+                        item.Id,
+                        item.ProductId,
+                        item.SupplierId,
+                        item.Quantity,
+                        item.UnitPrice,
+                        productName = item.Product.Name
+                    })
+                    .ToList()
+            })
+            .ToListAsync(cancellationToken);
+
+        return Ok(orders);
+    }
+
+    [HttpGet("my-supplier-orders")]
+    [Authorize(Roles = "supplier,provider")]
+    public async Task<IActionResult> GetMySupplierOrders(
+    CancellationToken cancellationToken)
+    {
+        Guid userId;
+
+        try
+        {
+            userId = User.GetUserId();
+        }
+        catch
+        {
+            return Unauthorized();
+        }
+
+        var supplier = await _context.Suppliers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                x => x.UserId == userId,
+                cancellationToken);
+
+        if (supplier == null)
+            return NotFound("Supplier profile not found.");
+
+        var orders = await _context.Orders
+            .AsNoTracking()
+            .Where(order =>
+                _context.OrderItems.Any(item =>
+                    item.OrderId == order.Id &&
+                    item.SupplierId == supplier.Id
+                ))
+            .OrderByDescending(order => order.CreatedAt)
+            .Select(order => new
+            {
+                orderId = order.Id,
+                orderNumber = order.OrderNumber,
+                customerName = order.CustomerName,
+                deliveryAddress = order.DeliveryAddress,
+                status = order.Status,
+                createdAt = order.CreatedAt,
+
+                items = _context.OrderItems
+                    .Where(item =>
+                        item.OrderId == order.Id &&
+                        item.SupplierId == supplier.Id)
+                    .Select(item => new
+                    {
+                        item.Id,
+                        item.ProductId,
+                        item.SupplierId,
+                        item.Quantity,
+                        item.UnitPrice,
+                        productName = item.Product.Name
+                    })
+                    .ToList()
+            })
+            .ToListAsync(cancellationToken);
+
+        return Ok(orders);
+    }
+
+    [HttpGet("my-driver-orders")]
+    [Authorize(Roles = "driver")]
+    public async Task<IActionResult> GetMyDriverOrders(
+    CancellationToken cancellationToken)
+    {
+        Guid userId;
+
+        try
+        {
+            userId = User.GetUserId();
+        }
+        catch
+        {
+            return Unauthorized();
+        }
+
+        var driver = await _context.Drivers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                x => x.UserId == userId,
+                cancellationToken);
+
+        if (driver == null)
+            return NotFound("Driver profile not found.");
+
+        var orders = await _context.Orders
+            .AsNoTracking()
+            .Where(x => x.DriverId == driver.Id)
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => new
+            {
+                id = x.Id,
+                orderNumber = x.OrderNumber,
+                customerName = x.CustomerName,
+                pickupAddress = x.PickupAddress,
+                deliveryAddress = x.DeliveryAddress,
+                zone = x.Zone,
+                status = x.Status,
+                createdAt = x.CreatedAt,
+                updatedAt = x.UpdatedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        return Ok(orders);
+    }
+
+    private async Task<Driver?> GetCurrentDriver(
+    CancellationToken cancellationToken)
+    {
+        Guid userId;
+
+        try
+        {
+            userId = User.GetUserId();
+        }
+        catch
+        {
+            return null;
+        }
+
+        return await _context.Drivers
+            .FirstOrDefaultAsync(
+                x => x.UserId == userId,
+                cancellationToken);
+    }
+
+    private async Task<Order?> GetDriverOrder(
+    Guid orderId,
+    Guid driverId,
+    CancellationToken cancellationToken)
+    {
+        return await _context.Orders
+            .FirstOrDefaultAsync(
+                o =>
+                    o.Id == orderId &&
+                    o.DriverId == driverId,
+                cancellationToken);
+    }
+
+
+    private async Task AddOrderStatusHistory(
+        Guid orderId,
+        string status,
+        string? notes = null,
+        CancellationToken cancellationToken = default)
+    {
+        _context.StatusHistory.Add(
+            new StatusHistory
+            {
+                Id = Guid.NewGuid(),
+                OrderId = orderId,
+                Status = status,
+                Notes = notes,
+                CreatedAt = DateTime.UtcNow
+            });
+
+        await _context.SaveChangesAsync(
+            cancellationToken);
+    }
+
+
+    private async Task AddOrderAuditLog(
+        Guid orderId,
+        string action,
+        CancellationToken cancellationToken = default)
+    {
+        _context.AuditLogs.Add(
+            new AuditLog
+            {
+                Id = Guid.NewGuid(),
+                OrderId = orderId,
+                Action = action,
+                PerformedBy =
+                    User.Identity?.Name ?? "system",
+                CreatedAt = DateTime.UtcNow
+            });
+
+        await _context.SaveChangesAsync(
+            cancellationToken);
+    }
 }

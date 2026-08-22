@@ -1419,13 +1419,42 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("order_items");
 
-            entity.HasKey(e => e.Id);
+            entity.HasKey(x => x.Id);
 
-            entity.Property(e => e.Id).HasColumnName("id");
-            entity.Property(e => e.OrderId).HasColumnName("order_id");
-            entity.Property(e => e.ProductId).HasColumnName("product_id");
-            entity.Property(e => e.Quantity).HasColumnName("quantity");
-            entity.Property(e => e.UnitPrice).HasColumnName("unit_price");
+            entity.Property(x => x.Id)
+                .HasColumnName("id");
+
+            entity.Property(x => x.OrderId)
+                .HasColumnName("order_id");
+
+            entity.Property(x => x.ProductId)
+                .HasColumnName("product_id");
+
+            entity.Property(x => x.SupplierId)
+                .HasColumnName("supplier_id");
+
+            entity.Property(x => x.Quantity)
+                .HasColumnName("quantity");
+
+            entity.Property(x => x.UnitPrice)
+                .HasColumnName("unit_price");
+
+            entity.HasOne(x => x.Order)
+                .WithMany()
+                .HasForeignKey(x => x.OrderId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.Product)
+                .WithMany()
+                .HasForeignKey(x => x.ProductId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(x => x.Supplier)
+                .WithMany()
+                .HasForeignKey(x => x.SupplierId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(x => x.SupplierId);
         });
 
         // ==========================
