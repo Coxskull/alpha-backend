@@ -2222,27 +2222,29 @@ public class OrdersController : ControllerBase
             .OrderByDescending(order => order.CreatedAt)
             .Select(order => new
             {
-                orderId = order.Id,
+                id = order.Id,
                 orderNumber = order.OrderNumber,
                 customerName = order.CustomerName,
+                pickupAddress = order.PickupAddress,
                 deliveryAddress = order.DeliveryAddress,
+                itemDescription = order.ItemDescription,
                 status = order.Status,
                 createdAt = order.CreatedAt,
 
                 items = _context.OrderItems
-                    .Where(item =>
-                        item.OrderId == order.Id &&
-                        item.SupplierId == supplier.Id)
-                    .Select(item => new
-                    {
-                        item.Id,
-                        item.ProductId,
-                        item.SupplierId,
-                        item.Quantity,
-                        item.UnitPrice,
-                        productName = item.Product.Name
-                    })
-                    .ToList()
+        .Where(item =>
+            item.OrderId == order.Id &&
+            item.SupplierId == supplier.Id)
+        .Select(item => new
+        {
+            item.Id,
+            item.ProductId,
+            item.SupplierId,
+            item.Quantity,
+            item.UnitPrice,
+            productName = item.Product.Name
+        })
+        .ToList()
             })
             .ToListAsync(cancellationToken);
 
