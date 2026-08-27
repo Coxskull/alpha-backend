@@ -69,61 +69,39 @@ public class FinancialsController : ControllerBase
     }
 
 
-    [HttpPost("{id}/approve")]
+    [HttpPost("{id:guid}/approve")]
     [Authorize(Roles = "admin")]
-    public async Task<IActionResult> Approve(Guid id)
+    public async Task<IActionResult> Approve(
+     Guid id,
+     CancellationToken cancellationToken)
     {
-        var record = await _context.OrderFinancials.FindAsync(id);
-        if (record == null) return NotFound();
+        var financial = await _context.OrderFinancials
+            .FirstOrDefaultAsync(
+                x => x.Id == id,
+                cancellationToken);
 
-        if (record.CustomerPaid <= 0)
-            return BadRequest("Customer payment is not confirmed.");
+        if (financial == null)
+            return NotFound();
 
-        record.FinancialStatus = "approved";
-        record.PayoutStatus = "approved_for_payout";
-
-        if (record.SupplierAmount > 0)
+        if (financial.FinancialStatus != "verified")
         {
-            _context.SettlementQueue.Add(new SettlementQueue
+            return BadRequest(new
             {
-                Id = Guid.NewGuid(),
-                OrderFinancialId = record.Id,
-                PayeeType = "supplier",
-                Amount = record.SupplierAmount,
-                Status = "pending_payout",
-                CreatedAt = DateTime.UtcNow
+                message = "Financial record must be verified before approval."
             });
         }
 
-        if (record.DriverAmount > 0)
+        financial.PayoutStatus = "ready_for_payout";
+        financial.SettlementStatus = "ready_for_payout";
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return Ok(new
         {
-            _context.SettlementQueue.Add(new SettlementQueue
-            {
-                Id = Guid.NewGuid(),
-                OrderFinancialId = record.Id,
-                PayeeType = "driver",
-                Amount = record.DriverAmount,
-                Status = "pending_payout",
-                CreatedAt = DateTime.UtcNow
-            });
-        }
-
-        if (record.MechanicAmount > 0)
-        {
-            _context.SettlementQueue.Add(new SettlementQueue
-            {
-                Id = Guid.NewGuid(),
-                OrderFinancialId = record.Id,
-                PayeeType = "mechanic",
-                Amount = record.MechanicAmount,
-                Status = "pending_payout",
-                CreatedAt = DateTime.UtcNow
-            });
-        }
-
-        await _context.SaveChangesAsync();
-
-        return Ok(record);
+            success = true,
+            financialId = financial.Id,
+            status = financial.PayoutStatus
+        });
     }
 
     [HttpPost("{id}/hold")]
@@ -233,17 +211,6 @@ public class FinancialsController : ControllerBase
                         x.Status != "paid",
                     cancellationToken);
 
-        if (!remainingSettlements)
-        {
-            financial.PayoutStatus = "paid";
-            financial.SettlementStatus = "paid";
-            financial.ProviderPayoutStatus = "paid";
-
-            await _entrepreneurCommissionService
-                .GenerateForOrderAfterSettlementPaidAsync(
-                    order.Id,
-                    cancellationToken);
-        }
 
 
         await _entrepreneurCommissionService
@@ -487,7 +454,7 @@ public class FinancialsController : ControllerBase
     }
 
     [HttpPost("orders/{orderId}/verify-settlement")]
-    [Authorize(Roles = "admin,dispatcher")]
+    [Authorize(Roles = "admin")]
     public async Task<IActionResult> VerifySettlement(
     Guid orderId,
     CancellationToken cancellationToken)
@@ -625,5 +592,98 @@ public class FinancialsController : ControllerBase
 
             items = payouts
         });
+    }
+
+    public async Task ProcessSettlementAsync(
+    Guid orderId,
+    CancellationToken cancellationToken)
+    {
+        await VerifySettlementEligibilityAsync(
+            orderId,
+            cancellationToken);
+
+        await CalculateFinancialsAsync(
+            orderId,
+            cancellationToken);
+
+        await CalculateTaxAsync(
+            orderId,
+            cancellationToken);
+
+        await CalculateAutoPartsCommissionAsync(
+            orderId,
+            cancellationToken);
+
+        await ReconcileAsync(
+            orderId,
+            cancellationToken);
+
+        await CreateSettlementQueueAsync(
+            orderId,
+            cancellationToken);
+
+        await GenerateEntrepreneurCommissionAsync(
+            orderId,
+            cancellationToken);
+
+        await MarkReadyForPayoutAsync(
+            orderId,
+            cancellationToken);
+    }
+
+    public async Task CalculateFinancialsAsync(
+    Guid orderId,
+    CancellationToken cancellationToken)
+    {
+        var order = await _context.Orders
+            .FirstOrDefaultAsync(
+                x => x.Id == orderId,
+                cancellationToken);
+
+        if (order == null)
+            throw new InvalidOperationException(
+                "Order not found.");
+
+        if (order.Status != OrderStatuses.SettlementPending)
+            throw new InvalidOperationException(
+                "Order is not pending settlement.");
+
+        var payment = await _context.Payments
+            .Where(x =>
+                x.OrderId == orderId &&
+                x.PaymentStatus == "paid")
+            .OrderByDescending(x => x.PaidAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (payment == null)
+            throw new InvalidOperationException(
+                "Successful payment not found.");
+
+        var financial = await _context.OrderFinancials
+            .FirstOrDefaultAsync(
+                x => x.OrderId == orderId,
+                cancellationToken);
+
+        if (financial == null)
+            throw new InvalidOperationException(
+                "Financial record not found.");
+
+        financial.CustomerPaid = payment.Amount;
+        financial.ProcessingFee =
+            payment.GatewayFee ?? 0m;
+
+        financial.PaymentStatus = "paid";
+
+        financial.FinancialStatus =
+            "calculating";
+
+        financial.SettlementStatus =
+            "calculating";
+
+        financial.PayoutStatus =
+            "not_ready";
+
+        await _context.SaveChangesAsync(
+            cancellationToken);
     }
 }

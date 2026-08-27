@@ -1240,12 +1240,10 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound();
 
-        if (order.Status != OrderStatuses.WaitingForDriver &&
-    order.Status != OrderStatuses.SupplierAccepted)
+        if (order.Status != OrderStatuses.WaitingForDriver)
         {
             return BadRequest(
-                $"Driver cannot be assigned while order status is {order.Status}."
-            );
+                $"Driver cannot be assigned while order status is {order.Status}.");
         }
 
         var driver = await _context.Drivers
@@ -1658,67 +1656,41 @@ public class OrdersController : ControllerBase
         if (financial != null)
         {
             financial.CompletionProofUrl = imageUrl;
+            financial.FinancialStatus = "pending_review";
+            financial.PayoutStatus = "not_ready";
+            financial.SettlementStatus = "pending";
         }
-        order.Status = OrderStatuses.Completed;
+
+        order.Status = OrderStatuses.ProofUploaded;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        await AddStatusHistory(
+            id,
+            OrderStatuses.ProofUploaded);
+
+        order.Status = OrderStatuses.SettlementPending;
+
         order.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);
 
         await AddStatusHistory(
             id,
-            OrderStatuses.Completed);
+            OrderStatuses.SettlementPending);
 
         await AddAuditLog(
-    id,
-    "Delivery proof uploaded. Order Completed.");
-
-        OrderFinancial? settlementFinancial = null;
-
-        try
-        {
-            settlementFinancial =
-                await _settlements.VerifySettlementAfterProof(
-                    id);
-
-            if (
-                settlementFinancial.FinancialStatus ==
-                    "verified" &&
-                settlementFinancial.SettlementStatus ==
-                    "ready_for_payout")
-            {
-                await _entrepreneurCommissionService
-                    .GenerateForOrderAsync(
-                        id,
-                        cancellationToken);
-            }
-        }
-        catch (Exception ex)
-        {
-            await AddAuditLog(
-                id,
-                $"Post-delivery financial processing failed: {ex.Message}");
-        }
+            id,
+            "Delivery proof uploaded. Order is now pending settlement verification.");
 
         return Ok(new
         {
-            message =
-         "Delivery proof uploaded successfully.",
-
-            imageUrl,
-
+            success = true,
+            message = "Delivery proof uploaded successfully.",
+            orderId = id,
             status = order.Status,
-
-            settlementStatus =
-         settlementFinancial?.SettlementStatus,
-
-            payoutStatus =
-         settlementFinancial?.PayoutStatus,
-
-            financialStatus =
-         settlementFinancial?.FinancialStatus,
-
-            reconciliationDifference =
-         settlementFinancial?.ReconciliationDifference
+            financialStatus = financial?.FinancialStatus,
+            settlementStatus = financial?.SettlementStatus
         });
     }
 
@@ -1944,6 +1916,19 @@ public class OrdersController : ControllerBase
             id,
             $"Supplier {supplier.Id} accepted order.");
 
+        order.Status = OrderStatuses.WaitingForDriver;
+        order.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        await AddStatusHistory(
+            id,
+            OrderStatuses.WaitingForDriver);
+
+        await AddAuditLog(
+            id,
+            "Order is now waiting for driver assignment.");
+
         return Ok(new
         {
             success = true,
@@ -1968,7 +1953,11 @@ public class OrdersController : ControllerBase
         {
             return Unauthorized();
         }
-
+        if (order.Status != OrderStatuses.WaitingForPickup)
+        {
+            return BadRequest(
+                $"Order is not ready for pickup. Current status: {order.Status}");
+        }
         var supplier = await _context.Suppliers
             .FirstOrDefaultAsync(
                 x => x.UserId == userId,
@@ -2047,14 +2036,10 @@ public class OrdersController : ControllerBase
                 "This order is not assigned to this driver.");
         }
 
-        order.Status =
-            OrderStatuses.DriverAccepted;
+        order.Status = OrderStatuses.DriverAccepted;
+        order.UpdatedAt = DateTime.UtcNow;
 
-        order.UpdatedAt =
-            DateTime.UtcNow;
-
-        await _context.SaveChangesAsync(
-            cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
 
         await AddStatusHistory(
             id,
@@ -2064,6 +2049,18 @@ public class OrdersController : ControllerBase
             id,
             $"Driver {driver.Id} accepted order.");
 
+        order.Status = OrderStatuses.WaitingForPickup;
+        order.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        await AddStatusHistory(
+            id,
+            OrderStatuses.WaitingForPickup);
+
+        await AddAuditLog(
+            id,
+            "Order is waiting for pickup.");
         return Ok(new
         {
             success = true,

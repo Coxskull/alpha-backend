@@ -51,7 +51,8 @@ public class SettlementService
         if (!string.IsNullOrWhiteSpace(payment.Currency))
             financial.Currency = payment.Currency;
 
-        financial.ProcessingFee = 0;
+        financial.ProcessingFee =
+    payment.GatewayFee ?? 0m;
         financial.FinancialStatus = "pending";
         financial.PayoutStatus = "not_ready";
         financial.SettlementStatus = "pending";
@@ -62,72 +63,127 @@ public class SettlementService
     }
 
     public async Task<OrderFinancial> VerifySettlement(
-    Guid orderId,
-    CancellationToken cancellationToken = default)
+     Guid orderId,
+     CancellationToken cancellationToken = default)
     {
-        var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
+        var order = await _context.Orders
+            .FirstOrDefaultAsync(
+                x => x.Id == orderId,
+                cancellationToken);
 
         if (order == null)
-            throw new Exception("Order not found.");
+            throw new InvalidOperationException("Order not found.");
 
-        var payment = await _context.Payments.FirstOrDefaultAsync(p => p.OrderId == orderId);
+        var payment = await _context.Payments
+            .FirstOrDefaultAsync(
+                x => x.OrderId == orderId,
+                cancellationToken);
 
-        var financial = await _context.OrderFinancials.FirstOrDefaultAsync(f => f.OrderId == orderId);
+        var financial = await _context.OrderFinancials
+            .FirstOrDefaultAsync(
+                x => x.OrderId == orderId,
+                cancellationToken);
 
-        var proofUploaded = await _context.DeliveryProofs.AnyAsync(p => p.OrderId == orderId);
+        if (payment == null)
+            throw new InvalidOperationException(
+                "Payment record not found.");
 
-        if (payment == null || financial == null)
-            throw new Exception("Missing payment or financial record.");
+        if (financial == null)
+            throw new InvalidOperationException(
+                "Financial record not found.");
+
+        var hasProof =
+            await _context.DeliveryProofs
+                .AnyAsync(
+                    x => x.OrderId == orderId,
+                    cancellationToken);
 
         var paymentSuccessful =
-    payment.PaymentStatus == "paid";
+            string.Equals(
+                payment.PaymentStatus,
+                "paid",
+                StringComparison.OrdinalIgnoreCase);
 
         var supplierComplete =
             await _context.OrderItems
                 .AnyAsync(
                     x =>
                         x.OrderId == orderId &&
-                        x.SupplierId != Guid.Empty,
+                        x.SupplierId.HasValue,
                     cancellationToken);
 
-        var driverComplete =
-            order.DriverId != null &&
-            order.Status == "completed";
+        var fulfillmentComplete =
+            order.DriverId.HasValue &&
+            order.Status == OrderStatuses.ProofUploaded &&
+            hasProof;
 
-        var hasProof =
-    proofUploaded &&
-    order.Status == "completed";
-
-        if (!paymentSuccessful || !supplierComplete || !driverComplete || !hasProof)
+        if (!paymentSuccessful ||
+            !supplierComplete ||
+            !fulfillmentComplete)
         {
             financial.FinancialStatus = "under_review";
             financial.PayoutStatus = "not_ready";
             financial.SettlementStatus = "pending";
 
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(
+                cancellationToken);
+
             return financial;
         }
 
-        await EnsureTaxCalculated(
-     orderId,
-     order.CountryCode,
-     order.Currency,
-     cancellationToken);
+        order.Status = OrderStatuses.SettlementPending;
+        order.UpdatedAt = DateTime.UtcNow;
 
         financial.CustomerPaid = payment.Amount;
-        financial.ProcessingFee = 0;
+
+        financial.ProcessingFee =
+            payment.GatewayFee ?? 0m;
+
+        await CalculateOrRecalculateTax(
+            order.Id,
+            order.CountryCode,
+            order.Currency,
+            cancellationToken);
 
         ApplyTaxAwareSettlement(financial);
 
+        financial.DirectTransactionCosts =
+            await _entrepreneurDirectTransactionCostService
+                .CalculateAsync(
+                    order.Id,
+                    cancellationToken);
+
+        financial.AlphaEligibleNetPlatformRevenue =
+            Math.Max(
+                0m,
+                financial.AlphaGrossPlatformCommission
+                + financial.ServiceFee
+                - financial.DirectTransactionCosts
+                - financial.ProcessingFee);
+
+        financial.EntrepreneurCommission = 0m;
+
+        financial.AlphaRetainedRevenue =
+            financial.AlphaEligibleNetPlatformRevenue;
+
         if (!Reconciles(financial))
         {
-            financial.FinancialStatus = "reconciliation_failed";
-            financial.PayoutStatus = "blocked";
-            financial.SettlementStatus = "blocked";
+            financial.FinancialStatus =
+                "reconciliation_failed";
 
-            await CreateFinancialException(orderId, financial.ReconciliationDifference);
+            financial.PayoutStatus =
+                "blocked";
 
-            await _context.SaveChangesAsync();
+            financial.SettlementStatus =
+                "blocked";
+
+            await CreateFinancialException(
+                orderId,
+                financial.ReconciliationDifference);
+
+            await _context.SaveChangesAsync(
+                cancellationToken);
+
             return financial;
         }
 
@@ -135,28 +191,49 @@ public class SettlementService
         financial.PayoutStatus = "ready_for_payout";
         financial.SettlementStatus = "ready_for_payout";
 
-        await CreateSettlementQueueItems(financial, order);
+        await CreateSettlementQueueItems(
+            financial,
+            order);
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(
+            cancellationToken);
+
+        await _entrepreneurCommissionService
+            .GenerateForOrderAsync(
+                order.Id,
+                cancellationToken);
+
+        var entrepreneurCommission =
+            await _context.EntrepreneurEarnings
+                .Where(x => x.OrderId == order.Id)
+                .SumAsync(
+                    x => x.EntrepreneurEarningsAmount,
+                    cancellationToken);
+
+        financial.EntrepreneurCommission =
+            entrepreneurCommission;
+
+        financial.AlphaRetainedRevenue =
+            Math.Max(
+                0m,
+                financial.AlphaEligibleNetPlatformRevenue
+                - entrepreneurCommission);
+
+        order.Status = OrderStatuses.ReadyForPayout;
+        order.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(
+            cancellationToken);
 
         return financial;
     }
 
-    private async Task EnsureTaxCalculated(
+    private async Task CalculateOrRecalculateTax(
     Guid orderId,
     string countryCode,
     string currency,
-    CancellationToken cancellationToken = default)
+    CancellationToken cancellationToken)
     {
-        var alreadyCalculated =
-            await _context.TaxCalculations
-                .AnyAsync(
-                    x => x.OrderId == orderId,
-                    cancellationToken);
-
-        if (alreadyCalculated)
-            return;
-
         await _taxEngine.CalculateOrderTaxes(
             orderId: orderId,
             country: countryCode,
@@ -215,6 +292,19 @@ public class SettlementService
                 financial.ServiceFee -
                 financial.ProcessingFee
             );
+
+        financial.AlphaEligibleNetPlatformRevenue =
+    Math.Max(
+        0m,
+        financial.AlphaGrossPlatformCommission
+        + financial.ServiceFee
+        - financial.DirectTransactionCosts
+        - financial.ProcessingFee);
+
+        financial.EntrepreneurCommission = 0m;
+
+        financial.AlphaRetainedRevenue =
+    financial.AlphaEligibleNetPlatformRevenue;
 
         financial.TotalAmount =
             financial.ItemSubtotal +

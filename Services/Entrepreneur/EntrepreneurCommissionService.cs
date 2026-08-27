@@ -303,6 +303,18 @@ public class EntrepreneurCommissionService
                 StringComparison.OrdinalIgnoreCase))
             return;
 
+        var existingEarnings =
+    await _context.EntrepreneurEarnings
+        .AnyAsync(
+            x => x.OrderId == orderId,
+            cancellationToken);
+
+        if (existingEarnings)
+        {
+            return;
+        }
+
+
         // Supplier
         if (order.SupplierId.HasValue)
         {
@@ -636,6 +648,19 @@ public class EntrepreneurCommissionService
                         &&
                         x.EndedAt == null,
                     cancellationToken);
+
+        var existingProviderEarnings =
+    await _context.EntrepreneurEarnings
+        .AnyAsync(
+            x =>
+                x.OrderId == orderId &&
+                x.RecruitedProviderId == providerUserId,
+            cancellationToken);
+
+        if (existingProviderEarnings)
+        {
+            return;
+        }
 
         if (referral == null)
             return;

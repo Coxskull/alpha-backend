@@ -16,14 +16,12 @@ public class PaymentCompletionService
     private readonly SettlementService _settlements;
     private readonly ReferralCommissionService _referralCommissionService;
     private readonly DirectTransactionCostService _entrepreneurDirectTransactionCostService;
-    private readonly EntrepreneurCommissionService _entrepreneurCommissionService;
 
     public PaymentCompletionService(
      AppDbContext context,
      SettlementService settlements,
      ReferralCommissionService referralCommissionService,
-     DirectTransactionCostService entrepreneurDirectTransactionCostService,
-     EntrepreneurCommissionService entrepreneurCommissionService)
+     DirectTransactionCostService entrepreneurDirectTransactionCostService)
     {
         _context = context;
         _settlements = settlements;
@@ -415,108 +413,6 @@ public class PaymentCompletionService
 
             financial.DirectTransactionCosts =
                 directTransactionCosts;
-
-            /*
-             * ---------------------------------------------------------
-             * ENTREPRENEUR COMMISSION
-             * ---------------------------------------------------------
-             *
-             * This is the critical connection between the
-             * real Alpha payment workflow and the Entrepreneur Network.
-             */
-
-            await _entrepreneurCommissionService
-                .GenerateForOrderAsync(
-                    order.Id,
-                    cancellationToken);
-
-            /*
-             * ---------------------------------------------------------
-             * LOAD THE RESULTING ENTREPRENEUR EARNING
-             * ---------------------------------------------------------
-             */
-
-            var entrepreneurEarning =
-                await _context
-                    .EntrepreneurEarnings
-                    .FirstOrDefaultAsync(
-                        x =>
-                            x.OrderId == order.Id,
-                        cancellationToken);
-
-            /*
-             * ---------------------------------------------------------
-             * ELIGIBLE NET PLATFORM REVENUE
-             * ---------------------------------------------------------
-             */
-
-            financial.AlphaEligibleNetPlatformRevenue =
-                Math.Max(
-                    0m,
-                    financial.AlphaGrossPlatformCommission -
-                    directTransactionCosts);
-
-            /*
-             * ---------------------------------------------------------
-             * ENTREPRENEUR COMMISSION
-             * ---------------------------------------------------------
-             */
-
-            financial.EntrepreneurCommission =
-                entrepreneurEarning?
-                    .EntrepreneurEarningsAmount
-                    ?? 0m;
-
-            /*
-             * ---------------------------------------------------------
-             * ALPHA RETAINED REVENUE
-             * ---------------------------------------------------------
-             */
-
-            financial.AlphaRetainedRevenue =
-                Math.Max(
-                    0m,
-                    financial.AlphaEligibleNetPlatformRevenue -
-                    financial.EntrepreneurCommission);
-
-
-            financial.CustomerPaid =
-    financial.TotalAmount;
-
-            financial.SupplierNetPayable =
-                financial.SupplierEarning;
-
-            financial.AlphaGrossPlatformCommission =
-                financial.AlphaGrossPartsCommission
-                +
-                financial.AlphaGrossMechanicCommission
-                +
-                financial.AlphaGrossDeliveryCommission;
-
-            financial.DirectTransactionCosts =
-                directTransactionCosts;
-
-            financial.AlphaEligibleNetPlatformRevenue =
-                Math.Max(
-                    0m,
-                    financial.AlphaGrossPlatformCommission -
-                    directTransactionCosts);
-
-            financial.EntrepreneurCommission =
-                entrepreneurEarning?
-                    .EntrepreneurEarningsAmount
-                    ?? 0m;
-
-            financial.AlphaRetainedRevenue =
-                Math.Max(
-                    0m,
-                    financial.AlphaEligibleNetPlatformRevenue -
-                    financial.EntrepreneurCommission);
-            /*
-             * Save the Entrepreneur-related financial values.
-             */
-            await _context.SaveChangesAsync(
-                cancellationToken);
 
 
             /*
