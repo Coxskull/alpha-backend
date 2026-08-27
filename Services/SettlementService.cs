@@ -797,10 +797,13 @@ public class SettlementService
             }
             else if (totalSupplierGross > 0m)
             {
+                var supplierGrossAmount =
+                    supplierGroup.GrossAmount ?? 0m;
+
                 supplierAmount =
                     Math.Round(
                         supplierPayable
-                        * supplierGroup.GrossAmount
+                        * supplierGrossAmount
                         / totalSupplierGross,
                         2,
                         MidpointRounding.AwayFromZero);
