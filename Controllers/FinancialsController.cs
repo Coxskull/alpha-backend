@@ -462,34 +462,17 @@ public class FinancialsController : ControllerBase
         try
         {
             var financial =
-                await _settlementService.VerifySettlementAfterProof(
-                    orderId);
+                await _settlementService.VerifySettlement(
+                    orderId,
+                    cancellationToken);
 
-            if (financial == null)
-            {
-                return NotFound(new
-                {
-                    message = "Financial record not found."
-                });
-            }
-
-            return Ok(new
-            {
-                message = "Settlement verification completed.",
-                orderId,
-                financialStatus = financial.FinancialStatus,
-                payoutStatus = financial.PayoutStatus,
-                settlementStatus = financial.SettlementStatus,
-                reconciliationDifference =
-                    financial.ReconciliationDifference
-            });
+            return Ok(financial);
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
             return BadRequest(new
             {
-                message = ex.Message,
-                orderId
+                message = ex.Message
             });
         }
     }
@@ -594,96 +577,5 @@ public class FinancialsController : ControllerBase
         });
     }
 
-    public async Task ProcessSettlementAsync(
-    Guid orderId,
-    CancellationToken cancellationToken)
-    {
-        await VerifySettlementEligibilityAsync(
-            orderId,
-            cancellationToken);
-
-        await CalculateFinancialsAsync(
-            orderId,
-            cancellationToken);
-
-        await CalculateTaxAsync(
-            orderId,
-            cancellationToken);
-
-        await CalculateAutoPartsCommissionAsync(
-            orderId,
-            cancellationToken);
-
-        await ReconcileAsync(
-            orderId,
-            cancellationToken);
-
-        await CreateSettlementQueueAsync(
-            orderId,
-            cancellationToken);
-
-        await GenerateEntrepreneurCommissionAsync(
-            orderId,
-            cancellationToken);
-
-        await MarkReadyForPayoutAsync(
-            orderId,
-            cancellationToken);
-    }
-
-    public async Task CalculateFinancialsAsync(
-    Guid orderId,
-    CancellationToken cancellationToken)
-    {
-        var order = await _context.Orders
-            .FirstOrDefaultAsync(
-                x => x.Id == orderId,
-                cancellationToken);
-
-        if (order == null)
-            throw new InvalidOperationException(
-                "Order not found.");
-
-        if (order.Status != OrderStatuses.SettlementPending)
-            throw new InvalidOperationException(
-                "Order is not pending settlement.");
-
-        var payment = await _context.Payments
-            .Where(x =>
-                x.OrderId == orderId &&
-                x.PaymentStatus == "paid")
-            .OrderByDescending(x => x.PaidAt)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (payment == null)
-            throw new InvalidOperationException(
-                "Successful payment not found.");
-
-        var financial = await _context.OrderFinancials
-            .FirstOrDefaultAsync(
-                x => x.OrderId == orderId,
-                cancellationToken);
-
-        if (financial == null)
-            throw new InvalidOperationException(
-                "Financial record not found.");
-
-        financial.CustomerPaid = payment.Amount;
-        financial.ProcessingFee =
-            payment.GatewayFee ?? 0m;
-
-        financial.PaymentStatus = "paid";
-
-        financial.FinancialStatus =
-            "calculating";
-
-        financial.SettlementStatus =
-            "calculating";
-
-        financial.PayoutStatus =
-            "not_ready";
-
-        await _context.SaveChangesAsync(
-            cancellationToken);
-    }
+    
 }
