@@ -2269,14 +2269,38 @@ public class OrdersController : ControllerBase
             return Unauthorized();
         }
 
+        // Get the authenticated user's email as a fallback.
+        var user = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                x => x.Id == userId,
+                cancellationToken);
+
+        if (user == null)
+            return Unauthorized();
+
+        // Primary lookup: drivers.user_id
+        // Fallback: drivers.email
         var driver = await _context.Drivers
             .AsNoTracking()
             .FirstOrDefaultAsync(
-                x => x.UserId == userId,
+                x =>
+                    x.UserId == userId ||
+                    (
+                        x.UserId == null &&
+                        x.Email != null &&
+                        x.Email.ToLower() == user.Email.ToLower()
+                    ),
                 cancellationToken);
 
         if (driver == null)
-            return NotFound("Driver profile not found.");
+        {
+            return NotFound(new
+            {
+                message = "Driver profile not found.",
+                userId
+            });
+        }
 
         var orders = await _context.Orders
             .AsNoTracking()
@@ -2286,11 +2310,24 @@ public class OrdersController : ControllerBase
             {
                 id = x.Id,
                 orderNumber = x.OrderNumber,
+
                 customerName = x.CustomerName,
+
                 pickupAddress = x.PickupAddress,
                 deliveryAddress = x.DeliveryAddress,
+
+                itemDescription = x.ItemDescription,
+
                 zone = x.Zone,
+
+                supplierId = x.SupplierId,
+
+                // IMPORTANT:
+                // This was missing from your original response.
+                driverId = x.DriverId,
+
                 status = x.Status,
+
                 createdAt = x.CreatedAt,
                 updatedAt = x.UpdatedAt
             })
