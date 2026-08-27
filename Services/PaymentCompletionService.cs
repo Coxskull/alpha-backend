@@ -16,12 +16,14 @@ public class PaymentCompletionService
     private readonly SettlementService _settlements;
     private readonly ReferralCommissionService _referralCommissionService;
     private readonly DirectTransactionCostService _entrepreneurDirectTransactionCostService;
+    private readonly EntrepreneurCommissionService _entrepreneurCommissionService;
 
     public PaymentCompletionService(
      AppDbContext context,
      SettlementService settlements,
      ReferralCommissionService referralCommissionService,
-     DirectTransactionCostService entrepreneurDirectTransactionCostService)
+     DirectTransactionCostService entrepreneurDirectTransactionCostService,
+     EntrepreneurCommissionService entrepreneurCommissionService)
     {
         _context = context;
         _settlements = settlements;

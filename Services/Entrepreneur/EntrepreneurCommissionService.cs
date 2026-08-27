@@ -1,10 +1,11 @@
 using Alpha.API.Data;
+using Alpha.API.Models;
 using Alpha.API.Models.Entrepreneur;
 using Microsoft.EntityFrameworkCore;
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Alpha.API.Models;
 
 namespace Alpha.API.Services.Entrepreneur;
 
@@ -30,6 +31,10 @@ public class EntrepreneurCommissionService
         _configuration = configuration;
     }
 
+    // ============================================================
+    // GENERATE ENTREPRENEUR EARNING
+    // ============================================================
+
     public async Task<EntrepreneurEarning?>
         GenerateAsync(
             Guid recruitedUserId,
@@ -44,6 +49,10 @@ public class EntrepreneurCommissionService
         if (alphaGrossPlatformCommission <= 0m)
             return null;
 
+        // --------------------------------------------------------
+        // LOAD ORDER
+        // --------------------------------------------------------
+
         var order =
             await _context.Orders
                 .AsNoTracking()
@@ -53,6 +62,10 @@ public class EntrepreneurCommissionService
 
         if (order == null)
             return null;
+
+        // --------------------------------------------------------
+        // LOAD PAYMENT
+        // --------------------------------------------------------
 
         var payment =
             await _context.Payments
@@ -66,6 +79,10 @@ public class EntrepreneurCommissionService
         if (payment == null)
             return null;
 
+        // --------------------------------------------------------
+        // VERIFY PAYMENT
+        // --------------------------------------------------------
+
         if (!string.Equals(
                 payment.PaymentStatus,
                 "paid",
@@ -74,6 +91,10 @@ public class EntrepreneurCommissionService
             return null;
         }
 
+        // --------------------------------------------------------
+        // VERIFY ORDER
+        // --------------------------------------------------------
+
         if (string.Equals(
                 order.Status,
                 "cancelled",
@@ -81,6 +102,10 @@ public class EntrepreneurCommissionService
         {
             return null;
         }
+
+        // --------------------------------------------------------
+        // LOAD PROGRAM CONFIGURATION
+        // --------------------------------------------------------
 
         var config =
             await _configuration.GetAsync(
@@ -113,6 +138,10 @@ public class EntrepreneurCommissionService
                 "Entrepreneur Network maximum referral level must be 1.");
         }
 
+        // --------------------------------------------------------
+        // CHECK ELIGIBILITY
+        // --------------------------------------------------------
+
         var eligibility =
             await _eligibility.CheckAsync(
                 recruitedUserId,
@@ -124,17 +153,18 @@ public class EntrepreneurCommissionService
         if (!eligibility.Eligible)
             return null;
 
+        // --------------------------------------------------------
+        // PREVENT DUPLICATE EARNINGS
+        // --------------------------------------------------------
+
         var duplicate =
             await _context
                 .EntrepreneurEarnings
                 .AnyAsync(
                     x =>
-                        x.OrderId ==
-                            orderId
-                        &&
+                        x.OrderId == orderId &&
                         x.RecruitedProviderId ==
-                            recruitedUserId
-                        &&
+                            recruitedUserId &&
                         x.EntrepreneurUserId ==
                             entrepreneurUserId,
                     cancellationToken);
@@ -142,10 +172,18 @@ public class EntrepreneurCommissionService
         if (duplicate)
             return null;
 
+        // --------------------------------------------------------
+        // DIRECT TRANSACTION COST
+        // --------------------------------------------------------
+
         var directCosts =
             await _costService.CalculateAsync(
                 orderId,
                 cancellationToken);
+
+        // --------------------------------------------------------
+        // ELIGIBLE NET REVENUE
+        // --------------------------------------------------------
 
         var eligibleNetRevenue =
             _netRevenue.Calculate(
@@ -154,6 +192,10 @@ public class EntrepreneurCommissionService
 
         if (eligibleNetRevenue <= 0m)
             return null;
+
+        // --------------------------------------------------------
+        // COMMISSION RATE
+        // --------------------------------------------------------
 
         var rate =
             await _configuration.GetRateAsync(
@@ -170,6 +212,10 @@ public class EntrepreneurCommissionService
                 "Entrepreneur commission rate must be stored as a decimal fraction. Example: 5% = 0.05.");
         }
 
+        // --------------------------------------------------------
+        // COMMISSION AMOUNT
+        // --------------------------------------------------------
+
         var entrepreneurAmount =
             decimal.Round(
                 eligibleNetRevenue * rate,
@@ -178,6 +224,10 @@ public class EntrepreneurCommissionService
 
         if (entrepreneurAmount <= 0m)
             return null;
+
+        // --------------------------------------------------------
+        // CREATE EARNING
+        // --------------------------------------------------------
 
         var earning =
             new EntrepreneurEarning
@@ -260,9 +310,13 @@ public class EntrepreneurCommissionService
         return earning;
     }
 
+    // ============================================================
+    // GENERATE FOR ORDER
+    // ============================================================
+
     public async Task GenerateForOrderAsync(
-    Guid orderId,
-    CancellationToken cancellationToken = default)
+        Guid orderId,
+        CancellationToken cancellationToken = default)
     {
         var order =
             await _context.Orders
@@ -284,7 +338,7 @@ public class EntrepreneurCommissionService
         if (financial == null)
             return;
 
-        if (financial.AlphaGrossPlatformCommission <= 0)
+        if (financial.AlphaGrossPlatformCommission <= 0m)
             return;
 
         var payment =
@@ -301,21 +355,25 @@ public class EntrepreneurCommissionService
                 payment.PaymentStatus,
                 "paid",
                 StringComparison.OrdinalIgnoreCase))
-            return;
-
-        var existingEarnings =
-    await _context.EntrepreneurEarnings
-        .AnyAsync(
-            x => x.OrderId == orderId,
-            cancellationToken);
-
-        if (existingEarnings)
         {
             return;
         }
 
+        // IMPORTANT:
+        // Do not generate duplicate earnings for the same order.
+        var existingEarnings =
+            await _context.EntrepreneurEarnings
+                .AnyAsync(
+                    x => x.OrderId == orderId,
+                    cancellationToken);
 
-        // Supplier
+        if (existingEarnings)
+            return;
+
+        // --------------------------------------------------------
+        // SUPPLIER
+        // --------------------------------------------------------
+
         if (order.SupplierId.HasValue)
         {
             var supplier =
@@ -325,7 +383,8 @@ public class EntrepreneurCommissionService
                         x => x.Id == order.SupplierId.Value,
                         cancellationToken);
 
-            if (supplier != null && supplier.UserId.HasValue)
+            if (supplier != null &&
+                supplier.UserId.HasValue)
             {
                 await GenerateForProviderUserAsync(
                     supplier.UserId.Value,
@@ -337,7 +396,10 @@ public class EntrepreneurCommissionService
             }
         }
 
-        // Driver
+        // --------------------------------------------------------
+        // DRIVER
+        // --------------------------------------------------------
+
         if (order.DriverId.HasValue)
         {
             var driver =
@@ -347,7 +409,8 @@ public class EntrepreneurCommissionService
                         x => x.Id == order.DriverId.Value,
                         cancellationToken);
 
-            if (driver != null && driver.UserId.HasValue)
+            if (driver != null &&
+                driver.UserId.HasValue)
             {
                 await GenerateForProviderUserAsync(
                     driver.UserId.Value,
@@ -358,9 +421,12 @@ public class EntrepreneurCommissionService
                     cancellationToken);
             }
         }
-
-       
     }
+
+    // ============================================================
+    // GENERATE AFTER SETTLEMENT PAID
+    // ============================================================
+
     public async Task GenerateForPaidSettlementAsync(
         SettlementQueue settlement,
         Order order,
@@ -368,7 +434,7 @@ public class EntrepreneurCommissionService
         CancellationToken cancellationToken = default)
     {
         // ---------------------------------------------------------
-        // 1. Only process supplier or driver settlements
+        // 1. ONLY PROCESS SUPPLIER OR DRIVER
         // ---------------------------------------------------------
 
         if (
@@ -379,18 +445,13 @@ public class EntrepreneurCommissionService
         }
 
         if (!settlement.PayeeId.HasValue)
-        {
             return;
-        }
 
         if (settlement.Status != "paid")
-        {
             return;
-        }
-
 
         // ---------------------------------------------------------
-        // 2. Determine the provider user
+        // 2. DETERMINE PROVIDER USER
         // ---------------------------------------------------------
 
         Guid? recruitedUserId = null;
@@ -398,60 +459,62 @@ public class EntrepreneurCommissionService
 
         if (settlement.PayeeType == "supplier")
         {
-            var supplier = await _context.Suppliers
-                .AsNoTracking()
-                .FirstOrDefaultAsync(
-                    x => x.Id == settlement.PayeeId.Value,
-                    cancellationToken);
+            var supplier =
+                await _context.Suppliers
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(
+                        x => x.Id == settlement.PayeeId.Value,
+                        cancellationToken);
 
             if (supplier == null)
-            {
                 return;
-            }
 
-            recruitedUserId = supplier.UserId;
-            providerRole = "supplier";
+            recruitedUserId =
+                supplier.UserId;
+
+            providerRole =
+                "supplier";
         }
         else if (settlement.PayeeType == "driver")
         {
-            var driver = await _context.Drivers
-                .AsNoTracking()
-                .FirstOrDefaultAsync(
-                    x => x.Id == settlement.PayeeId.Value,
-                    cancellationToken);
+            var driver =
+                await _context.Drivers
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(
+                        x => x.Id == settlement.PayeeId.Value,
+                        cancellationToken);
 
             if (driver == null)
-            {
                 return;
-            }
 
-            recruitedUserId = driver.UserId;
-            providerRole = "driver";
+            recruitedUserId =
+                driver.UserId;
+
+            providerRole =
+                "driver";
         }
 
-
         // ---------------------------------------------------------
-        // 3. Make sure the provider has a user account
+        // 3. PROVIDER USER ACCOUNT REQUIRED
         // ---------------------------------------------------------
 
         if (!recruitedUserId.HasValue)
-        {
             return;
-        }
-
 
         // ---------------------------------------------------------
-        // 4. Find the direct Entrepreneur referral
+        // 4. FIND DIRECT ENTREPRENEUR REFERRAL
         // ---------------------------------------------------------
 
-        var referral = await _context.EntrepreneurReferrals
-            .AsNoTracking()
-            .FirstOrDefaultAsync(
-                x =>
-                    x.RecruitedUserId == recruitedUserId.Value &&
-                    x.IsDirectReferral &&
-                    x.EndedAt == null,
-                cancellationToken);
+        var referral =
+            await _context.EntrepreneurReferrals
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x =>
+                        x.RecruitedUserId ==
+                            recruitedUserId.Value &&
+                        x.IsDirectReferral &&
+                        x.EndedAt == null,
+                    cancellationToken);
 
         if (referral == null)
         {
@@ -459,22 +522,18 @@ public class EntrepreneurCommissionService
             return;
         }
 
-
         // ---------------------------------------------------------
-        // 5. Determine the entrepreneur
+        // 5. DETERMINE ENTREPRENEUR
         // ---------------------------------------------------------
 
         var entrepreneurUserId =
             referral.EntrepreneurUserId;
 
         if (entrepreneurUserId == Guid.Empty)
-        {
             return;
-        }
-
 
         // ---------------------------------------------------------
-        // 6. Prevent duplicate earnings
+        // 6. PREVENT DUPLICATE EARNINGS
         // ---------------------------------------------------------
 
         var alreadyExists =
@@ -489,13 +548,10 @@ public class EntrepreneurCommissionService
                     cancellationToken);
 
         if (alreadyExists)
-        {
             return;
-        }
-
 
         // ---------------------------------------------------------
-        // 7. Load Entrepreneur program configuration
+        // 7. LOAD PROGRAM CONFIGURATION
         // ---------------------------------------------------------
 
         var configuration =
@@ -505,18 +561,13 @@ public class EntrepreneurCommissionService
                     cancellationToken);
 
         if (configuration == null)
-        {
             return;
-        }
 
         if (!configuration.ProgramEnabled)
-        {
             return;
-        }
-
 
         // ---------------------------------------------------------
-        // 8. Make sure this provider role qualifies
+        // 8. VERIFY PROVIDER ROLE
         // ---------------------------------------------------------
 
         var qualifyingRoles =
@@ -525,8 +576,12 @@ public class EntrepreneurCommissionService
                     ',',
                     StringSplitOptions.RemoveEmptyEntries |
                     StringSplitOptions.TrimEntries)
-                .Select(x => x.ToLowerInvariant())
+                .Select(
+                    x => x.ToLowerInvariant())
                 .ToHashSet();
+
+        if (string.IsNullOrWhiteSpace(providerRole))
+            return;
 
         if (!qualifyingRoles.Contains(
                 providerRole.ToLowerInvariant()))
@@ -534,43 +589,31 @@ public class EntrepreneurCommissionService
             return;
         }
 
+        // ---------------------------------------------------------
+        // 9. CALCULATE ELIGIBLE REVENUE
+        // ---------------------------------------------------------
 
-        // ---------------------------------------------------------
-        // 9. Calculate the eligible revenue
-        // ---------------------------------------------------------
-        //
-        // The Entrepreneur reward should be based on Alpha's
-        // eligible platform revenue, NOT the supplier's gross
-        // product value and NOT the driver's entire payout.
-        //
-        // For this implementation we use the platform revenue
-        // associated with the settlement.
-        //
+        // Entrepreneur reward is based on Alpha's
+        // eligible platform revenue.
 
         var eligibleRevenue =
             financial.AlphaNetRevenue;
 
-        if (eligibleRevenue <= 0)
-        {
+        if (eligibleRevenue <= 0m)
             return;
-        }
-
 
         // ---------------------------------------------------------
-        // 10. Get Entrepreneur commission rate
+        // 10. GET COMMISSION RATE
         // ---------------------------------------------------------
 
         var commissionRate =
             configuration.DefaultCommissionRate;
 
-        if (commissionRate <= 0)
-        {
+        if (commissionRate <= 0m)
             return;
-        }
-
 
         // ---------------------------------------------------------
-        // 11. Calculate Entrepreneur earning
+        // 11. CALCULATE ENTREPRENEUR EARNING
         // ---------------------------------------------------------
 
         var earningAmount =
@@ -579,47 +622,45 @@ public class EntrepreneurCommissionService
                 2,
                 MidpointRounding.AwayFromZero);
 
-        if (earningAmount <= 0)
-        {
+        if (earningAmount <= 0m)
             return;
-        }
-
 
         // ---------------------------------------------------------
-        // 12. Create Entrepreneur earning
+        // 12. CREATE ENTREPRENEUR EARNING
         // ---------------------------------------------------------
 
-        var earning = new EntrepreneurEarning
-        {
-            Id = Guid.NewGuid(),
+        var earning =
+            new EntrepreneurEarning
+            {
+                Id = Guid.NewGuid(),
 
-            EntrepreneurUserId =
-                entrepreneurUserId,
+                EntrepreneurUserId =
+                    entrepreneurUserId,
 
-            RecruitedProviderId =
-                recruitedUserId.Value,
+                RecruitedProviderId =
+                    recruitedUserId.Value,
 
-            ProviderRole =
-                providerRole,
+                ProviderRole =
+                    providerRole,
 
-            OrderId =
-                order.Id,
+                OrderId =
+                    order.Id,
 
-            EligibleNetPlatformRevenue =
-                eligibleRevenue,
+                EligibleNetPlatformRevenue =
+                    eligibleRevenue,
 
-            EntrepreneurPercentage =
-                commissionRate,
+                EntrepreneurPercentage =
+                    commissionRate,
 
-            EntrepreneurEarningsAmount =
-                earningAmount,
+                EntrepreneurEarningsAmount =
+                    earningAmount,
 
-            EarningStatus =
-                "pending",
+                EarningStatus =
+                    "pending",
 
-            CreatedAt =
-                DateTime.UtcNow
-        };
+                CreatedAt =
+                    DateTime.UtcNow
+            };
 
         _context.EntrepreneurEarnings.Add(
             earning);
@@ -627,13 +668,18 @@ public class EntrepreneurCommissionService
         await _context.SaveChangesAsync(
             cancellationToken);
     }
+
+    // ============================================================
+    // GENERATE FOR PROVIDER USER
+    // ============================================================
+
     private async Task GenerateForProviderUserAsync(
-    Guid providerUserId,
-    Order order,
-    OrderFinancial financial,
-    Payment payment,
-    string providerRole,
-    CancellationToken cancellationToken)
+        Guid providerUserId,
+        Order order,
+        OrderFinancial financial,
+        Payment payment,
+        string providerRole,
+        CancellationToken cancellationToken)
     {
         var referral =
             await _context
@@ -642,25 +688,28 @@ public class EntrepreneurCommissionService
                 .FirstOrDefaultAsync(
                     x =>
                         x.RecruitedUserId ==
-                            providerUserId
-                        &&
-                        x.IsDirectReferral
-                        &&
+                            providerUserId &&
+                        x.IsDirectReferral &&
                         x.EndedAt == null,
                     cancellationToken);
 
+        // --------------------------------------------------------
+        // FIX:
+        // orderId does not exist in this method.
+        // The correct variable is order.Id.
+        // --------------------------------------------------------
+
         var existingProviderEarnings =
-    await _context.EntrepreneurEarnings
-        .AnyAsync(
-            x =>
-                x.OrderId == orderId &&
-                x.RecruitedProviderId == providerUserId,
-            cancellationToken);
+            await _context.EntrepreneurEarnings
+                .AnyAsync(
+                    x =>
+                        x.OrderId == order.Id &&
+                        x.RecruitedProviderId ==
+                            providerUserId,
+                    cancellationToken);
 
         if (existingProviderEarnings)
-        {
             return;
-        }
 
         if (referral == null)
             return;
@@ -691,24 +740,30 @@ public class EntrepreneurCommissionService
                 cancellationToken);
     }
 
+    // ============================================================
+    // GENERATE AFTER ALL SETTLEMENTS ARE PAID
+    // ============================================================
+
     public async Task GenerateForOrderAfterSettlementPaidAsync(
-    Guid orderId,
-    CancellationToken cancellationToken = default)
+        Guid orderId,
+        CancellationToken cancellationToken = default)
     {
-        var order = await _context.Orders
-            .AsNoTracking()
-            .FirstOrDefaultAsync(
-                x => x.Id == orderId,
-                cancellationToken);
+        var order =
+            await _context.Orders
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x => x.Id == orderId,
+                    cancellationToken);
 
         if (order == null)
             return;
 
-        var financial = await _context.OrderFinancials
-            .AsNoTracking()
-            .FirstOrDefaultAsync(
-                x => x.OrderId == orderId,
-                cancellationToken);
+        var financial =
+            await _context.OrderFinancials
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x => x.OrderId == orderId,
+                    cancellationToken);
 
         if (financial == null)
             return;
@@ -721,23 +776,32 @@ public class EntrepreneurCommissionService
             return;
         }
 
-        var settlements = await _context.SettlementQueue
-            .AsNoTracking()
-            .Where(x =>
-                x.OrderFinancialId == financial.Id)
-            .ToListAsync(cancellationToken);
+        var settlements =
+            await _context.SettlementQueue
+                .AsNoTracking()
+                .Where(
+                    x =>
+                        x.OrderFinancialId ==
+                        financial.Id)
+                .ToListAsync(
+                    cancellationToken);
 
-        if (settlements.Any(x => x.Status != "paid"))
+        if (settlements.Any(
+                x => x.Status != "paid"))
+        {
             return;
+        }
 
         var paidProviderSettlements =
             settlements
-                .Where(x =>
-                    x.PayeeType == "supplier" ||
-                    x.PayeeType == "driver")
+                .Where(
+                    x =>
+                        x.PayeeType == "supplier" ||
+                        x.PayeeType == "driver")
                 .ToList();
 
-        foreach (var settlement in paidProviderSettlements)
+        foreach (var settlement
+                 in paidProviderSettlements)
         {
             await GenerateForPaidSettlementAsync(
                 settlement,
@@ -748,15 +812,21 @@ public class EntrepreneurCommissionService
 
         var entrepreneurEarnings =
             await _context.EntrepreneurEarnings
-                .Where(x =>
-                    x.OrderId == orderId &&
-                    x.EarningStatus == "pending")
-                .ToListAsync(cancellationToken);
+                .Where(
+                    x =>
+                        x.OrderId == orderId &&
+                        x.EarningStatus == "pending")
+                .ToListAsync(
+                    cancellationToken);
 
-        foreach (var earning in entrepreneurEarnings)
+        foreach (var earning
+                 in entrepreneurEarnings)
         {
-            earning.EarningStatus = "AVAILABLE";
-            earning.UpdatedAt = DateTime.UtcNow;
+            earning.EarningStatus =
+                "AVAILABLE";
+
+            earning.UpdatedAt =
+                DateTime.UtcNow;
         }
 
         await _context.SaveChangesAsync(

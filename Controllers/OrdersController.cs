@@ -1953,11 +1953,22 @@ public class OrdersController : ControllerBase
         {
             return Unauthorized();
         }
-        if (order.Status != OrderStatuses.WaitingForPickup)
+
+        var order = await _context.Orders
+            .FirstOrDefaultAsync(
+                x => x.Id == id,
+                cancellationToken);
+
+        if (order == null)
+            return NotFound();
+
+        if (order.Status != OrderStatuses.DriverAccepted &&
+            order.Status != OrderStatuses.WaitingForPickup)
         {
             return BadRequest(
                 $"Order is not ready for pickup. Current status: {order.Status}");
         }
+
         var supplier = await _context.Suppliers
             .FirstOrDefaultAsync(
                 x => x.UserId == userId,
@@ -1976,18 +1987,11 @@ public class OrdersController : ControllerBase
         if (!ownsItem)
             return Forbid();
 
-        var order = await _context.Orders
-            .FirstOrDefaultAsync(
-                x => x.Id == id,
-                cancellationToken);
-
-        if (order == null)
-            return NotFound();
-
         order.Status = OrderStatuses.WaitingForPickup;
         order.UpdatedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await _context.SaveChangesAsync(
+            cancellationToken);
 
         await AddStatusHistory(
             id,
@@ -2005,6 +2009,7 @@ public class OrdersController : ControllerBase
             status = order.Status
         });
     }
+
     [HttpPost("{id}/driver-accept")]
     [Authorize(Roles = "driver")]
     public async Task<IActionResult> DriverAccept(

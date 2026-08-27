@@ -3,6 +3,9 @@ using Alpha.API.Data;
 using Alpha.API.Models;
 using Alpha.API.Services.Entrepreneur;
 using Microsoft.EntityFrameworkCore;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Alpha.API.Services;
 
@@ -25,7 +28,7 @@ public class SettlementService
     // ============================================================
     // PAYMENT INITIALIZATION
     // ============================================================
-    //
+
     // IMPORTANT:
     // This does NOT perform final settlement.
     //
@@ -67,8 +70,10 @@ public class SettlementService
             .FirstOrDefaultAsync(cancellationToken);
 
         if (payment == null)
+        {
             throw new InvalidOperationException(
                 "Successful payment not found.");
+        }
 
         var financial = await _context.OrderFinancials
             .FirstOrDefaultAsync(
@@ -91,10 +96,11 @@ public class SettlementService
 
         if (!string.IsNullOrWhiteSpace(payment.Currency))
         {
-            financial.Currency = payment.Currency;
+            financial.Currency =
+                payment.Currency.Trim().ToUpperInvariant();
         }
 
-        // GatewayFee is decimal, not decimal?
+        // GatewayFee is decimal.
         financial.ProcessingFee = payment.GatewayFee;
 
         // This is NOT final settlement.
@@ -107,13 +113,11 @@ public class SettlementService
         return financial;
     }
 
-
     // ============================================================
     // MAIN SETTLEMENT WORKFLOW
     // ============================================================
-    //
-    // This is the SINGLE entry point for Admin settlement
-    // verification.
+
+    // SINGLE entry point for Admin settlement verification.
     //
     // WORKFLOW:
     //
@@ -124,8 +128,6 @@ public class SettlementService
     // CALCULATE FINANCIALS
     //       ↓
     // CALCULATE TAX
-    //       ↓
-    // CALCULATE AUTO-PARTS COMMISSION
     //       ↓
     // CALCULATE PAYABLES
     //       ↓
@@ -149,14 +151,24 @@ public class SettlementService
 
         try
         {
+            // --------------------------------------------------------
+            // LOAD ORDER
+            // --------------------------------------------------------
+
             var order = await _context.Orders
                 .FirstOrDefaultAsync(
                     x => x.Id == orderId,
                     cancellationToken);
 
             if (order == null)
+            {
                 throw new InvalidOperationException(
                     "Order not found.");
+            }
+
+            // --------------------------------------------------------
+            // LOAD PAYMENT
+            // --------------------------------------------------------
 
             var payment = await _context.Payments
                 .Where(x => x.OrderId == orderId)
@@ -164,8 +176,14 @@ public class SettlementService
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (payment == null)
+            {
                 throw new InvalidOperationException(
                     "Payment record not found.");
+            }
+
+            // --------------------------------------------------------
+            // LOAD FINANCIAL RECORD
+            // --------------------------------------------------------
 
             var financial = await _context.OrderFinancials
                 .FirstOrDefaultAsync(
@@ -173,8 +191,10 @@ public class SettlementService
                     cancellationToken);
 
             if (financial == null)
+            {
                 throw new InvalidOperationException(
                     "Financial record not found.");
+            }
 
             // --------------------------------------------------------
             // 1. VERIFY PAYMENT
@@ -218,12 +238,14 @@ public class SettlementService
             // 3. VERIFY SUPPLIER
             // --------------------------------------------------------
 
+            // SupplierId is a non-nullable Guid in the current model.
+            // Therefore HasValue cannot be used.
             var supplierComplete =
                 await _context.OrderItems
                     .AnyAsync(
                         x =>
                             x.OrderId == orderId &&
-                            x.SupplierId.HasValue,
+                            x.SupplierId != Guid.Empty,
                         cancellationToken);
 
             if (!supplierComplete)
@@ -239,6 +261,7 @@ public class SettlementService
             // 4. VERIFY DRIVER
             // --------------------------------------------------------
 
+            // DriverId is nullable in the current Order model.
             if (!order.DriverId.HasValue)
             {
                 return await BlockSettlement(
@@ -292,10 +315,10 @@ public class SettlementService
 
             if (!string.IsNullOrWhiteSpace(payment.Currency))
             {
-                financial.Currency = payment.Currency;
+                financial.Currency =
+                    payment.Currency.Trim().ToUpperInvariant();
             }
 
-            // GatewayFee is decimal.
             financial.ProcessingFee = payment.GatewayFee;
 
             // --------------------------------------------------------
@@ -416,7 +439,7 @@ public class SettlementService
                 entrepreneurCommission;
 
             // --------------------------------------------------------
-            // 16. CALCULATE FINAL ALPHA RETAINED REVENUE
+            // 16. FINAL ALPHA RETAINED REVENUE
             // --------------------------------------------------------
 
             financial.AlphaRetainedRevenue =
@@ -461,7 +484,6 @@ public class SettlementService
         }
     }
 
-
     // ============================================================
     // TAX
     // ============================================================
@@ -479,7 +501,6 @@ public class SettlementService
             currency: currency,
             cancellationToken: cancellationToken);
     }
-
 
     // ============================================================
     // FINANCIAL CALCULATION
@@ -582,7 +603,6 @@ public class SettlementService
             - financial.Discount;
     }
 
-
     // ============================================================
     // RECONCILIATION
     // ============================================================
@@ -609,7 +629,6 @@ public class SettlementService
         return Math.Abs(
             financial.ReconciliationDifference) <= 0.01m;
     }
-
 
     // ============================================================
     // FINANCIAL EXCEPTION
@@ -649,7 +668,6 @@ public class SettlementService
             });
     }
 
-
     // ============================================================
     // BLOCK SETTLEMENT
     // ============================================================
@@ -672,7 +690,6 @@ public class SettlementService
 
         return financial;
     }
-
 
     // ============================================================
     // SETTLEMENT QUEUE
@@ -700,8 +717,8 @@ public class SettlementService
                             x.UnitPrice * x.Quantity)
                 })
                 .Where(x =>
-                    x.SupplierId.HasValue &&
-                    x.GrossAmount > 0)
+                    x.SupplierId != Guid.Empty &&
+                    x.GrossAmount > 0m)
                 .ToListAsync(cancellationToken);
 
         // --------------------------------------------------------
@@ -747,11 +764,12 @@ public class SettlementService
             var supplierGroup =
                 supplierGroups[index];
 
-            if (!supplierGroup.SupplierId.HasValue)
-                continue;
-
+            // SupplierId is Guid, not Guid?.
             var supplierId =
-                supplierGroup.SupplierId.Value;
+                supplierGroup.SupplierId;
+
+            if (supplierId == Guid.Empty)
+                continue;
 
             var alreadyExists =
                 existingPayees.Any(
@@ -765,11 +783,11 @@ public class SettlementService
             decimal supplierAmount;
 
             var isLastSupplier =
-                index ==
-                supplierGroups.Count - 1;
+                index == supplierGroups.Count - 1;
 
             if (isLastSupplier)
             {
+                // Prevent rounding differences.
                 supplierAmount =
                     Math.Round(
                         supplierPayable
@@ -893,8 +911,8 @@ public class SettlementService
                         PayeeType =
                             "mechanic",
 
-                        // Your current model apparently does not
-                        // have a mechanic ID available here.
+                        // Current model does not expose
+                        // a mechanic ID here.
                         PayeeId =
                             null,
 
@@ -911,16 +929,12 @@ public class SettlementService
         }
     }
 
-
     // ============================================================
     // LEGACY COMPATIBILITY METHOD
     // ============================================================
-    //
-    // Keep this temporarily if existing controller code calls it.
-    //
-    // Eventually remove it and call VerifySettlement() directly.
-    //
-    // ============================================================
+
+    // Keep this temporarily if an existing controller calls it.
+    // Eventually call VerifySettlement() directly.
 
     public async Task<OrderFinancial> VerifySettlementAfterProof(
         Guid orderId)
