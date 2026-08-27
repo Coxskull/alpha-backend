@@ -745,7 +745,7 @@ public class SettlementService
 
         var totalSupplierGross =
             supplierGroups.Sum(
-                x => x.GrossAmount);
+                x => x.GrossAmount ?? 0m);
 
         var supplierPayable =
             financial.SupplierNetPayable;
@@ -764,7 +764,6 @@ public class SettlementService
             var supplierGroup =
                 supplierGroups[index];
 
-            // SupplierId is Guid, not Guid?.
             var supplierId =
                 supplierGroup.SupplierId;
 
@@ -780,6 +779,12 @@ public class SettlementService
             if (alreadyExists)
                 continue;
 
+            var supplierGrossAmount =
+                supplierGroup.GrossAmount ?? 0m;
+
+            if (supplierGrossAmount <= 0m)
+                continue;
+
             decimal supplierAmount;
 
             var isLastSupplier =
@@ -787,24 +792,20 @@ public class SettlementService
 
             if (isLastSupplier)
             {
-                // Prevent rounding differences.
                 supplierAmount =
                     Math.Round(
-                        supplierPayable
-                        - allocatedSupplierAmount,
+                        supplierPayable -
+                        allocatedSupplierAmount,
                         2,
                         MidpointRounding.AwayFromZero);
             }
             else if (totalSupplierGross > 0m)
             {
-                var supplierGrossAmount =
-                    supplierGroup.GrossAmount ?? 0m;
-
                 supplierAmount =
                     Math.Round(
-                        supplierPayable
-                        * supplierGrossAmount
-                        / totalSupplierGross,
+                        supplierPayable *
+                        supplierGrossAmount /
+                        totalSupplierGross,
                         2,
                         MidpointRounding.AwayFromZero);
             }
@@ -823,24 +824,12 @@ public class SettlementService
                 new SettlementQueue
                 {
                     Id = Guid.NewGuid(),
-
-                    OrderFinancialId =
-                        financial.Id,
-
-                    PayeeType =
-                        "supplier",
-
-                    PayeeId =
-                        supplierId,
-
-                    Amount =
-                        supplierAmount,
-
-                    Status =
-                        "ready_for_payout",
-
-                    CreatedAt =
-                        DateTime.UtcNow
+                    OrderFinancialId = financial.Id,
+                    PayeeType = "supplier",
+                    PayeeId = supplierId,
+                    Amount = supplierAmount,
+                    Status = "ready_for_payout",
+                    CreatedAt = DateTime.UtcNow
                 });
         }
 
