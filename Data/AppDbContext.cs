@@ -1762,7 +1762,6 @@ public class AppDbContext : DbContext
             entity.Property(e => e.PaidAt).HasColumnName("paid_at");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
         });
-
         // =========================================================
         // SETTLEMENT QUEUE
         // =========================================================
