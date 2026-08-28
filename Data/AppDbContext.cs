@@ -761,19 +761,40 @@ public class AppDbContext : DbContext
 
             entity.HasKey(x => x.Id);
 
+            entity.Property(x => x.Id)
+                .HasColumnName("id");
+
             entity.Property(x => x.CountryCode)
+                .HasColumnName("country_code")
                 .HasMaxLength(10)
                 .IsRequired();
 
             entity.Property(x => x.Currency)
+                .HasColumnName("currency")
                 .HasMaxLength(10)
                 .IsRequired();
 
             entity.Property(x => x.CommissionRate)
-                .HasPrecision(10, 6);
+                .HasColumnName("commission_rate")
+                .HasPrecision(10, 6)
+                .IsRequired();
 
             entity.Property(x => x.MinimumPayoutThreshold)
-                .HasPrecision(18, 2);
+                .HasColumnName("minimum_payout_threshold")
+                .HasPrecision(18, 2)
+                .IsRequired();
+
+            entity.Property(x => x.IsActive)
+                .HasColumnName("is_active")
+                .IsRequired();
+
+            entity.Property(x => x.CreatedAt)
+                .HasColumnName("created_at")
+                .IsRequired();
+
+            entity.Property(x => x.UpdatedAt)
+                .HasColumnName("updated_at")
+                .IsRequired();
 
             entity.HasIndex(x => new
             {
