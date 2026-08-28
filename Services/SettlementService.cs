@@ -705,21 +705,30 @@ public class SettlementService
         // --------------------------------------------------------
 
         var supplierGroups =
-            await _context.OrderItems
-                .Where(x => x.OrderId == order.Id)
-                .GroupBy(x => x.SupplierId)
-                .Select(g => new
-                {
-                    SupplierId = g.Key,
+    await _context.OrderItems
+        .Where(x =>
+            x.OrderId == order.Id &&
+            x.SupplierId != Guid.Empty)
+        .GroupBy(x => x.SupplierId)
+        .Select(g => new
+        {
+            SupplierId = g.Key,
 
-                    GrossAmount = g.Sum(
-                        x =>
-                            x.UnitPrice * x.Quantity)
-                })
-                .Where(x =>
-                    x.SupplierId != Guid.Empty &&
-                    x.GrossAmount > 0m)
-                .ToListAsync(cancellationToken);
+            GrossAmount = g.Sum(
+                x => (x.UnitPrice ?? 0m) * x.Quantity)
+        })
+        .Where(x =>
+            x.GrossAmount > 0m)
+        .OrderBy(x => x.SupplierId)
+        .ToListAsync(
+            cancellationToken);
+
+        var eligibleSupplierGroups =
+    supplierGroups
+        .Where(x =>
+            x.SupplierId != Guid.Empty &&
+            x.GrossAmount > 0m)
+        .ToList();
 
         // --------------------------------------------------------
         // EXISTING QUEUE ITEMS
@@ -757,18 +766,15 @@ public class SettlementService
         // --------------------------------------------------------
 
         for (
-            var index = 0;
-            index < supplierGroups.Count;
-            index++)
+    var index = 0;
+    index < eligibleSupplierGroups.Count;
+    index++)
         {
             var supplierGroup =
-                supplierGroups[index];
+                eligibleSupplierGroups[index];
 
             var supplierId =
                 supplierGroup.SupplierId;
-
-            if (supplierId == Guid.Empty)
-                continue;
 
             var alreadyExists =
                 existingPayees.Any(
@@ -779,16 +785,11 @@ public class SettlementService
             if (alreadyExists)
                 continue;
 
-            var supplierGrossAmount =
-                supplierGroup.GrossAmount ?? 0m;
-
-            if (supplierGrossAmount <= 0m)
-                continue;
+            var isLastSupplier =
+                index ==
+                eligibleSupplierGroups.Count - 1;
 
             decimal supplierAmount;
-
-            var isLastSupplier =
-                index == supplierGroups.Count - 1;
 
             if (isLastSupplier)
             {
@@ -799,19 +800,15 @@ public class SettlementService
                         2,
                         MidpointRounding.AwayFromZero);
             }
-            else if (totalSupplierGross > 0m)
+            else
             {
                 supplierAmount =
                     Math.Round(
                         supplierPayable *
-                        supplierGrossAmount /
+                        supplierGroup.GrossAmount /
                         totalSupplierGross,
                         2,
                         MidpointRounding.AwayFromZero);
-            }
-            else
-            {
-                supplierAmount = 0m;
             }
 
             if (supplierAmount <= 0m)
@@ -824,12 +821,24 @@ public class SettlementService
                 new SettlementQueue
                 {
                     Id = Guid.NewGuid(),
-                    OrderFinancialId = financial.Id,
-                    PayeeType = "supplier",
-                    PayeeId = supplierId,
-                    Amount = supplierAmount,
-                    Status = "ready_for_payout",
-                    CreatedAt = DateTime.UtcNow
+
+                    OrderFinancialId =
+                        financial.Id,
+
+                    PayeeType =
+                        "supplier",
+
+                    PayeeId =
+                        supplierId,
+
+                    Amount =
+                        supplierAmount,
+
+                    Status =
+                        "ready_for_payout",
+
+                    CreatedAt =
+                        DateTime.UtcNow
                 });
         }
 
@@ -934,5 +943,23 @@ public class SettlementService
         return await VerifySettlement(
             orderId,
             CancellationToken.None);
+    }
+
+    private async Task AddStatusHistory(
+    Guid orderId,
+    string status,
+    CancellationToken cancellationToken)
+    {
+        _context.StatusHistory.Add(
+            new StatusHistory
+            {
+                Id = Guid.NewGuid(),
+                OrderId = orderId,
+                Status = status,
+                CreatedAt = DateTime.UtcNow
+            });
+
+        await _context.SaveChangesAsync(
+            cancellationToken);
     }
 }

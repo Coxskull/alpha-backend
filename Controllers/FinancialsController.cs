@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Alpha.API.Services.Entrepreneur;
 using Alpha.API.Services;
 using Alpha.API.Extensions;
+using Alpha.API.Constants;
 
 namespace Alpha.API.Controllers;
 
@@ -68,6 +69,108 @@ public class FinancialsController : ControllerBase
         return Ok(queue);
     }
 
+    [HttpGet("pending-settlements")]
+    [Authorize(Roles = "admin,dispatcher")]
+    public async Task<IActionResult> GetPendingSettlements(
+    CancellationToken cancellationToken)
+    {
+        var pending = await _context.Orders
+            .Where(x =>
+                x.Status == OrderStatuses.SettlementPending)
+            .Select(order => new
+            {
+                orderId = order.Id,
+                orderNumber = order.OrderNumber,
+                customerName = order.CustomerName,
+                pickupAddress = order.PickupAddress,
+                deliveryAddress = order.DeliveryAddress,
+                supplierId = order.SupplierId,
+                driverId = order.DriverId,
+                status = order.Status,
+                currency = order.Currency,
+                countryCode = order.CountryCode,
+                createdAt = order.CreatedAt,
+                updatedAt = order.UpdatedAt,
+
+                financial =
+                    _context.OrderFinancials
+                        .Where(f =>
+                            f.OrderId == order.Id)
+                        .Select(f => new
+                        {
+                            id = f.Id,
+                            customerPaid = f.CustomerPaid,
+                            currency = f.Currency,
+
+                            supplierAmount =
+                                f.SupplierAmount,
+
+                            driverAmount =
+                                f.DriverAmount,
+
+                            mechanicAmount =
+                                f.MechanicAmount,
+
+                            supplierNetPayable =
+                                f.SupplierNetPayable,
+
+                            driverNetPayable =
+                                f.DriverNetPayable,
+
+                            mechanicNetPayable =
+                                f.MechanicNetPayable,
+
+                            tax = f.Tax,
+
+                            taxCollected =
+                                f.TaxCollected,
+
+                            taxWithheld =
+                                f.TaxWithheld,
+
+                            processingFee =
+                                f.ProcessingFee,
+
+                            alphaNetRevenue =
+                                f.AlphaNetRevenue,
+
+                            financialStatus =
+                                f.FinancialStatus,
+
+                            settlementStatus =
+                                f.SettlementStatus,
+
+                            payoutStatus =
+                                f.PayoutStatus,
+
+                            reconciliationDifference =
+                                f.ReconciliationDifference,
+
+                            completionProofUrl =
+                                f.CompletionProofUrl
+                        })
+                        .FirstOrDefault(),
+
+                proof =
+                    _context.DeliveryProofs
+                        .Where(p =>
+                            p.OrderId == order.Id)
+                        .OrderByDescending(p =>
+                            p.UploadedAt)
+                        .Select(p => new
+                        {
+                            id = p.Id,
+                            imageUrl = p.ImageUrl,
+                            uploadedAt = p.UploadedAt
+                        })
+                        .FirstOrDefault()
+            })
+            .OrderByDescending(x => x.updatedAt)
+            .ToListAsync(cancellationToken);
+
+        return Ok(pending);
+    }
+
 
     [HttpPost("{id:guid}/approve")]
     [Authorize(Roles = "admin")]
@@ -95,7 +198,10 @@ public class FinancialsController : ControllerBase
         financial.SettlementStatus = "ready_for_payout";
 
         await _context.SaveChangesAsync(cancellationToken);
-
+        await AddStatusHistory(
+    order.Id,
+    OrderStatuses.ReadyForPayout,
+    cancellationToken);
         return Ok(new
         {
             success = true,
@@ -466,12 +572,48 @@ public class FinancialsController : ControllerBase
                     orderId,
                     cancellationToken);
 
-            return Ok(financial);
+            if (financial.SettlementStatus == "blocked")
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message =
+                        "Settlement was blocked during verification.",
+                    financialStatus =
+                        financial.FinancialStatus,
+                    settlementStatus =
+                        financial.SettlementStatus,
+                    payoutStatus =
+                        financial.PayoutStatus,
+                    reconciliationDifference =
+                        financial.ReconciliationDifference
+                });
+            }
+
+            return Ok(new
+            {
+                success = true,
+                message =
+                    "Settlement verified and added to payout queue.",
+                financialId =
+                    financial.Id,
+                orderId =
+                    financial.OrderId,
+                financialStatus =
+                    financial.FinancialStatus,
+                settlementStatus =
+                    financial.SettlementStatus,
+                payoutStatus =
+                    financial.PayoutStatus,
+                reconciliationDifference =
+                    financial.ReconciliationDifference
+            });
         }
         catch (InvalidOperationException ex)
         {
             return BadRequest(new
             {
+                success = false,
                 message = ex.Message
             });
         }
