@@ -363,6 +363,9 @@ public class AppDbContext : DbContext
 
             entity.Property(e => e.UpdatedAt)
                 .HasColumnName("updated_at");
+
+            entity.Property(e => e.EventKey)
+    .HasColumnName("event_key");
         });
 
         modelBuilder.Entity<EntrepreneurReferral>(entity =>
@@ -1758,6 +1761,45 @@ public class AppDbContext : DbContext
             entity.Property(e => e.TransactionReference).HasColumnName("transaction_reference");
             entity.Property(e => e.PaidAt).HasColumnName("paid_at");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+        });
+
+        // =========================================================
+        // SETTLEMENT QUEUE
+        // =========================================================
+
+        modelBuilder.Entity<SettlementQueue>(entity =>
+        {
+            entity.ToTable("settlement_queue");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id)
+                .HasColumnName("id");
+
+            entity.Property(e => e.OrderFinancialId)
+                .HasColumnName("order_financial_id");
+
+            entity.Property(e => e.PayeeType)
+                .HasColumnName("payee_type");
+
+            entity.Property(e => e.PayeeId)
+                .HasColumnName("payee_id");
+
+            entity.Property(e => e.Amount)
+                .HasColumnName("amount")
+                .HasPrecision(18, 2);
+
+            entity.Property(e => e.Status)
+                .HasColumnName("status");
+
+            entity.Property(e => e.ReviewedBy)
+                .HasColumnName("reviewed_by");
+
+            entity.Property(e => e.ReviewedAt)
+                .HasColumnName("reviewed_at");
+
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("created_at");
         });
 
         // ==========================

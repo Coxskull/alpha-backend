@@ -74,4 +74,7 @@ public class EntrepreneurEarning
 
     [Column("updated_at")]
     public DateTime UpdatedAt { get; set; }
+
+    [Column("event_key")]
+    public string? EventKey { get; set; }
 }
