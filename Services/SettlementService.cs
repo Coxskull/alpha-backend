@@ -754,7 +754,7 @@ public class SettlementService
 
         var totalSupplierGross =
             supplierGroups.Sum(
-                x => x.GrossAmount ?? 0m);
+                x => x.GrossAmount);
 
         var supplierPayable =
             financial.SupplierNetPayable;

@@ -198,10 +198,7 @@ public class FinancialsController : ControllerBase
         financial.SettlementStatus = "ready_for_payout";
 
         await _context.SaveChangesAsync(cancellationToken);
-        await AddStatusHistory(
-    order.Id,
-    OrderStatuses.ReadyForPayout,
-    cancellationToken);
+
         return Ok(new
         {
             success = true,
@@ -719,5 +716,5 @@ public class FinancialsController : ControllerBase
         });
     }
 
-    
+
 }
