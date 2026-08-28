@@ -9,6 +9,7 @@ using Microsoft.OpenApi.Models;
 using Supabase;
 using Alpha.API.Services.Providers;
 using Alpha.API.Services;
+using Microsoft.Extensions.Logging;
 using Alpha.API.Services.Entrepreneur;
 var builder = WebApplication.CreateBuilder(args);
 
@@ -242,7 +243,15 @@ if (!string.IsNullOrEmpty(databaseUrl))
     }.ToString();
 
     builder.Services.AddDbContext<AppDbContext>(options =>
-        options.UseNpgsql(connectionString));
+    {
+        options
+            .UseNpgsql(connectionString)
+            .EnableDetailedErrors()
+            .EnableSensitiveDataLogging()
+            .LogTo(
+                Console.WriteLine,
+                LogLevel.Information);
+    });
 }
 
 // CORS
