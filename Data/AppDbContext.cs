@@ -410,11 +410,37 @@ public class AppDbContext : DbContext
 
             entity.HasKey(x => x.Id);
 
-            entity.Property(x => x.Amount)
-                .HasPrecision(18, 2);
+            entity.Property(x => x.Id)
+                .HasColumnName("id");
+
+            entity.Property(x => x.OrderId)
+                .HasColumnName("order_id")
+                .IsRequired();
+
+            entity.Property(x => x.PaymentId)
+                .HasColumnName("payment_id");
 
             entity.Property(x => x.CostType)
+                .HasColumnName("cost_type")
                 .HasMaxLength(100)
+                .IsRequired();
+
+            entity.Property(x => x.Amount)
+                .HasColumnName("amount")
+                .HasPrecision(18, 2)
+                .IsRequired();
+
+            entity.Property(x => x.Currency)
+                .HasColumnName("currency")
+                .HasMaxLength(10)
+                .IsRequired();
+
+            entity.Property(x => x.Description)
+                .HasColumnName("description")
+                .HasMaxLength(500);
+
+            entity.Property(x => x.CreatedAt)
+                .HasColumnName("created_at")
                 .IsRequired();
 
             entity.HasIndex(x => x.OrderId);
