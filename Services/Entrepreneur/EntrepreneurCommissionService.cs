@@ -832,4 +832,189 @@ public class EntrepreneurCommissionService
         await _context.SaveChangesAsync(
             cancellationToken);
     }
+
+    public async Task<EntrepreneurEarning?> GenerateForProviderAsync(
+    Guid orderId,
+    Guid providerUserId,
+    string providerRole,
+    CancellationToken cancellationToken = default)
+    {
+        var order = await _context.Orders
+            .FirstOrDefaultAsync(
+                x => x.Id == orderId,
+                cancellationToken);
+
+        if (order == null)
+            return null;
+
+        var financial = await _context.OrderFinancials
+            .FirstOrDefaultAsync(
+                x => x.OrderId == orderId,
+                cancellationToken);
+
+        if (financial == null)
+            return null;
+
+        var payment = await _context.Payments
+            .FirstOrDefaultAsync(
+                x =>
+                    x.OrderId == orderId &&
+                    x.PaymentStatus == "paid",
+                cancellationToken);
+
+        if (payment == null)
+            return null;
+
+        var configuration =
+            await _context.EntrepreneurProgramConfigurations
+                .AsNoTracking()
+                .FirstOrDefaultAsync(cancellationToken);
+
+        if (configuration == null ||
+            !configuration.ProgramEnabled)
+            return null;
+
+        var qualifyingRoles =
+            (configuration.QualifyingProviderRoles ?? "")
+                .Split(
+                    ',',
+                    StringSplitOptions.RemoveEmptyEntries |
+                    StringSplitOptions.TrimEntries)
+                .Select(x => x.ToLowerInvariant())
+                .ToHashSet();
+
+        providerRole =
+            providerRole.Trim().ToLowerInvariant();
+
+        if (!qualifyingRoles.Contains(providerRole))
+            return null;
+
+        var referral =
+            await _context.EntrepreneurReferrals
+                .FirstOrDefaultAsync(
+                    x =>
+                        x.RecruitedUserId == providerUserId &&
+                        x.IsDirectReferral &&
+                        x.EndedAt == null &&
+                        x.EntrepreneurEligibilityStatus != "rejected",
+                    cancellationToken);
+
+        if (referral == null)
+            return null;
+
+        if (referral.EntrepreneurUserId == Guid.Empty)
+            return null;
+
+        var eventKey =
+            $"entrepreneur:order:{order.Id}:provider:{providerUserId}";
+
+        var existing =
+            await _context.EntrepreneurEarnings
+                .FirstOrDefaultAsync(
+                    x => x.EventKey == eventKey,
+                    cancellationToken);
+
+        if (existing != null)
+            return existing;
+
+        var eligibleRevenue =
+            Math.Max(
+                0m,
+                financial.AlphaEligibleNetPlatformRevenue);
+
+        if (eligibleRevenue <= 0m)
+            return null;
+
+        var rate =
+            configuration.DefaultCommissionRate;
+
+        if (rate <= 0m || rate > 1m)
+            throw new InvalidOperationException(
+                "Entrepreneur commission rate must be between 0 and 1.");
+
+        var commission =
+            decimal.Round(
+                eligibleRevenue * rate,
+                2,
+                MidpointRounding.AwayFromZero);
+
+        if (commission <= 0m)
+            return null;
+
+        var now = DateTime.UtcNow;
+
+        var earning =
+            new EntrepreneurEarning
+            {
+                Id = Guid.NewGuid(),
+
+                EntrepreneurUserId =
+                    referral.EntrepreneurUserId,
+
+                RecruiterId =
+                    referral.EntrepreneurUserId,
+
+                RecruitedProviderId =
+                    providerUserId,
+
+                ProviderRole =
+                    providerRole,
+
+                OrderId =
+                    order.Id,
+
+                TransactionId =
+                    payment.TransactionReference
+                    ?? order.Id.ToString(),
+
+                PaymentId =
+                    payment.Id,
+
+                TransactionDate =
+                    payment.PaidAt ?? now,
+
+                AlphaGrossPlatformCommission =
+                    financial.AlphaGrossPlatformCommission,
+
+                DirectTransactionCosts =
+                    financial.DirectTransactionCosts,
+
+                EligibleNetPlatformRevenue =
+                    eligibleRevenue,
+
+                EntrepreneurPercentage =
+                    rate,
+
+                EntrepreneurEarningsAmount =
+                    commission,
+
+                Currency =
+                    financial.Currency,
+
+                EarningStatus =
+                    "PENDING",
+
+                RefundAdjustment =
+                    0m,
+
+                ChargebackAdjustment =
+                    0m,
+
+                EventKey =
+                    eventKey,
+
+                CreatedAt =
+                    now,
+
+                UpdatedAt =
+                    now
+            };
+
+        _context.EntrepreneurEarnings.Add(earning);
+
+        await _context.SaveChangesAsync(
+            cancellationToken);
+
+        return earning;
+    }
 }

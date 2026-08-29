@@ -419,24 +419,71 @@ public class SettlementService
             // 14. GENERATE ENTREPRENEUR COMMISSION
             // --------------------------------------------------------
 
-            await _entrepreneurCommissionService
-                .GenerateForOrderAsync(
-                    order.Id,
-                    cancellationToken);
+            if (order.SupplierId.HasValue)
+            {
+                var supplier =
+                    await _context.Suppliers
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(
+                            x => x.Id == order.SupplierId.Value,
+                            cancellationToken);
+
+                if (supplier?.UserId != null)
+                {
+                    await _entrepreneurCommissionService
+                        .GenerateForProviderAsync(
+                            order.Id,
+                            supplier.UserId.Value,
+                            "supplier",
+                            cancellationToken);
+                }
+            }
+
+            if (order.DriverId.HasValue)
+            {
+                var driver =
+                    await _context.Drivers
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(
+                            x => x.Id == order.DriverId.Value,
+                            cancellationToken);
+
+                if (driver?.UserId != null)
+                {
+                    await _entrepreneurCommissionService
+                        .GenerateForProviderAsync(
+                            order.Id,
+                            driver.UserId.Value,
+                            "driver",
+                            cancellationToken);
+                }
+            }
 
             // --------------------------------------------------------
             // 15. LOAD GENERATED ENTREPRENEUR COMMISSION
             // --------------------------------------------------------
 
             var entrepreneurCommission =
-                await _context.EntrepreneurEarnings
-                    .Where(x => x.OrderId == order.Id)
-                    .SumAsync(
-                        x => x.EntrepreneurEarningsAmount,
-                        cancellationToken);
+    await _context.EntrepreneurEarnings
+        .Where(x =>
+            x.OrderId == order.Id &&
+            x.EarningStatus != "cancelled" &&
+            x.EarningStatus != "reversed")
+        .SumAsync(
+            x => x.EntrepreneurEarningsAmount,
+            cancellationToken);
 
             financial.EntrepreneurCommission =
                 entrepreneurCommission;
+
+            financial.AlphaRetainedRevenue =
+                Math.Max(
+                    0m,
+                    financial.AlphaEligibleNetPlatformRevenue
+                    - entrepreneurCommission);
+
+            await _context.SaveChangesAsync(
+    cancellationToken);
 
             // --------------------------------------------------------
             // 16. FINAL ALPHA RETAINED REVENUE
