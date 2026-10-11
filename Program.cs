@@ -247,7 +247,6 @@ if (!string.IsNullOrEmpty(databaseUrl))
         options
             .UseNpgsql(connectionString)
             .EnableDetailedErrors()
-            .EnableSensitiveDataLogging()
             .LogTo(
                 Console.WriteLine,
                 LogLevel.Information);
@@ -286,12 +285,24 @@ app.Use(async (context, next) =>
     }
     catch (Exception ex)
     {
-        Console.WriteLine("========== API ERROR ==========");
-        Console.WriteLine(ex.ToString());
-        Console.WriteLine("===============================");
+        app.Logger.LogError(
+            ex,
+            "Unhandled API exception for {Method} {Path}",
+            context.Request.Method,
+            context.Request.Path);
 
-        context.Response.StatusCode = 500;
-        await context.Response.WriteAsync(ex.ToString());
+        if (context.Response.HasStarted)
+        {
+            throw;
+        }
+
+        context.Response.Clear();
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            title = "An unexpected error occurred.",
+            status = StatusCodes.Status500InternalServerError
+        });
     }
 });
 app.UseSwagger();
