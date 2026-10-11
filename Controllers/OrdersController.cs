@@ -2180,7 +2180,7 @@ public class OrdersController : ControllerBase
                         item.SupplierId,
                         item.Quantity,
                         item.UnitPrice,
-                        productName = item.Product.Name
+                        productName = item.Product == null ? null : item.Product.Name
                     })
                     .ToList()
             })
@@ -2244,7 +2244,7 @@ public class OrdersController : ControllerBase
             item.SupplierId,
             item.Quantity,
             item.UnitPrice,
-            productName = item.Product.Name
+            productName = item.Product == null ? null : item.Product.Name
         })
         .ToList()
             })
