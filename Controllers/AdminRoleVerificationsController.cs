@@ -634,7 +634,7 @@ public class AdminRoleVerificationsController : ControllerBase
             },
 
             documents =
-                application.Documents
+                (application.Documents ?? new List<RoleVerificationDocument>())
                     .Select(document => new
                     {
                         document.Id,
@@ -861,7 +861,7 @@ public class AdminRoleVerificationsController : ControllerBase
             },
 
             documents =
-        application.Documents
+        (application.Documents ?? new List<RoleVerificationDocument>())
             .Select(document => new
             {
                 document.Id,

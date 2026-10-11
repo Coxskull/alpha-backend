@@ -59,10 +59,14 @@ public class ReferralNetworkService
             {
                 Id = transaction.Id,
                 SourceUserId = transaction.SourceUserId,
-                SourceUserName = transaction.SourceUser.FullName,
+                SourceUserName = transaction.SourceUser != null
+                    ? transaction.SourceUser.FullName
+                    : "Unknown user",
                 SourceRole =
                     transaction.SourceRole ??
-                    transaction.SourceUser.Role,
+                    (transaction.SourceUser != null
+                        ? transaction.SourceUser.Role
+                        : "unknown"),
                 TransactionType = transaction.TransactionType,
                 Description = transaction.SourceDescription,
                 ReferralLevel = transaction.ReferralLevel,
