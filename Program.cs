@@ -331,7 +331,7 @@ app.Use(async (context, next) =>
 });
 // Keep API documentation available in development. In hosted/production
 // environments, expose Swagger only when an operator explicitly opts in with
-// ApiDocs:Enabled=true (for example, the API_DOCS_ENABLED environment variable).
+// ApiDocs:Enabled=true (for example, the ApiDocs__Enabled environment variable).
 if (app.Environment.IsDevelopment()
     || builder.Configuration.GetValue<bool>("ApiDocs:Enabled"))
 {
