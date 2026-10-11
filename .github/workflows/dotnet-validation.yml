@@ -22,5 +22,7 @@ jobs:
           dotnet-version: 8.0.x
       - name: Restore
         run: dotnet restore Alpha.API.csproj
+      - name: Audit vulnerable NuGet dependencies
+        run: dotnet list Alpha.API.csproj package --vulnerable --include-transitive
       - name: Build Release
         run: dotnet build Alpha.API.csproj --configuration Release --no-restore
