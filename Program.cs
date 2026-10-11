@@ -255,8 +255,7 @@ if (!string.IsNullOrEmpty(databaseUrl))
         Username = userInfo[0],
         Password = userInfo[1],
         Database = uri.AbsolutePath.Trim('/'),
-        SslMode = isDevelopment ? SslMode.Require : SslMode.VerifyFull,
-        TrustServerCertificate = isDevelopment
+        SslMode = isDevelopment ? SslMode.Require : SslMode.VerifyFull
     };
 
     if (!isDevelopment)
