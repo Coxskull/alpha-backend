@@ -11,8 +11,8 @@ The baseline `Program.cs` registered `app.UseSwagger()` and `app.UseSwaggerUI()`
 ## Change proposed
 
 - Swagger remains enabled automatically in Development.
-- In non-development environments, Swagger is enabled only when `ApiDocs:Enabled=true`.
-- On standard .NET configuration providers, the environment-variable spelling is `ApiDocs__Enabled=true`.
+- In non-development environments, Swagger is enabled only when `Swagger:Enabled=true`.
+- On standard .NET configuration providers, the environment-variable spelling is `Swagger__Enabled=true`.
 - The change does not change controller authorization, API routes, database configuration, or deployment settings.
 
 ## Validation and limits
