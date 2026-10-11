@@ -329,8 +329,14 @@ app.Use(async (context, next) =>
         });
     }
 });
-app.UseSwagger();
-app.UseSwaggerUI();
+// Keep API schema and interactive documentation private by default in hosted environments.
+// Production exposure requires an explicit Swagger:Enabled=true configuration override.
+if (app.Environment.IsDevelopment()
+    || builder.Configuration.GetValue<bool>("Swagger:Enabled"))
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 app.UseStaticFiles();
 app.UseCors("AllowFrontend");
 
