@@ -231,21 +231,21 @@ if (!string.IsNullOrEmpty(databaseUrl))
     var uri = new Uri(databaseUrl);
     var userInfo = uri.UserInfo.Split(':');
 
-    // Hosted environments must validate both the PostgreSQL certificate chain
-    // and the server hostname. Supply the provider's CA bundle explicitly via
-    // Database:RootCertificatePath or PGSSLROOTCERT; never silently trust any cert.
+    // Hosted environments must validate the PostgreSQL certificate chain and
+    // server hostname. When a provider-specific CA bundle is configured, use it.
+    // Otherwise Npgsql uses the operating system's trusted root certificate store.
+    // Never downgrade hosted connections from VerifyFull.
     var isDevelopment = builder.Environment.IsDevelopment();
     var rootCertificatePath =
         builder.Configuration["Database:RootCertificatePath"]
         ?? Environment.GetEnvironmentVariable("PGSSLROOTCERT");
 
-    if (!isDevelopment
-        && (string.IsNullOrWhiteSpace(rootCertificatePath)
-            || !Path.IsPathFullyQualified(rootCertificatePath)
+    if (!isDevelopment && !string.IsNullOrWhiteSpace(rootCertificatePath)
+        && (!Path.IsPathFullyQualified(rootCertificatePath)
             || !File.Exists(rootCertificatePath)))
     {
         throw new InvalidOperationException(
-            "A valid absolute PostgreSQL CA certificate path is required in hosted environments. Configure Database:RootCertificatePath or PGSSLROOTCERT.");
+            "The configured PostgreSQL CA certificate path must be absolute and point to an existing file. Configure Database:RootCertificatePath or PGSSLROOTCERT correctly, or leave it unset to use system-trusted roots.");
     }
 
     var connectionBuilder = new NpgsqlConnectionStringBuilder
@@ -259,7 +259,7 @@ if (!string.IsNullOrEmpty(databaseUrl))
         TrustServerCertificate = isDevelopment
     };
 
-    if (!isDevelopment)
+    if (!isDevelopment && !string.IsNullOrWhiteSpace(rootCertificatePath))
     {
         connectionBuilder.RootCertificate = rootCertificatePath;
     }
