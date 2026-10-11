@@ -333,7 +333,7 @@ app.Use(async (context, next) =>
 // environments, expose Swagger only when an operator explicitly opts in with
 // Swagger:Enabled=true (for example, the Swagger__Enabled environment variable).
 if (app.Environment.IsDevelopment()
-    || builder.Configuration.GetValue<bool>("ApiDocs:Enabled"))
+    || builder.Configuration.GetValue<bool>("Swagger:Enabled"))
 {
     app.UseSwagger();
     app.UseSwaggerUI();
