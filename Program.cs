@@ -231,23 +231,46 @@ if (!string.IsNullOrEmpty(databaseUrl))
     var uri = new Uri(databaseUrl);
     var userInfo = uri.UserInfo.Split(':');
 
-    var connectionString = new NpgsqlConnectionStringBuilder
+    // Hosted environments must validate both the PostgreSQL certificate chain
+    // and the server hostname. Supply the provider's CA bundle explicitly via
+    // Database:RootCertificatePath or PGSSLROOTCERT; never silently trust any cert.
+    var isDevelopment = builder.Environment.IsDevelopment();
+    var rootCertificatePath =
+        builder.Configuration["Database:RootCertificatePath"]
+        ?? Environment.GetEnvironmentVariable("PGSSLROOTCERT");
+
+    if (!isDevelopment
+        && (string.IsNullOrWhiteSpace(rootCertificatePath)
+            || !Path.IsPathFullyQualified(rootCertificatePath)
+            || !File.Exists(rootCertificatePath)))
+    {
+        throw new InvalidOperationException(
+            "A valid absolute PostgreSQL CA certificate path is required in hosted environments. Configure Database:RootCertificatePath or PGSSLROOTCERT.");
+    }
+
+    var connectionBuilder = new NpgsqlConnectionStringBuilder
     {
         Host = uri.Host,
         Port = uri.Port,
         Username = userInfo[0],
         Password = userInfo[1],
         Database = uri.AbsolutePath.Trim('/'),
-        SslMode = SslMode.Require,
-        TrustServerCertificate = true
-    }.ToString();
+        SslMode = isDevelopment ? SslMode.Require : SslMode.VerifyFull,
+        TrustServerCertificate = isDevelopment
+    };
+
+    if (!isDevelopment)
+    {
+        connectionBuilder.RootCertificate = rootCertificatePath;
+    }
+
+    var connectionString = connectionBuilder.ToString();
 
     builder.Services.AddDbContext<AppDbContext>(options =>
     {
         options
             .UseNpgsql(connectionString)
             .EnableDetailedErrors()
-            .EnableSensitiveDataLogging()
             .LogTo(
                 Console.WriteLine,
                 LogLevel.Information);
@@ -286,12 +309,24 @@ app.Use(async (context, next) =>
     }
     catch (Exception ex)
     {
-        Console.WriteLine("========== API ERROR ==========");
-        Console.WriteLine(ex.ToString());
-        Console.WriteLine("===============================");
+        app.Logger.LogError(
+            ex,
+            "Unhandled API exception for {Method} {Path}",
+            context.Request.Method,
+            context.Request.Path);
 
-        context.Response.StatusCode = 500;
-        await context.Response.WriteAsync(ex.ToString());
+        if (context.Response.HasStarted)
+        {
+            throw;
+        }
+
+        context.Response.Clear();
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            title = "An unexpected error occurred.",
+            status = StatusCodes.Status500InternalServerError
+        });
     }
 });
 app.UseSwagger();
