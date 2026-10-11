@@ -329,8 +329,16 @@ app.Use(async (context, next) =>
         });
     }
 });
-app.UseSwagger();
-app.UseSwaggerUI();
+// Keep API documentation available in development. In hosted/production
+// environments, expose Swagger only when an operator explicitly opts in with
+// ApiDocs:Enabled=true (for example, the API_DOCS_ENABLED environment variable).
+if (app.Environment.IsDevelopment()
+    || builder.Configuration.GetValue<bool>("ApiDocs:Enabled"))
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
 app.UseStaticFiles();
 app.UseCors("AllowFrontend");
 
