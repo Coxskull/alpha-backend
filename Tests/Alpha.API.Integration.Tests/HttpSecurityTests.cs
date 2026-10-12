@@ -283,6 +283,22 @@ public sealed class HttpSecurityTests(DatabaseFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ConcurrentStripeRefundsOnSeparatePaymentsPreserveOrderRefundTotal()
+    {
+        var first = await StripeSeed(); var second = await StripeSeed();
+        using (var db = fixture.Context())
+            await db.Payments.Where(p => p.Id == second.PaymentId).ExecuteUpdateAsync(s => s.SetProperty(p => p.OrderId, first.OrderId));
+        var responses = await Task.WhenAll(
+            StripeWebhook(StripePayload(first.Intent, first.Charge, "evt_" + Guid.NewGuid())),
+            StripeWebhook(StripePayload(second.Intent, second.Charge, "evt_" + Guid.NewGuid())));
+        Assert.All(responses, response => Assert.Equal(HttpStatusCode.OK, response.StatusCode));
+        using var verify = fixture.Context();
+        Assert.Equal(60m, (await verify.OrderFinancials.SingleAsync(f => f.OrderId == first.OrderId)).RefundAmount);
+        Assert.Equal(60m, await verify.Payments.Where(p => p.OrderId == first.OrderId).SumAsync(p => p.RefundedAmount));
+        Assert.Equal(2, await verify.Set<Alpha.API.Models.PaymentOperation>().CountAsync(o => o.PaymentId == first.PaymentId || o.PaymentId == second.PaymentId));
+    }
+
+    [Fact]
     public async Task ConcurrentSignedStripeEventsCreateOneRefundOperation()
     {
         var seed = await StripeSeed();
