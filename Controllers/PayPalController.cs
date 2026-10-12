@@ -194,7 +194,8 @@ public class PayPalController(AppDbContext context, PayPalService paypal,
             financial.RefundAmount = payment.RefundedAmount + await context.Payments
                 .Where(p => p.OrderId == order.Id && p.Id != payment.Id).SumAsync(p => p.RefundedAmount, cancellationToken);
             // Partial refund allocation needs financial review; never release unadjusted payouts.
-            financial.FinancialStatus = "refund_review";
+            if (financial.FinancialStatus != RefundConflictGuard.Status)
+                financial.FinancialStatus = await RefundConflictGuard.HasAsync(context, order.Id, cancellationToken) ? RefundConflictGuard.Status : "refund_review";
             financial.PayoutStatus = "on_hold";
             financial.SettlementStatus = "blocked";
             var queues = await context.SettlementQueue.Where(q => q.OrderFinancialId == financial.Id && q.Status != "paid").ToListAsync(cancellationToken);

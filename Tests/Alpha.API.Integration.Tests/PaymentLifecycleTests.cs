@@ -126,6 +126,23 @@ public sealed class PaymentLifecycleTests(DatabaseFixture fixture)
     }
 
     [Fact]
+    public async Task CompletedPayPalRefundPreservesDurableConflictAndCustomerRefundTotal()
+    {
+        var seed = await fixture.SeedAsync(); using var db = fixture.Context();
+        var payment = await db.Payments.SingleAsync(p => p.Id == seed.PaymentId);
+        payment.RefundEvidenceConflict = true; await db.SaveChangesAsync();
+        var handler = new ProviderHandler { ResponseBody = RefundJson("COMPLETED", "10.00", payment.TransactionReference!) };
+        var controller = Controller(db, handler, Principal(Guid.NewGuid(), "admin"));
+        Assert.IsType<OkObjectResult>(await controller.Refund(new RefundPaymentDto { OrderId = seed.OrderId, Amount = 10, IdempotencyKey = "held-completed" }, None));
+        using var verify = fixture.Context();
+        Assert.Equal(10m, (await verify.Payments.SingleAsync(p => p.Id == seed.PaymentId)).RefundedAmount);
+        Assert.Equal(10m, (await verify.OrderFinancials.SingleAsync(f => f.OrderId == seed.OrderId)).RefundAmount);
+        Assert.Equal(RefundConflictGuard.Status, (await verify.OrderFinancials.SingleAsync(f => f.OrderId == seed.OrderId)).FinancialStatus);
+        Assert.True((await verify.Payments.SingleAsync(p => p.Id == seed.PaymentId)).RefundEvidenceConflict);
+        Assert.Equal(1, handler.ProviderPosts);
+    }
+
+    [Fact]
     public async Task ProviderTimeoutRetainsReservationAndDoesNotRepeatRefund()
     {
         var seed = await fixture.SeedAsync(); using var db = fixture.Context();
