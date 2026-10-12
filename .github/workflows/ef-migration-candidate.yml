@@ -1,0 +1,50 @@
+name: Disposable EF migration candidate
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ef-migration-candidate.yml'
+      - 'Data/**'
+      - 'Models/**'
+      - 'Migrations/**'
+      - 'Alpha.API.csproj'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Generate review-only EF migration candidate
+        shell: bash
+        run: |
+          mkdir -p evidence
+          set -o pipefail
+          dotnet tool install --tool-path .ci-tools dotnet-ef --version 8.0.0 2>&1 | tee evidence/tool-install.log
+          dotnet restore Alpha.API.csproj 2>&1 | tee evidence/restore.log
+          # Design-time model construction only. No database update and no hosted credentials.
+          export ASPNETCORE_ENVIRONMENT=Development
+          export DATABASE_URL='postgresql://alpha_ci:disposable-ci-only@127.0.0.1:5432/alpha_model_ci'
+          export Jwt__Key='synthetic-ci-only-key-for-design-time-not-production'
+          .ci-tools/dotnet-ef migrations add ReconcileCurrentModelCandidate --project Alpha.API.csproj --startup-project Alpha.API.csproj --context AppDbContext --output-dir Migrations 2>&1 | tee evidence/generation.log
+          git diff -- Migrations > evidence/migration-diff.patch
+          git status --short > evidence/worktree-status.txt
+          test -s evidence/migration-diff.patch
+          if grep -E '^\+.*migrationBuilder\.(DropTable|DropColumn|DeleteData|Sql)\(' evidence/migration-diff.patch; then
+            echo 'REVIEW REQUIRED: candidate contains potentially destructive operations' | tee evidence/destructive-operations.txt
+          fi
+      - name: Preserve generated migration files for human review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ef-migration-candidate-${{ github.sha }}
+          path: |
+            evidence/
+            Migrations/*ReconcileCurrentModelCandidate*
+            Migrations/AppDbContextModelSnapshot.cs
+          retention-days: 14
+          if-no-files-found: warn
