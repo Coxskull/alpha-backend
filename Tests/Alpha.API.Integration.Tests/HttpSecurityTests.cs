@@ -400,8 +400,10 @@ public sealed class HttpSecurityTests(DatabaseFixture fixture) : IAsyncLifetime
         Assert.True(await PayoutAccountingService.HasPendingStripeRefundAsync(verify, second.OrderId, CancellationToken.None));
     }
 
-    [Fact]
-    public async Task StripeEvidenceConflictWaitsForExistingPayeesRecoveryLock()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StripeEvidenceConflictWaitsForExistingPayeesRecoveryLock(bool otherPayment)
     {
         var seed = await StripeSeed();
         Assert.Equal(HttpStatusCode.OK, (await StripeWebhook(StripePayload(seed.Intent, seed.Charge, "evt_" + Guid.NewGuid()))).StatusCode);
@@ -415,9 +417,16 @@ public sealed class HttpSecurityTests(DatabaseFixture fixture) : IAsyncLifetime
             await new RefundAllocationService(db).AllocateAsync(operation.Id, new Alpha.API.DTOs.RefundAllocationDto { Evidence = "Synthetic attributable paid earning",
                 Lines = new() { new() { SourceKind = "earning", SourceId = earning.Id, Amount = 30 } } }, Guid.NewGuid(), CancellationToken.None);
         }
+        var target = seed;
+        if (otherPayment)
+        {
+            target = await StripeSeed();
+            using var db = fixture.Context();
+            await db.Payments.Where(p => p.Id == target.PaymentId).ExecuteUpdateAsync(s => s.SetProperty(p => p.OrderId, seed.OrderId));
+        }
         using var gate = fixture.Context(); await using var tx = await gate.Database.BeginTransactionAsync();
         await new RefundAllocationService(gate).LockPayeeAsync("entrepreneur", seed.CustomerId, "USD", CancellationToken.None);
-        var payload = StripePayload(seed.Intent, seed.Charge, "evt_" + Guid.NewGuid(), items: new[] { StripeRefund("re_" + seed.Charge[3..], 3000, "ch_wrong_parent", seed.Intent) });
+        var payload = StripePayload(target.Intent, target.Charge, "evt_" + Guid.NewGuid(), items: new[] { StripeRefund("re_" + target.Charge[3..], 3000, "ch_wrong_parent", target.Intent) });
         var webhook = StripeWebhook(payload); var released = false;
         try
         {
