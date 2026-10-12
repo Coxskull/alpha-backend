@@ -1,0 +1,46 @@
+{
+  "pr32": {
+    "commit": "8946949623433e8317be7b6814e93086defda818",
+    "tests": 146,
+    "passed": 146,
+    "coverage": {
+      "assembly": {
+        "linesCovered": 20670,
+        "linesValid": 38221,
+        "lineRate": 0.5408,
+        "branchesCovered": 975,
+        "branchesValid": 3323,
+        "branchRate": 0.2934,
+        "includesGeneratedMigrations": true
+      },
+      "nonMigrationSource": {
+        "uniqueLinesCovered": 4333,
+        "uniqueLinesValid": 17863,
+        "lineRate": 0.24256843755248278
+      },
+      "scope": "Merged unit and disposable PostgreSQL/HTTP integration coverage; migration code shown separately"
+    }
+  },
+  "correction": {
+    "commit": "77e0441994d4ba8ea6811f3eb5d8ec7c67df3ac1",
+    "tests": 160,
+    "passed": 160,
+    "coverage": {
+      "assembly": {
+        "linesCovered": 4343,
+        "linesValid": 38272,
+        "lineRate": 0.1134,
+        "branchesCovered": 984,
+        "branchesValid": 3333,
+        "branchRate": 0.2952,
+        "includesGeneratedMigrations": true
+      },
+      "nonMigrationSource": {
+        "uniqueLinesCovered": 4343,
+        "uniqueLinesValid": 17874,
+        "lineRate": 0.2429786281750028
+      },
+      "scope": "Merged unit and disposable PostgreSQL/HTTP integration coverage; migration code shown separately"
+    }
+  }
+}
