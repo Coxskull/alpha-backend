@@ -13,7 +13,21 @@ permissions:
 jobs:
   generate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: alpha_ci
+          POSTGRES_PASSWORD: synthetic_not_for_use
+          POSTGRES_DB: alpha_design_time
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alpha_ci -d alpha_design_time"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -37,6 +51,18 @@ jobs:
           if grep -E '^\+.*migrationBuilder\.(DropTable|DropColumn|DeleteData|Sql)\(' evidence/migration-diff.patch; then
             echo 'REVIEW REQUIRED: candidate contains potentially destructive operations' | tee evidence/destructive-operations.txt
           fi
+      - name: Generate SQL upgrade script and apply migration to disposable PostgreSQL
+        shell: bash
+        run: |
+          set -o pipefail
+          .ci-tools/dotnet-ef migrations script 20260609152717_OrderRelations --idempotent --project Alpha.API.csproj --startup-project Alpha.API.csproj --context AppDbContext --output evidence/candidate-upgrade.sql 2>&1 | tee evidence/script-generation.log
+          .ci-tools/dotnet-ef database update 20260609152717_OrderRelations --project Alpha.API.csproj --startup-project Alpha.API.csproj --context AppDbContext 2>&1 | tee evidence/baseline-upgrade.log
+          .ci-tools/dotnet-ef database update --project Alpha.API.csproj --startup-project Alpha.API.csproj --context AppDbContext 2>&1 | tee evidence/candidate-upgrade.log
+          # Verify migration metadata exists and all expected model tables were created.
+          PGPASSWORD=synthetic_not_for_use psql -h 127.0.0.1 -U alpha_ci -d alpha_design_time -Atc 'SELECT COUNT(*) FROM public."__EFMigrationsHistory"' | tee evidence/applied-migration-count.txt
+          PGPASSWORD=synthetic_not_for_use psql -h 127.0.0.1 -U alpha_ci -d alpha_design_time -Atc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name <> '__EFMigrationsHistory'" | tee evidence/created-table-count.txt
+          test "$(cat evidence/applied-migration-count.txt)" = 3
+          test "$(cat evidence/created-table-count.txt)" = 51
       - name: Preserve generated migration files for human review
         if: always()
         uses: actions/upload-artifact@v4
