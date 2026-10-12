@@ -1,0 +1,8 @@
+{
+  "restore": "PASS",
+  "businessRowsMatch": true,
+  "migrations": 9,
+  "schemaParity": "PASS",
+  "conflictGuardRestored": true,
+  "scope": "Synthetic backup only; no hosted baseline or real records"
+}

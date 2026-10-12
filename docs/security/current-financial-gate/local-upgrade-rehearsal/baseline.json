@@ -1,0 +1,27 @@
+{
+  "baselineCommit": "e2f969c4bc89fab8417d93e72b43bed388808d31",
+  "migrations": [
+    "20260609065938_InitialCreate",
+    "20260609152717_OrderRelations",
+    "20261012030904_ReproduceModelAndPaymentOperations",
+    "20261012032142_AlignLegacyPaymentAssociation",
+    "20261012065015_CompleteRegistrationSchema",
+    "20261012071522_AttributedRefundRecovery",
+    "20261012120341_AlignAlphaLedgerMappings"
+  ],
+  "ids": {
+    "reviewer": "dd7ca0e7-78ae-4165-878a-658eb596783f",
+    "conflictPayment": "0736966a-1533-4fe2-bc8c-d4d311387ce9",
+    "conflictOrder": "11e3751c-ae34-4264-b6c4-84795b7013b6",
+    "conflictAllocation": "3eeab7a3-dc55-47a5-a233-9e5d443402b6",
+    "conflictFutureQueue": "4e181091-3717-48d7-9a27-dab6ca58c797",
+    "conflictFutureOrder": "5641564e-f4de-41c0-8d7d-ad9c3a1e830b",
+    "validPayment": "2dec60e2-0058-4626-9477-e2dd6049e672",
+    "validOrder": "38ebd014-dcf6-42f4-937b-b3071e56b113",
+    "validAllocation": "aac8313b-ce00-45ca-9b7d-076e7c2933bf",
+    "validFutureQueue": "6ea6794c-dc76-46df-b823-f7f3061018c6",
+    "validFutureOrder": "d72a7ef2-0810-4377-8348-d205dadd0ebf",
+    "historicalBatch": "c3e87189-6884-46fd-9b2a-81837e5523a5"
+  },
+  "scope": "Synthetic loopback baseline; no hosted/provider access"
+}

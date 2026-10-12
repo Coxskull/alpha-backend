@@ -1,0 +1,217 @@
+[
+  {
+    "check": "baseline-identity",
+    "exitCode": 0,
+    "seconds": 0.0
+  },
+  {
+    "check": "candidate-identity",
+    "exitCode": 0,
+    "seconds": 0.0
+  },
+  {
+    "check": "postgres-start",
+    "exitCode": 0,
+    "seconds": 2.69
+  },
+  {
+    "check": "base-restore",
+    "exitCode": 0,
+    "seconds": 0.86
+  },
+  {
+    "check": "base-build",
+    "exitCode": 0,
+    "seconds": 1.08
+  },
+  {
+    "check": "candidate-restore",
+    "exitCode": 0,
+    "seconds": 0.97
+  },
+  {
+    "check": "candidate-build",
+    "exitCode": 0,
+    "seconds": 1.17
+  },
+  {
+    "check": "baseline-seed",
+    "exitCode": 0,
+    "seconds": 2.91
+  },
+  {
+    "check": "baseline-before-backup-orders",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "baseline-before-backup-payments",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "baseline-before-backup-order_financials",
+    "exitCode": 0,
+    "seconds": 0.09
+  },
+  {
+    "check": "baseline-before-backup-suppliers",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "baseline-before-backup-supplier_payouts",
+    "exitCode": 0,
+    "seconds": 0.09
+  },
+  {
+    "check": "baseline-before-backup-settlement_queue",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "baseline-before-backup-payment_operations",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "baseline-before-backup-refund_allocations",
+    "exitCode": 0,
+    "seconds": 0.09
+  },
+  {
+    "check": "baseline-before-backup-payout_recovery_offsets",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "baseline-before-backup-audit_logs",
+    "exitCode": 0,
+    "seconds": 0.09
+  },
+  {
+    "check": "baseline-before-backup-entrepreneur_payout_batches",
+    "exitCode": 0,
+    "seconds": 0.09
+  },
+  {
+    "check": "baseline-dump",
+    "exitCode": 0,
+    "seconds": 0.14
+  },
+  {
+    "check": "baseline-dump-copy",
+    "exitCode": 0,
+    "seconds": 0.01
+  },
+  {
+    "check": "baseline-create-restore-db",
+    "exitCode": 0,
+    "seconds": 0.11
+  },
+  {
+    "check": "baseline-restore-backup",
+    "exitCode": 0,
+    "seconds": 0.32
+  },
+  {
+    "check": "baseline-restored-orders",
+    "exitCode": 0,
+    "seconds": 0.09
+  },
+  {
+    "check": "baseline-restored-payments",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "baseline-restored-order_financials",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "baseline-restored-suppliers",
+    "exitCode": 0,
+    "seconds": 0.09
+  },
+  {
+    "check": "baseline-restored-supplier_payouts",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "baseline-restored-settlement_queue",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "baseline-restored-payment_operations",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "baseline-restored-refund_allocations",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "baseline-restored-payout_recovery_offsets",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "baseline-restored-audit_logs",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "baseline-restored-entrepreneur_payout_batches",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "baseline-restored-history",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "upgrade-runtime",
+    "exitCode": 0,
+    "seconds": 2.87
+  },
+  {
+    "check": "upgraded-dump",
+    "exitCode": 0,
+    "seconds": 0.13
+  },
+  {
+    "check": "upgraded-dump-copy",
+    "exitCode": 0,
+    "seconds": 0.01
+  },
+  {
+    "check": "upgraded-create-restore-db",
+    "exitCode": 0,
+    "seconds": 0.12
+  },
+  {
+    "check": "upgraded-restore-backup",
+    "exitCode": 0,
+    "seconds": 0.42
+  },
+  {
+    "check": "upgraded-restore-verification",
+    "exitCode": 0,
+    "seconds": 2.13
+  },
+  {
+    "check": "postgres-version",
+    "exitCode": 0,
+    "seconds": 0.08
+  },
+  {
+    "check": "cleanup",
+    "exitCode": 0,
+    "seconds": 0.3
+  }
+]
