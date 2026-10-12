@@ -9,9 +9,10 @@ on:
       - 'Alpha.API.csproj'
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   generate:
+    if: github.event_name == 'pull_request' && github.head_ref == 'ci/ef-migration-candidate-20261012'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -63,6 +64,16 @@ jobs:
           PGPASSWORD=synthetic_not_for_use psql -h 127.0.0.1 -U alpha_ci -d alpha_design_time -Atc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name <> '__EFMigrationsHistory'" | tee evidence/created-table-count.txt
           test "$(cat evidence/applied-migration-count.txt)" = 3
           test "$(cat evidence/created-table-count.txt)" = 51
+      - name: Publish generated migration to dedicated review branch
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Migrations/20261012035108_ReconcileCurrentModelCandidate.cs Migrations/20261012035108_ReconcileCurrentModelCandidate.Designer.cs Migrations/AppDbContextModelSnapshot.cs 2>/dev/null || true
+          # Generated migration timestamp varies per run; stage the exact candidate instead.
+          git add Migrations/*ReconcileCurrentModelCandidate* Migrations/AppDbContextModelSnapshot.cs
+          git commit -m 'feat(db): add generated EF Core model reconciliation migration'
+          git push origin HEAD:refs/heads/db/ef-model-reconciliation-20261012
       - name: Preserve generated migration files for human review
         if: always()
         uses: actions/upload-artifact@v4
