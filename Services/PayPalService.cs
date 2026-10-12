@@ -111,7 +111,7 @@ public class PayPalService
         return JsonDocument.Parse(json);
     }
 
-    public async Task<JsonDocument> RefundCapture(string captureId, decimal amount, string currency, string idempotencyKey)
+    public async Task<JsonDocument> RefundCapture(string captureId, decimal amount, string currency)
     {
         var token = await GetAccessToken();
 
@@ -131,9 +131,6 @@ public class PayPalService
 
         request.Headers.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-        if (string.IsNullOrWhiteSpace(idempotencyKey))
-            throw new ArgumentException("A stable refund operation idempotency key is required.", nameof(idempotencyKey));
-        request.Headers.TryAddWithoutValidation("PayPal-Request-Id", idempotencyKey);
 
         request.Content = new StringContent(
             JsonSerializer.Serialize(payload),
