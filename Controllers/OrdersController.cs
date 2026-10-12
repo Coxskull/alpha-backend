@@ -2091,9 +2091,15 @@ public class OrdersController : ControllerBase
             return Unauthorized();
         }
 
-        var role = (User.GetRole() ?? string.Empty)
-            .Trim()
-            .ToLowerInvariant();
+        var roleClaim = User.GetRole();
+
+        if (string.IsNullOrWhiteSpace(roleClaim))
+            return Forbid();
+
+        var role = roleClaim.Trim().ToLowerInvariant();
+
+        if (role is not ("supplier\" or \"provider\" or \"driver\" or \"admin\" or \"dispatcher"))
+            return Forbid();
 
         Guid? supplierId = null;
         Guid? driverId = null;
