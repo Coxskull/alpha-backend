@@ -50,4 +50,7 @@ File.WriteAllText(Path.Combine(output, "database-compatibility.json"),
 Console.WriteLine(File.ReadAllText(Path.Combine(output, "database-compatibility.json")));
 if (!(bool)observations["modelOrdersReadable"] || !(bool)observations["modelPaymentsReadable"]
     || !(bool)observations["modelSecurityLogsReadable"]) throw new Exception("Model database smoke failed.");
-// A recorded migration parity failure remains a release blocker, not a failed evidence collection.
+// Migration parity is a release gate: a successful migration command is insufficient
+// when the migrated schema omits tables required by the current EF Core model.
+if (!string.Equals(observations["migrationModelParity"]?.ToString(), "PASS (table presence only)", StringComparison.Ordinal))
+    throw new InvalidOperationException("Disposable PostgreSQL migration/model parity failed. See database-compatibility.json.");
