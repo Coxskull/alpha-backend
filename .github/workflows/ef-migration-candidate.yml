@@ -73,6 +73,8 @@ jobs:
           # Generated migration timestamp varies per run; stage the exact candidate instead.
           git add Migrations/*ReconcileCurrentModelCandidate* Migrations/AppDbContextModelSnapshot.cs
           git commit -m 'feat(db): add generated EF Core model reconciliation migration'
+          git fetch origin db/ef-model-reconciliation-20261012
+          git rebase FETCH_HEAD
           git push origin HEAD:refs/heads/db/ef-model-reconciliation-20261012
       - name: Preserve generated migration files for human review
         if: always()
