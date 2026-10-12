@@ -1719,7 +1719,7 @@ public class AppDbContext : DbContext
 
             entity.Property(e => e.AutoPartsCommissionRate)
                 .HasColumnName("auto_parts_commission_rate")
-                .HasPrecision(8, 4);
+                .HasPrecision(10, 6);
 
             entity.Property(e => e.AutoPartsCommissionPolicyId)
                 .HasColumnName("auto_parts_commission_policy_id");
