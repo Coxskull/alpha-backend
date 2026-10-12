@@ -140,12 +140,14 @@ public sealed class RefundAllocationService(AppDbContext db)
         if (await (from allocation in db.Set<RefundAllocation>()
             join operation in db.Set<PaymentOperation>() on allocation.OperationId equals operation.Id
             join payment in db.Payments on operation.PaymentId equals payment.Id
-            join financial in db.OrderFinancials on payment.OrderId equals financial.OrderId
             where allocation.FutureRecovery && allocation.PayeeType == type && allocation.PayeeId == payeeId
                 && allocation.Currency == currency && allocation.RecoveredAmount < allocation.Amount
-                && (financial.FinancialStatus == RefundConflictGuard.Status || db.Payments.Any(p => p.OrderId == payment.OrderId && p.RefundEvidenceConflict))
+                && (payment.OrderId == null
+                    || !db.OrderFinancials.Any(f => f.OrderId == payment.OrderId)
+                    || db.OrderFinancials.Any(f => f.OrderId == payment.OrderId && f.FinancialStatus == RefundConflictGuard.Status)
+                    || db.Payments.Any(p => p.OrderId == payment.OrderId && p.RefundEvidenceConflict))
             select allocation.Id).AnyAsync(ct))
-            throw new InvalidOperationException("Recovery is held for conflicting source refund evidence.");
+            throw new InvalidOperationException("Recovery is held for missing or conflicting source financial evidence.");
         var claims = await db.Set<RefundAllocation>().Where(a => a.FutureRecovery && a.PayeeType == type && a.PayeeId == payeeId
             && a.Currency == currency && a.RecoveredAmount < a.Amount).OrderBy(a => a.CreatedAt).ThenBy(a => a.Id).ToListAsync(ct);
         var recovered = 0m;

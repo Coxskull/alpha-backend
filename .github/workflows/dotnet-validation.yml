@@ -2,7 +2,7 @@ name: .NET backend validation
 
 on:
   pull_request:
-    branches: [main, "security/**", review/warning-remediation-evidence-20261012, fix/pr32-financial-audit-integrity]
+    branches: [main, "security/**", review/warning-remediation-evidence-20261012, fix/pr32-financial-audit-integrity, fix/pr33-preserve-refund-conflict-holds]
   push:
     branches: [main, "security/**"]
   workflow_dispatch:

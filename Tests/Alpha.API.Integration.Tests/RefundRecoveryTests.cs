@@ -251,6 +251,38 @@ public sealed class RefundRecoveryTests(DatabaseFixture fixture)
         finally { await db.Database.ExecuteSqlRawAsync("DROP TRIGGER recovery_review_failure ON supplier_payouts; DROP FUNCTION recovery_review_failure();"); }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MissingSourceFinancialBlocksRecoveryEvenIfConflictDisplayRowIsGone(bool conflict)
+    {
+        var source = await Settlement(); var operation = await Refund(source.Payment, 30); await Allocate(operation, Plan(source.Queue, 30));
+        using (var db = fixture.Context())
+        {
+            await db.Payments.Where(p => p.Id == source.Payment).ExecuteUpdateAsync(s => s.SetProperty(p => p.RefundEvidenceConflict, conflict));
+            await db.OrderFinancials.Where(f => f.OrderId == source.Order).ExecuteDeleteAsync();
+        }
+        var future = await Settlement(paid: false, amount: 50, payee: source.Payee);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Pay(future.Queue, 20));
+        using var verify = fixture.Context();
+        Assert.Equal(0m, (await verify.Set<RefundAllocation>().SingleAsync(a => a.OperationId == operation && a.FutureRecovery)).RecoveredAmount);
+        Assert.False(await verify.Set<PayoutRecoveryOffset>().AnyAsync(o => o.TargetId == future.Queue));
+        Assert.False(await verify.SupplierPayouts.AnyAsync(p => p.OrderId == future.Order));
+    }
+
+    [Fact]
+    public async Task UnassociatedRecoverySourceRequiresManualReviewWithoutConsumingDebt()
+    {
+        var source = await Settlement(); var operation = await Refund(source.Payment, 30); await Allocate(operation, Plan(source.Queue, 30));
+        using (var db = fixture.Context())
+            await db.Payments.Where(p => p.Id == source.Payment).ExecuteUpdateAsync(s => s.SetProperty(p => p.OrderId, (Guid?)null));
+        var future = await Settlement(paid: false, amount: 50, payee: source.Payee);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Pay(future.Queue, 20));
+        using var verify = fixture.Context();
+        Assert.Equal(0m, (await verify.Set<RefundAllocation>().SingleAsync(a => a.OperationId == operation && a.FutureRecovery)).RecoveredAmount);
+        Assert.False(await verify.Set<PayoutRecoveryOffset>().AnyAsync(o => o.TargetId == future.Queue));
+    }
+
     [Fact]
     public async Task DurableConflictBlocksRecoveryAndAllocationAfterDisplayStatusChangesAndLaterReservations()
     {
