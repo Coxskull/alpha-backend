@@ -38,5 +38,6 @@ jobs:
       - name: Build Release
         run: dotnet build Alpha.API.csproj --configuration Release --no-restore -warnaserror:CS0618,CS8602,CS8604,CS8618
 
+      # Keep all backend tests in the required validation job.
       - name: Run backend automated tests
         run: dotnet test Tests/Alpha.API.Tests/Alpha.API.Tests.csproj --configuration Release
