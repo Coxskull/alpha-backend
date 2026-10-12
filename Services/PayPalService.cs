@@ -98,6 +98,8 @@ public class PayPalService
         );
 
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        // Stable across retries for the same provider order; not a substitute for an atomic operation ledger.
+        request.Headers.TryAddWithoutValidation("PayPal-Request-Id", PayPalRequestId.ForCapture(paypalOrderId));
         request.Content = new StringContent("{}", Encoding.UTF8, "application/json");
 
         var response = await _http.SendAsync(request);
@@ -109,7 +111,7 @@ public class PayPalService
         return JsonDocument.Parse(json);
     }
 
-    public async Task<JsonDocument> RefundCapture(string captureId, decimal amount, string currency)
+    public async Task<JsonDocument> RefundCapture(string captureId, decimal amount, string currency, string idempotencyKey)
     {
         var token = await GetAccessToken();
 
@@ -129,6 +131,9 @@ public class PayPalService
 
         request.Headers.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+            throw new ArgumentException("A stable refund operation idempotency key is required.", nameof(idempotencyKey));
+        request.Headers.TryAddWithoutValidation("PayPal-Request-Id", idempotencyKey);
 
         request.Content = new StringContent(
             JsonSerializer.Serialize(payload),
