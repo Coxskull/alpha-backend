@@ -16,5 +16,6 @@ public sealed class PaymentOperation
     [Column("provider_reference"), MaxLength(128)] public string? ProviderReference { get; set; }
     [Column("provider_parent_reference"), MaxLength(128)] public string ProviderParentReference { get; set; } = string.Empty;
     [Column("created_at")] public DateTime CreatedAt { get; set; }
+    [Column("allocation_fingerprint"), MaxLength(64)] public string? AllocationFingerprint { get; set; }
     [Column("updated_at")] public DateTime UpdatedAt { get; set; }
 }

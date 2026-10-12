@@ -180,6 +180,23 @@ public class AppDbContext : DbContext
                 .HasForeignKey(user => user.ReferredByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
+        modelBuilder.Entity<RefundAllocation>(entity =>
+        {
+            entity.HasIndex(x => new { x.OperationId, x.SourceKind, x.SourceId }).IsUnique();
+            entity.HasIndex(x => new { x.PayeeType, x.PayeeId, x.Currency });
+            entity.Property(x => x.Amount).HasPrecision(18, 2);
+            entity.Property(x => x.RecoveredAmount).HasPrecision(18, 2);
+            entity.HasOne<PaymentOperation>().WithMany().HasForeignKey(x => x.OperationId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<PayoutRecoveryOffset>(entity =>
+        {
+            entity.HasIndex(x => new { x.AllocationId, x.TargetKind, x.TargetId }).IsUnique();
+            entity.Property(x => x.Amount).HasPrecision(18, 2);
+            entity.HasOne<RefundAllocation>().WithMany().HasForeignKey(x => x.AllocationId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<SettlementQueue>().Property(x => x.RefundAdjustment).HasPrecision(18, 2);
+        modelBuilder.Entity<SettlementQueue>().Property(x => x.RecoveryOffset).HasPrecision(18, 2);
+
         modelBuilder.Entity<CommunityBuilderProfile>(entity =>
         {
             entity.HasIndex(x => x.UserId).IsUnique();

@@ -32,6 +32,8 @@ public class EntrepreneurAdminController : ControllerBase
 
     public class PayEntrepreneurEarningRequest
     {
+        public decimal? PaidAmount { get; set; }
+        public string Currency { get; set; } = string.Empty;
         public string PayoutReference { get; set; }
             = string.Empty;
     }
@@ -64,20 +66,20 @@ public class EntrepreneurAdminController : ControllerBase
             return Unauthorized();
         }
 
-        await _payoutService.MarkPaidAsync(
-            earningId,
-            request.PayoutReference.Trim(),
-            adminUserId,
-            cancellationToken);
-
-        return Ok(new
+        try
         {
-            success = true,
-            earningId,
-            status = "PAID",
-            payoutReference =
-                request.PayoutReference.Trim()
-        });
+            return Ok(await _payoutService.MarkPaidAsync(earningId, request.PayoutReference.Trim(), adminUserId,
+                request.PaidAmount, request.Currency, cancellationToken));
+        }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+
+    }
+
+    [HttpGet("earnings/{earningId:guid}/payout-quote")]
+    public async Task<IActionResult> EarningQuote(Guid earningId, CancellationToken ct)
+    {
+        try { return Ok(await _payoutService.QuoteAsync(earningId, ct)); }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
 
     // ============================================================

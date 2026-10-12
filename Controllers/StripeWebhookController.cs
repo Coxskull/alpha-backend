@@ -855,7 +855,8 @@ public class StripeWebhookController : ControllerBase
             return;
 
         await _context.Entry(payment).ReloadAsync(cancellationToken);
-        if (charge.Currency.ToUpperInvariant() != payment.Currency || charge.Amount / 100m != payment.Amount
+        if (!string.Equals(payment.PaymentGateway, "stripe", StringComparison.OrdinalIgnoreCase)
+            || charge.Currency.ToUpperInvariant() != payment.Currency || charge.Amount / 100m != payment.Amount
             || charge.AmountRefunded < 0 || charge.AmountRefunded > charge.Amount)
             throw new InvalidOperationException("Stripe refund amount or currency did not match the payment.");
 
@@ -913,38 +914,17 @@ public class StripeWebhookController : ControllerBase
          * ---------------------------------------------------------
          */
 
-        var earning =
-            await _context
-                .EntrepreneurEarnings
-                .FirstOrDefaultAsync(
-                    x =>
-                        x.PaymentId == payment.Id,
-                    cancellationToken);
-
-        if (earning != null)
+        // Charge-level cumulative evidence does not establish per-payee attribution.
+        // Preserve confirmed customer refund totals but hold source-order payouts for review.
+        var financial = await _context.OrderFinancials.FirstOrDefaultAsync(f => f.OrderId == payment.OrderId, cancellationToken);
+        if (financial != null)
         {
-            var originalCommission =
-                earning.EntrepreneurEarningsAmount;
-
-            var refundRatio =
-                originalAmount > 0m
-                    ? refundDelta / originalAmount
-                    : 0m;
-
-            var commissionAdjustment =
-                decimal.Round(
-                    originalCommission *
-                    refundRatio,
-                    2,
-                    MidpointRounding.AwayFromZero);
-
-            await _entrepreneurAdjustmentService
-                .ApplyRefundAsync(
-                    earning.Id,
-                    commissionAdjustment,
-                    $"Stripe refund for payment {payment.Id}",
-                    payment.Id,
-                    cancellationToken);
+            financial.RefundAmount = cumulativeRefund;
+            financial.FinancialStatus = "refund_review";
+            financial.PayoutStatus = "on_hold";
+            financial.SettlementStatus = "blocked";
+            var queues = await _context.SettlementQueue.Where(q => q.OrderFinancialId == financial.Id && q.Status != "paid").ToListAsync(cancellationToken);
+            foreach (var queue in queues) queue.Status = "on_hold";
         }
 
         await _context.SaveChangesAsync(
@@ -952,15 +932,6 @@ public class StripeWebhookController : ControllerBase
 
         await refundTransaction.CommitAsync(cancellationToken);
 
-        _logger.LogInformation(
-            "Stripe refund processed. " +
-            "PaymentIntent={PaymentIntentId}, " +
-            "RefundDelta={RefundDelta}, " +
-            "EntrepreneurAdjustment={Adjustment}",
-            paymentIntentId,
-            refundDelta,
-            earning == null
-                ? 0m
-                : earning.EntrepreneurEarningsAmount);
+        _logger.LogInformation("Stripe refund recorded for attribution review. PaymentIntent={PaymentIntentId}, RefundDelta={RefundDelta}", paymentIntentId, refundDelta);
     }
 }

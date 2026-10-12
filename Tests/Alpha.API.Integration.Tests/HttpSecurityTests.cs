@@ -132,6 +132,8 @@ public sealed class HttpSecurityTests(DatabaseFixture fixture) : IAsyncLifetime
         }
         Assert.Equal(HttpStatusCode.OK, (await Request("/api/Cart/" + user.Id, token)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await Request("/api/database-diagnostic", token)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Request("/api/refund-allocations/recovery-balances", token)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Request("/api/refund-allocations/" + Guid.NewGuid(), token, HttpMethod.Post)).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync("/api/Auth/register", Registration(email.ToUpperInvariant(), roles))).StatusCode);
     }
 
@@ -189,7 +191,7 @@ public sealed class HttpSecurityTests(DatabaseFixture fixture) : IAsyncLifetime
     [Fact]
     public async Task AnonymousFinancialDiagnosticAndPaymentRequestsAreDenied()
     {
-        foreach (var path in new[] { "/api/Financials/settlement-queue", "/api/database-diagnostic", "/api/paypal/order/" + Guid.NewGuid() })
+        foreach (var path in new[] { "/api/refund-allocations/recovery-balances", "/api/Financials/settlement/" + Guid.NewGuid() + "/payout-quote", "/api/Financials/settlement-queue", "/api/database-diagnostic", "/api/paypal/order/" + Guid.NewGuid() })
             Assert.Equal(HttpStatusCode.Unauthorized, (await Request(path)).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await Request("/api/paypal/refund", method: HttpMethod.Post)).StatusCode);
     }

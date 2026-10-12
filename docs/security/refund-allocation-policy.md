@@ -1,0 +1,25 @@
+# Attributable refunds and future-payout recovery
+
+Approved policy: allocate by attributable source, recover paid amounts from future payouts, retain unresolved exceptions for manual review, and never automatically debit bank accounts. This change does not authorize merge, deployment, hosted database writes or live payments.
+
+## Review workflow
+
+1. Verify a completed refund operation. Unknown/pending provider responses remain reserved; no allocation can treat them as completed.
+2. Identify actual same-order supplier/driver settlement rows and/or entrepreneur earning records that bear the refund. Supply monetary impacts based on reviewed evidence. No percentage or automatic pro rata rule is inferred.
+3. An administrator posts `api/refund-allocations/{operationId}` with `evidence`, `platformAmount` and `lines` (`sourceKind` = `settlement` or `earning`, `sourceId`, `amount`). Positive source impacts plus the nonnegative platform amount must exactly equal the completed refund amount. This is an immutable reviewed plan; corrections require a separate manual process, not changing or replaying the plan with new values.
+4. Unpaid source payables receive explicit adjustments. Paid source amounts become recovery balances after matching a single recorded payout in the same currency. Read the audited rows at `api/refund-allocations/{operationId}` and balances at `api/refund-allocations/recovery-balances` (administrator only).
+5. Complete tax/referral/dispute reconciliation manually. The original refunded order stays on hold; recording a plan does not bypass this review or recalculate its original financials.
+
+## Payout API changes
+
+For supplier/driver queues, administrators read `GET api/Financials/settlement/{id}/payout-quote`, then confirm `POST api/Financials/settlement/{id}/mark-paid` with `paidAmount`, `currency` and `payoutReference`. For entrepreneur earnings, use `GET api/admin/entrepreneur/earnings/{id}/payout-quote` and the existing `POST .../{id}/pay` with the same confirmation fields. Clients that formerly sent only a reference or no body must be updated.
+
+Quotes show gross, source refund adjustment, recovery offset, net paid amount and currency. They do not reserve funds or make a transfer. A concurrent confirmation can change the next quote; stale confirmations are rejected atomically. Only verified, ready and unrefunded/undisputed orders are eligible for these future payouts. Supplier/driver confirmation still produces the existing commission work inside the payout transaction, based on the earned source rather than using debt recovery as a new refund of the future order.
+
+Recovery applies only to the identical payee identity, type and currency; no foreign-exchange conversion or cross-account debit occurs. The amount cannot exceed the incoming payable or outstanding recovery balance. Zero-net payouts are internal offset completions; no cash transfer is implied, and a reviewed reference is still required. Existing minimum entrepreneur payout thresholds apply to positive net cash amounts.
+
+## Manual exceptions and rollout
+
+The implementation supports supplier/driver settlement_queue sources and entrepreneur_earnings sources backed by single-earning payout batches. Mechanic/unattributed queues, missing/ambiguous payout evidence, the distinct legacy referral_transactions ledger, tax/chargeback corrections, allocation corrections and original-order release remain manual review cases. Stripe charge-level cumulative events establish the customer refund total but not individual per-payee refund-operation attribution; they now hold payouts and no longer trigger proportional entrepreneur adjustments. Verified individual operation evidence/integration for that gateway remains an acceptance task.
+
+The new migration provisions refund_allocations and payout_recovery_offsets and accounting columns. It is review-only until a sanitized non-production schema baseline, operator/client updates and an independently reviewed accounting exercise are accepted. No migration was applied to a hosted database. No bank/provider client is used by allocation or payout accounting services.

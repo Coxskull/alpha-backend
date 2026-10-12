@@ -2088,6 +2088,11 @@ namespace Alpha.API.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AllocationFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("allocation_fingerprint");
+
                     b.Property<decimal>("Amount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)")
@@ -2214,6 +2219,44 @@ namespace Alpha.API.Migrations
                         .IsUnique();
 
                     b.ToTable("payment_webhook_events");
+                });
+
+            modelBuilder.Entity("Alpha.API.Models.PayoutRecoveryOffset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AllocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("allocation_id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_id");
+
+                    b.Property<string>("TargetKind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("target_kind");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AllocationId", "TargetKind", "TargetId")
+                        .IsUnique();
+
+                    b.ToTable("payout_recovery_offsets");
                 });
 
             modelBuilder.Entity("Alpha.API.Models.Product", b =>
@@ -2493,6 +2536,81 @@ namespace Alpha.API.Migrations
                     b.HasIndex("SourceUserId");
 
                     b.ToTable("referral_transactions", (string)null);
+                });
+
+            modelBuilder.Entity("Alpha.API.Models.RefundAllocation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("Evidence")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("evidence");
+
+                    b.Property<bool>("FutureRecovery")
+                        .HasColumnType("boolean")
+                        .HasColumnName("future_recovery");
+
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("operation_id");
+
+                    b.Property<Guid>("PayeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payee_id");
+
+                    b.Property<string>("PayeeType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("payee_type");
+
+                    b.Property<decimal>("RecoveredAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("recovered_amount");
+
+                    b.Property<Guid>("ReviewedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reviewed_by");
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_id");
+
+                    b.Property<string>("SourceKind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("source_kind");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OperationId", "SourceKind", "SourceId")
+                        .IsUnique();
+
+                    b.HasIndex("PayeeType", "PayeeId", "Currency");
+
+                    b.ToTable("refund_allocations");
                 });
 
             modelBuilder.Entity("Alpha.API.Models.RepairProof", b =>
@@ -2907,6 +3025,16 @@ namespace Alpha.API.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("payee_type");
+
+                    b.Property<decimal>("RecoveryOffset")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("recovery_offset");
+
+                    b.Property<decimal>("RefundAdjustment")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("refund_adjustment");
 
                     b.Property<DateTime?>("ReviewedAt")
                         .HasColumnType("timestamp with time zone")
@@ -3592,6 +3720,15 @@ namespace Alpha.API.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Alpha.API.Models.PayoutRecoveryOffset", b =>
+                {
+                    b.HasOne("Alpha.API.Models.RefundAllocation", null)
+                        .WithMany()
+                        .HasForeignKey("AllocationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Alpha.API.Models.ReferralTransaction", b =>
                 {
                     b.HasOne("Alpha.API.Models.User", "BeneficiaryUser")
@@ -3609,6 +3746,15 @@ namespace Alpha.API.Migrations
                     b.Navigation("BeneficiaryUser");
 
                     b.Navigation("SourceUser");
+                });
+
+            modelBuilder.Entity("Alpha.API.Models.RefundAllocation", b =>
+                {
+                    b.HasOne("Alpha.API.Models.PaymentOperation", null)
+                        .WithMany()
+                        .HasForeignKey("OperationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Alpha.API.Models.RoleVerificationApplication", b =>

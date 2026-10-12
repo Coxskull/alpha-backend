@@ -23,6 +23,12 @@ public class SettlementQueue
     [Column("amount")]
     public decimal Amount { get; set; }
 
+    [Column("refund_adjustment")]
+    public decimal RefundAdjustment { get; set; }
+
+    [Column("recovery_offset")]
+    public decimal RecoveryOffset { get; set; }
+
     [Column("status")]
     public string Status { get; set; } = "pending_review";
 
