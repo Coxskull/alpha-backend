@@ -462,14 +462,15 @@ public class PayPalController : ControllerBase
 
             var refundRoot = refund.RootElement;
 
-            string? refundId = null;
-
-            if (refundRoot.TryGetProperty(
-                    "id",
-                    out var refundIdElement))
+            if (!PayPalRefundValidator.TryGetCompletedRefundId(refundRoot, out var refundId))
             {
-                refundId =
-                    refundIdElement.GetString();
+                // PayPal may have accepted a pending refund. Do not advance local
+                // balances or commissions until the provider confirms completion.
+                // Reconcile provider state before attempting another refund.
+                return StatusCode(409, new
+                {
+                    message = "PayPal refund is not confirmed as completed. Reconcile the provider refund before retrying."
+                });
             }
 
             var now = DateTime.UtcNow;
