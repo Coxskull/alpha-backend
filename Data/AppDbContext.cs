@@ -180,6 +180,8 @@ public class AppDbContext : DbContext
                 .HasForeignKey(user => user.ReferredByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
+        modelBuilder.Entity<EntrepreneurPayoutBatch>().Property(x => x.TotalAmount).HasPrecision(18, 2);
+
         modelBuilder.Entity<RefundAllocation>(entity =>
         {
             entity.HasIndex(x => new { x.OperationId, x.SourceKind, x.SourceId }).IsUnique();
@@ -1510,6 +1512,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Customer>(entity =>
         {
             entity.ToTable("customers");
+            entity.Property(x => x.PhoneNumber).HasColumnName("phone");
 
             entity.HasKey(e => e.Id);
 
@@ -1547,6 +1550,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<CustomerVehicle>(entity =>
         {
             entity.ToTable("customer_vehicles");
+            entity.Property(x => x.VIN).HasColumnName("vin");
 
             entity.HasKey(e => e.Id);
 
