@@ -74,7 +74,11 @@ jobs:
           git add Migrations/*ReconcileCurrentModelCandidate* Migrations/AppDbContextModelSnapshot.cs
           git commit -m 'feat(db): add generated EF Core model reconciliation migration'
           git fetch origin db/ef-model-reconciliation-20261012
-          git rebase FETCH_HEAD
+          git branch -f migration-publish FETCH_HEAD
+          git switch migration-publish
+          git checkout ORIG_HEAD -- Migrations/ || true
+          git add Migrations/*ReconcileCurrentModelCandidate* Migrations/AppDbContextModelSnapshot.cs
+          git commit -m 'feat(db): publish generated EF migration' || true
           git push origin HEAD:refs/heads/db/ef-model-reconciliation-20261012
       - name: Preserve generated migration files for human review
         if: always()
