@@ -765,24 +765,19 @@ public class AdminRoleVerificationsController : ControllerBase
          * This makes them available for replacement
          * from the applicant verification page.
          */
-        if (application.Documents != null)
+        foreach (var document in application.Documents)
         {
-            foreach (
-                var document in
-                application.Documents)
-            {
-                document.VerificationStatus =
-                    "needs_more_information";
+            document.VerificationStatus =
+                "needs_more_information";
 
-                document.ReviewerNotes =
-                    reviewerNotes;
+            document.ReviewerNotes =
+                reviewerNotes;
 
-                document.ReviewedAt =
-                    now;
+            document.ReviewedAt =
+                now;
 
-                document.ReviewedByUserId =
-                    reviewerId;
-            }
+            document.ReviewedByUserId =
+                reviewerId;
         }
 
         await UpdateUserRoleStatus(
