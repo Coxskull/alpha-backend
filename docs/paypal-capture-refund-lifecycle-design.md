@@ -93,3 +93,33 @@ Use mocked HTTP handlers/provider responses and an isolated test database. Tests
 ## Current status
 
 This pull request records the design and acceptance criteria only. It does not change runtime payment behavior, perform live PayPal calls, modify production data/configuration, merge code, or deploy the service. It is not a substitute for implementation, CI, or independent review.
+
+
+## Follow-up verification: provider contract and repository schema
+
+**Evidence ID:** `ALPHA-EV-20261012-PAYPAL-LIFECYCLE-VERIFY`
+
+### PayPal idempotency contract (official documentation checked 2026-10-12)
+
+- PayPal's general REST request documentation says `PayPal-Request-Id` is supported only when the individual endpoint documents it. The refund-captured-payment endpoint explicitly exposes the header. The general documentation gives refund requests a retention example of up to **45 days**. See [PayPal API requests — PayPal-Request-Id](https://developer.paypal.com/api/rest/requests/).
+- PayPal's Orders v2 example says `PayPal-Request-Id` keys for the create-and-capture order example are stored for **6 hours**, and says callers may request up to 72 hours via their Account Manager. See [Expanded Checkout Orders API use cases](https://developer.paypal.com/api/rest/integration/orders-api/api-use-cases/advanced/).
+- These documented windows differ by API context. Do **not** assume the refund 45-day example applies to Orders v2 capture. Before implementing capture, verify the exact `POST /v2/checkout/orders/{id}/capture` endpoint reference and merchant/account-specific behavior. Persist Alpha-side idempotency records beyond the provider's retention window; provider idempotency is a second layer, not the sole guard.
+- The refund endpoint is `POST /v2/payments/captures/{capture_id}/refund`; PayPal defines the path identifier as the PayPal-generated **capture ID**, not the PayPal order ID. The endpoint exposes `PayPal-Request-Id` and supports a response preference. See [Refund captured payment — Payments v2](https://developer.paypal.com/api/payments/v2/captures-refund).
+
+### Repository schema findings
+
+Repository inspection of `main` shows:
+- `RefundPaymentDto` currently carries only `OrderId` and `Amount`; it has no caller idempotency key.
+- The explicit `Payment` Fluent API mapping in `Data/AppDbContext.cs` lists the core payment fields through `created_at`, but does not configure the refund-related fields added to the model class.
+- The checked-in EF migrations are only `InitialCreate` and `OrderRelations`; `OrderRelations` adds driver/supplier order relations, not payment/refund ledger tables.
+- The checked-in initial migration does not establish the proposed `payment_refund_attempts` ledger or the unique constraints required for idempotent refund attempts. The repository migration history therefore does **not** provide evidence that the full runtime payment schema is reproducibly created from these migrations.
+
+This is a migration/schema parity gap in the repository evidence, not proof of the exact schema currently deployed. Before writing a migration, compare the model to a sanitized schema-only export from the actual target database and identify whether payment columns/tables are provisioned outside EF migrations. Do not connect to or mutate production as part of this design check.
+
+### Updated implementation gate
+
+1. Resolve model-to-migration parity for `payments` and `order_financials` using a schema-only export from a non-production environment or approved sanitized artifact.
+2. Add a required refund idempotency key to the API contract with validation and a documented client retry rule; do not silently generate a new key on each server retry.
+3. Verify exact capture and refund endpoint header semantics; use durable Alpha-side operation keys and provider request IDs where endpoint-supported.
+4. Implement an additive ledger/migration only after schema parity is understood; include unique indexes and PostgreSQL concurrency tests.
+5. Keep production operations unauthorized and disabled until separately approved.
