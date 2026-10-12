@@ -11,22 +11,22 @@ public class Order
     public Guid Id { get; set; }
 
     [Column("order_number")]
-    public string OrderNumber { get; set; }
+    public required string OrderNumber { get; set; }
 
     [Column("customer_name")]
-    public string CustomerName { get; set; }
+    public required string CustomerName { get; set; }
 
     [Column("pickup_address")]
-    public string PickupAddress { get; set; }
+    public required string PickupAddress { get; set; }
 
     [Column("delivery_address")]
-    public string DeliveryAddress { get; set; }
+    public required string DeliveryAddress { get; set; }
 
     [Column("item_description")]
-    public string ItemDescription { get; set; }
+    public required string ItemDescription { get; set; }
 
     [Column("zone")]
-    public string Zone { get; set; }
+    public required string Zone { get; set; }
 
     [Column("supplier_id")]
     public Guid? SupplierId { get; set; }
@@ -35,7 +35,7 @@ public class Order
     public Guid? DriverId { get; set; }
 
     [Column("status")]
-    public string Status { get; set; }
+    public required string Status { get; set; }
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; }

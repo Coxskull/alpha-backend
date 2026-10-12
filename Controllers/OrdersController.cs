@@ -2091,9 +2091,17 @@ public class OrdersController : ControllerBase
             return Unauthorized();
         }
 
-        var role = User.GetRole()
+        var roleClaim = User.GetRole();
+
+        if (string.IsNullOrWhiteSpace(roleClaim))
+            return Forbid();
+
+        var role = roleClaim
             .Trim()
             .ToLowerInvariant();
+
+        if (role is not ("supplier" or "provider" or "driver" or "admin" or "dispatcher"))
+            return Forbid();
 
         Guid? supplierId = null;
         Guid? driverId = null;
@@ -2180,7 +2188,9 @@ public class OrdersController : ControllerBase
                         item.SupplierId,
                         item.Quantity,
                         item.UnitPrice,
-                        productName = item.Product.Name
+                        productName = item.Product != null
+                            ? item.Product.Name
+                            : null
                     })
                     .ToList()
             })
@@ -2244,7 +2254,9 @@ public class OrdersController : ControllerBase
             item.SupplierId,
             item.Quantity,
             item.UnitPrice,
-            productName = item.Product.Name
+            productName = item.Product != null
+                ? item.Product.Name
+                : null
         })
         .ToList()
             })
