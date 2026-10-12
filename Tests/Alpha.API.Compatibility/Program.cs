@@ -36,7 +36,26 @@ try
         "SELECT table_name AS \"Value\" FROM information_schema.tables WHERE table_schema = 'public'").ToListAsync();
     var missing = tables.Where(t => t != null && !actual.Contains(t)).ToArray();
     observations["missingModelTablesFromMigrations"] = missing;
-    observations["migrationModelParity"] = missing.Length == 0 ? "PASS (table presence only)" : "FAIL";
+    // Compare mapped columns as well as table names: table presence alone can mask
+    // schema drift after a successful migration. Read-only against disposable DB.
+    var actualColumns = await migrated.Database.SqlQueryRaw<string>(
+        "SELECT table_name || '.' || column_name AS \\"Value\\" FROM information_schema.columns WHERE table_schema = 'public'").ToListAsync();
+    var actualColumnSet = actualColumns.ToHashSet(StringComparer.Ordinal);
+    var mappedColumns = model.Model.GetEntityTypes()
+        .Where(e => e.GetTableName() != null)
+        .SelectMany(e =>
+        {
+            var table = e.GetTableName()!;
+            var store = StoreObjectIdentifier.Table(table, e.GetSchema());
+            return e.GetProperties().Select(p => table + "." + p.GetColumnName(store));
+        })
+        .Distinct(StringComparer.Ordinal)
+        .OrderBy(x => x, StringComparer.Ordinal)
+        .ToArray();
+    var missingColumns = mappedColumns.Where(c => !actualColumnSet.Contains(c)).ToArray();
+    observations["missingModelColumnsFromMigrations"] = missingColumns;
+    observations["migrationModelParity"] = missing.Length == 0 && missingColumns.Length == 0
+        ? "PASS (table and column presence)" : "FAIL";
 }
 catch (Exception ex)
 {
@@ -52,5 +71,5 @@ if (!(bool)observations["modelOrdersReadable"] || !(bool)observations["modelPaym
     || !(bool)observations["modelSecurityLogsReadable"]) throw new Exception("Model database smoke failed.");
 // Migration parity is a release gate: a successful migration command is insufficient
 // when the migrated schema omits tables required by the current EF Core model.
-if (!string.Equals(observations["migrationModelParity"]?.ToString(), "PASS (table presence only)", StringComparison.Ordinal))
+if (!string.Equals(observations["migrationModelParity"]?.ToString(), "PASS (table and column presence)", StringComparison.Ordinal))
     throw new InvalidOperationException("Disposable PostgreSQL migration/model parity failed. See database-compatibility.json.");
