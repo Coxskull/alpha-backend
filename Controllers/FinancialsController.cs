@@ -473,7 +473,7 @@ public class FinancialsController : ControllerBase
      CancellationToken cancellationToken)
     {
         var userId = User.GetUserId();
-        var role = User.GetRole()
+        var role = (User.GetRole() ?? string.Empty)
             .Trim()
             .ToLowerInvariant();
 
