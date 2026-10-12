@@ -81,6 +81,8 @@ jobs:
             --targetargs "test Tests/Alpha.API.Integration.Tests/Alpha.API.Integration.Tests.csproj -c Release --no-build --no-restore --logger trx;LogFileName=integration.trx --results-directory evidence" \
             --include '[Alpha.API]*' --merge-with evidence/unit-coverage.json \
             --format cobertura --output evidence/coverage.cobertura.xml 2>&1 | tee evidence/integration-coverage.log
+      - name: Validate coverage evidence
+        run: python3 scripts/coverage-summary.py evidence/coverage.cobertura.xml evidence/coverage-summary.json
       - name: Application startup with synthetic loopback configuration
         run: python3 scripts/startup-evidence.py dotnet evidence bin/Release/net8.0/Alpha.API.dll
       - name: Preserve evidence even when a check fails
