@@ -1,0 +1,21 @@
+{
+  "parentPR": 33,
+  "parentHead": "40a633910f12d3687b463f70e9acff93746b2f2b",
+  "correctionPR": 34,
+  "correctionHead": "19c6c2034b5577a78c1a66e39e2e207b1b10537f",
+  "exactHeadCI": {
+    "releaseEvidenceRun": 38250975127,
+    "companionRun": 38250974946,
+    "unitPassed": 77,
+    "integrationPassed": 92,
+    "failed": 0,
+    "skipped": 0,
+    "warnings": 0,
+    "errors": 0,
+    "schemaParity": "PASS",
+    "tables": 57,
+    "runtimeSourceCoverage": 0.24343208496366686,
+    "artifact": 11747439875,
+    "artifactSha256": "7e5e750ed816041215a114c6ceea2ec56c24ba7965d10c8ec99faf7ea6efdb77"
+  }
+}
