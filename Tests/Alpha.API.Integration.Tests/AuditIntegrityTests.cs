@@ -53,7 +53,7 @@ public sealed class AuditIntegrityTests(DatabaseFixture fixture)
     [InlineData("UPDATE refund_allocations SET recovered_amount = 0 WHERE id = {0}")]
     [InlineData("UPDATE refund_allocations SET recovered_amount = 11 WHERE id = {0}")]
     [InlineData("DELETE FROM refund_allocations WHERE id = {0}")]
-    [InlineData("TRUNCATE refund_allocations")]
+    [InlineData("TRUNCATE refund_allocations CASCADE")]
     public async Task AllocationIdentityAndEvidenceAreImmutableAndRecoveryIsMonotonic(string sql)
     {
         using var db = fixture.Context();

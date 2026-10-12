@@ -95,6 +95,37 @@ public sealed class PaymentLifecycleTests(DatabaseFixture fixture)
     }
 
     [Fact]
+    public async Task ConcurrentRefundsOnSeparatePaymentsPreserveOrderRefundTotal()
+    {
+        var seed = await fixture.SeedAsync();
+        var second = new Payment { Id = Guid.NewGuid(), OrderId = seed.OrderId, Amount = 100, Currency = "USD",
+            PaymentGateway = "paypal", PaymentMethod = "paypal", PaymentStatus = "paid", TransactionReference = "CAPTURE-SECOND-" + Guid.NewGuid() };
+        Guid firstOperation, secondOperation;
+        using (var db = fixture.Context())
+        {
+            db.Add(second); await db.SaveChangesAsync();
+            var first = await db.Payments.SingleAsync(p => p.Id == seed.PaymentId);
+            firstOperation = (await new PaymentOperationService(db).ReserveAsync(first.Id, "refund", "first", 10, "USD", first.TransactionReference!, None)).Operation.Id;
+            secondOperation = (await new PaymentOperationService(db).ReserveAsync(second.Id, "refund", "second", 20, "USD", second.TransactionReference!, None)).Operation.Id;
+        }
+        async Task Apply(Guid operationId)
+        {
+            using var db = fixture.Context();
+            var operation = await db.Set<PaymentOperation>().SingleAsync(o => o.Id == operationId);
+            var handler = new ProviderHandler { ResponseBody = RefundJson("COMPLETED", operation.Amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture), operation.ProviderParentReference) };
+            operation.State = "unknown";
+            operation.ProviderReference = JsonDocument.Parse(handler.ResponseBody).RootElement.GetProperty("id").GetString();
+            await db.SaveChangesAsync();
+            Assert.IsType<OkObjectResult>(await Controller(db, handler, Principal(Guid.NewGuid(), "admin")).Reconcile(operationId, None));
+            Assert.Equal(0, handler.ProviderPosts);
+        }
+        await Task.WhenAll(Apply(firstOperation), Apply(secondOperation));
+        using var verify = fixture.Context();
+        Assert.Equal(30m, (await verify.OrderFinancials.SingleAsync(f => f.OrderId == seed.OrderId)).RefundAmount);
+        Assert.Equal(30m, await verify.Payments.Where(p => p.OrderId == seed.OrderId).SumAsync(p => p.RefundedAmount));
+    }
+
+    [Fact]
     public async Task ProviderTimeoutRetainsReservationAndDoesNotRepeatRefund()
     {
         var seed = await fixture.SeedAsync(); using var db = fixture.Context();
