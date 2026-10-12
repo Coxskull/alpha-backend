@@ -85,7 +85,7 @@ public class PaymentCompletionService
             await _context.Database.BeginTransactionAsync(
                 cancellationToken);
         await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT id FROM payments WHERE order_id = {orderId} FOR UPDATE", cancellationToken);
+            $"SELECT id FROM payments WHERE order_id = {orderId} ORDER BY id FOR UPDATE", cancellationToken);
         foreach (var entry in _context.ChangeTracker.Entries<Payment>())
             await entry.ReloadAsync(cancellationToken);
 

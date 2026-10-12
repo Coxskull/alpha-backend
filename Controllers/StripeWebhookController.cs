@@ -841,7 +841,7 @@ public class StripeWebhookController : ControllerBase
 
         await using var refundTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT id FROM payments WHERE gateway_payment_id = {paymentIntentId} ORDER BY id FOR UPDATE", cancellationToken);
+            $"SELECT id FROM payments WHERE gateway_payment_id = {paymentIntentId} OR order_id IN (SELECT order_id FROM payments WHERE gateway_payment_id = {paymentIntentId}) ORDER BY id FOR UPDATE", cancellationToken);
 
         var matches = await _context.Payments.Where(p => p.GatewayPaymentId == paymentIntentId).Take(2).ToListAsync(cancellationToken);
         if (matches.Count == 0) return;
@@ -936,7 +936,11 @@ public class StripeWebhookController : ControllerBase
         var financial = await _context.OrderFinancials.FirstOrDefaultAsync(f => f.OrderId == payment.OrderId, cancellationToken);
         if (financial != null)
         {
-            financial.RefundAmount = payment.RefundedAmount;
+            if (financial.Currency != payment.Currency || await _context.Payments.AnyAsync(
+                p => p.OrderId == payment.OrderId && p.RefundedAmount > 0 && p.Currency != financial.Currency, cancellationToken))
+                throw new InvalidOperationException("Refund currencies require manual financial review.");
+            financial.RefundAmount = payment.RefundedAmount + await _context.Payments
+                .Where(p => p.OrderId == payment.OrderId && p.Id != payment.Id).SumAsync(p => p.RefundedAmount, cancellationToken);
             if (evidence == StripeRefundEvidenceState.Conflict) financial.FinancialStatus = "refund_evidence_conflict";
             else if (currentCompleteEvidence)
                 financial.FinancialStatus = refundDelta == 0 && financial.FinancialStatus == "refund_allocated_review" ? "refund_allocated_review" : "refund_review";
