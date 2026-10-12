@@ -2091,7 +2091,7 @@ public class OrdersController : ControllerBase
             return Unauthorized();
         }
 
-        var role = User.GetRole()
+        var role = (User.GetRole() ?? string.Empty)
             .Trim()
             .ToLowerInvariant();
 
@@ -2180,7 +2180,7 @@ public class OrdersController : ControllerBase
                         item.SupplierId,
                         item.Quantity,
                         item.UnitPrice,
-                        productName = item.Product.Name
+                        productName = item.Product != null ? item.Product.Name : string.Empty
                     })
                     .ToList()
             })
@@ -2244,7 +2244,7 @@ public class OrdersController : ControllerBase
             item.SupplierId,
             item.Quantity,
             item.UnitPrice,
-            productName = item.Product.Name
+            productName = item.Product != null ? item.Product.Name : string.Empty
         })
         .ToList()
             })
