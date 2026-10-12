@@ -1,0 +1,35 @@
+{
+  "heads": {
+    "reported": "8946949623433e8317be7b6814e93086defda818",
+    "currentPR32": "e2f969c4bc89fab8417d93e72b43bed388808d31",
+    "PR33": "40a633910f12d3687b463f70e9acff93746b2f2b",
+    "PR34": "19c6c2034b5577a78c1a66e39e2e207b1b10537f",
+    "PR35": "2d103cd4a74cadf9b19e21cb08df5c2d3ba0326d",
+    "consolidatedPR36": "d47919b6a8b6d54d3d21e63889021b294fd94b87"
+  },
+  "candidateCI": {
+    "unitPassed": 77,
+    "integrationPassed": 98,
+    "failed": 0,
+    "skipped": 0,
+    "warnings": 0,
+    "errors": 0,
+    "migrations": 9,
+    "tables": 57,
+    "schemaParity": "PASS",
+    "runtimeSourceCovered": 4366,
+    "runtimeSourceValid": 17895,
+    "evidenceRun": 38256593847,
+    "companionRun": 38256593872,
+    "artifact": 11750333342,
+    "artifactSha256": "f7487d309c5dd6d8edbf26b733f00d3713edb699dbd79259fac2e3ce467c96db"
+  },
+  "currentBaseCI": {
+    "head": "e2f969c4bc89fab8417d93e72b43bed388808d31",
+    "unitPassed": 77,
+    "integrationPassed": 72,
+    "evidenceRun": 38247869597,
+    "artifact": 11746064576
+  },
+  "hostedExecutionPerformed": false
+}
