@@ -2,7 +2,7 @@ name: .NET backend validation
 
 on:
   pull_request:
-    branches: [main, "security/**"]
+    branches: [main, "security/**", review/warning-remediation-evidence-20261012]
   push:
     branches: [main, "security/**"]
   workflow_dispatch:
@@ -16,6 +16,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - name: Set up .NET 8
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
