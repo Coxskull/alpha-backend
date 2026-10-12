@@ -841,21 +841,19 @@ public class StripeWebhookController : ControllerBase
 
         await using var refundTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT id FROM payments WHERE gateway_payment_id = {paymentIntentId} FOR UPDATE", cancellationToken);
+            $"SELECT id FROM payments WHERE gateway_payment_id = {paymentIntentId} ORDER BY id FOR UPDATE", cancellationToken);
 
-        var payment =
-            await _context.Payments
-                .FirstOrDefaultAsync(
-                    x =>
-                        x.GatewayPaymentId ==
-                            paymentIntentId,
-                    cancellationToken);
-
-        if (payment == null)
-            return;
+        var matches = await _context.Payments.Where(p => p.GatewayPaymentId == paymentIntentId).Take(2).ToListAsync(cancellationToken);
+        if (matches.Count == 0) return;
+        if (matches.Count != 1) throw new InvalidOperationException("Stripe payment mapping is ambiguous and requires manual review.");
+        var payment = matches[0];
 
         await _context.Entry(payment).ReloadAsync(cancellationToken);
         if (!string.Equals(payment.PaymentGateway, "stripe", StringComparison.OrdinalIgnoreCase)
+            || payment.PaymentStatus is not ("paid" or "partially_refunded" or "refunded")
+            || (payment.RefundedAmount > 0 && payment.RefundReference != charge.Id)
+            || !StripeRefundEvidenceValidator.SupportedCurrency(payment.Currency)
+            || charge.Livemode != stripeEvent.Livemode
             || charge.Currency.ToUpperInvariant() != payment.Currency || charge.Amount / 100m != payment.Amount
             || charge.AmountRefunded < 0 || charge.AmountRefunded > charge.Amount)
             throw new InvalidOperationException("Stripe refund amount or currency did not match the payment.");
@@ -875,10 +873,17 @@ public class StripeWebhookController : ControllerBase
                 cumulativeRefund -
                 previousRefund);
 
-        if (refundDelta <= 0m)
-        {
-            return;
-        }
+        // Late complete evidence may arrive after an earlier cumulative-only event.
+        // Register IDs even when the cumulative total is unchanged; never regress totals.
+        using var proof = JsonDocument.Parse(rawJson);
+        var completeListDeclared = proof.RootElement.TryGetProperty("data", out var data)
+            && data.TryGetProperty("object", out var body)
+            && body.TryGetProperty("refunds", out var list) && list.ValueKind == JsonValueKind.Object
+            && list.TryGetProperty("has_more", out var hasMore) && hasMore.ValueKind == JsonValueKind.False;
+        var evidence = completeListDeclared
+            ? await new StripeRefundOperationService(_context).RegisterAsync(payment, charge, cancellationToken)
+            : StripeRefundEvidenceState.Incomplete;
+        var currentCompleteEvidence = evidence == StripeRefundEvidenceState.Verified && cumulativeRefund >= previousRefund;
 
         /*
          * ---------------------------------------------------------
@@ -886,27 +891,30 @@ public class StripeWebhookController : ControllerBase
          * ---------------------------------------------------------
          */
 
-        payment.RefundedAmount =
-            cumulativeRefund;
+        if (refundDelta > 0m)
+        {
+            payment.RefundedAmount =
+                cumulativeRefund;
 
-        payment.RefundStatus =
-            cumulativeRefund >= originalAmount
-                ? "full"
-                : "partial";
+            payment.RefundStatus =
+                cumulativeRefund >= originalAmount
+                    ? "full"
+                    : "partial";
 
-        payment.RefundReference =
-            charge.Id;
+            payment.RefundReference =
+                charge.Id;
 
-        payment.RefundedAt =
-            DateTime.UtcNow;
+            payment.RefundedAt =
+                DateTime.UtcNow;
 
-        payment.GatewayResponse =
-            JsonDocument.Parse(rawJson);
+            payment.GatewayResponse =
+                JsonDocument.Parse(rawJson);
 
-        payment.PaymentStatus =
-            cumulativeRefund >= originalAmount
-                ? "refunded"
-                : "partially_refunded";
+            payment.PaymentStatus =
+                cumulativeRefund >= originalAmount
+                    ? "refunded"
+                    : "partially_refunded";
+        }
 
         /*
          * ---------------------------------------------------------
@@ -914,18 +922,36 @@ public class StripeWebhookController : ControllerBase
          * ---------------------------------------------------------
          */
 
-        // Charge-level cumulative evidence does not establish per-payee attribution.
+        // Completed individual refunds can be allocated by an administrator; cumulative-only evidence cannot.
         // Preserve confirmed customer refund totals but hold source-order payouts for review.
+        // Linearize evidence-state changes against concurrent recovery of existing claims.
+        var affectedPayees = await (from allocation in _context.Set<Alpha.API.Models.RefundAllocation>()
+            join operation in _context.Set<Alpha.API.Models.PaymentOperation>() on allocation.OperationId equals operation.Id
+            where operation.PaymentId == payment.Id && allocation.FutureRecovery && allocation.RecoveredAmount < allocation.Amount
+            select new { allocation.PayeeType, allocation.PayeeId, allocation.Currency }).Distinct()
+            .OrderBy(a => a.PayeeType).ThenBy(a => a.PayeeId).ThenBy(a => a.Currency).ToListAsync(cancellationToken);
+        var recovery = new RefundAllocationService(_context);
+        foreach (var payee in affectedPayees)
+            await recovery.LockPayeeAsync(payee.PayeeType, payee.PayeeId, payee.Currency, cancellationToken);
         var financial = await _context.OrderFinancials.FirstOrDefaultAsync(f => f.OrderId == payment.OrderId, cancellationToken);
         if (financial != null)
         {
-            financial.RefundAmount = cumulativeRefund;
-            financial.FinancialStatus = "refund_review";
+            financial.RefundAmount = payment.RefundedAmount;
+            if (evidence == StripeRefundEvidenceState.Conflict) financial.FinancialStatus = "refund_evidence_conflict";
+            else if (currentCompleteEvidence)
+                financial.FinancialStatus = refundDelta == 0 && financial.FinancialStatus == "refund_allocated_review" ? "refund_allocated_review" : "refund_review";
+            else if (financial.FinancialStatus != "refund_evidence_conflict" && cumulativeRefund >= previousRefund
+                && (refundDelta > 0 || financial.FinancialStatus is not ("refund_review" or "refund_allocated_review")))
+                financial.FinancialStatus = "refund_evidence_review";
             financial.PayoutStatus = "on_hold";
             financial.SettlementStatus = "blocked";
             var queues = await _context.SettlementQueue.Where(q => q.OrderFinancialId == financial.Id && q.Status != "paid").ToListAsync(cancellationToken);
             foreach (var queue in queues) queue.Status = "on_hold";
         }
+
+        if (evidence == StripeRefundEvidenceState.Conflict && payment.OrderId.HasValue)
+            _context.AuditLogs.Add(new Alpha.API.Models.AuditLog { Id = Guid.NewGuid(), OrderId = payment.OrderId.Value,
+                Action = "Stripe refund evidence conflict held for manual review", PerformedBy = "stripe", CreatedAt = DateTime.UtcNow });
 
         await _context.SaveChangesAsync(
             cancellationToken);

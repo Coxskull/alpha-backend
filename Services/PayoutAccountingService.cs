@@ -7,9 +7,21 @@ namespace Alpha.API.Services;
 
 public sealed class PayoutAccountingService(AppDbContext db)
 {
+    public static Task<bool> HasPendingStripeRefundAsync(AppDbContext db, Guid orderId, CancellationToken ct)
+        => db.Database.SqlQuery<bool>($$"""
+            SELECT EXISTS (
+                SELECT 1 FROM payment_webhook_events e JOIN payments p ON
+                    (e.payload #>> '{data,object,payment_intent}' = p.gateway_payment_id
+                    OR e.payload #>> '{data,object,payment_intent,id}' = p.gateway_payment_id)
+                WHERE p.order_id = {{orderId}} AND LOWER(p.payment_gateway) = 'stripe'
+                    AND e.gateway = 'stripe' AND e.event_type = 'charge.refunded' AND e.processed = FALSE
+            ) AS "Value"
+            """).SingleAsync(ct);
+
     public static async Task LockOrderAsync(AppDbContext db, Guid orderId, CancellationToken ct)
     {
         await db.Database.ExecuteSqlInterpolatedAsync($"SELECT id FROM payments WHERE order_id = {orderId} ORDER BY id FOR UPDATE", ct);
+        if (await HasPendingStripeRefundAsync(db, orderId, ct)) throw new InvalidOperationException("Payout is held for an unprocessed signed Stripe refund event.");
         var financial = await db.OrderFinancials.AsNoTracking().SingleAsync(f => f.OrderId == orderId, ct);
         if (financial.RefundAmount != 0 || financial.ChargebackAmount != 0 || financial.DisputeReserve != 0
             || financial.FinancialStatus != "verified" || financial.PayoutStatus is not ("ready_for_payout" or "paid")

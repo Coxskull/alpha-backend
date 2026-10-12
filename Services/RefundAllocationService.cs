@@ -51,6 +51,7 @@ public sealed class RefundAllocationService(AppDbContext db)
                 await tx.CommitAsync(ct); return;
             }
             var financial = await db.OrderFinancials.SingleAsync(f => f.OrderId == payment.OrderId, ct);
+            if (financial.FinancialStatus == "refund_evidence_conflict") throw new InvalidOperationException("Conflicting provider evidence requires manual review before allocation.");
             if (financial.Currency != operation.Currency) throw new InvalidOperationException("Financial currency does not match the refund.");
             var rows = new List<RefundAllocation>();
             foreach (var line in plan.Lines)
@@ -135,6 +136,14 @@ public sealed class RefundAllocationService(AppDbContext db)
         await LockPayeeAsync(type, payeeId, currency, ct);
         if (await db.Set<PayoutRecoveryOffset>().AnyAsync(o => o.TargetKind == targetKind && o.TargetId == targetId, ct))
             throw new InvalidOperationException("This payout already has recovery offsets.");
+        if (await (from allocation in db.Set<RefundAllocation>()
+            join operation in db.Set<PaymentOperation>() on allocation.OperationId equals operation.Id
+            join payment in db.Payments on operation.PaymentId equals payment.Id
+            join financial in db.OrderFinancials on payment.OrderId equals financial.OrderId
+            where allocation.FutureRecovery && allocation.PayeeType == type && allocation.PayeeId == payeeId
+                && allocation.Currency == currency && allocation.RecoveredAmount < allocation.Amount && financial.FinancialStatus == "refund_evidence_conflict"
+            select allocation.Id).AnyAsync(ct))
+            throw new InvalidOperationException("Recovery is held for conflicting source refund evidence.");
         var claims = await db.Set<RefundAllocation>().Where(a => a.FutureRecovery && a.PayeeType == type && a.PayeeId == payeeId
             && a.Currency == currency && a.RecoveredAmount < a.Amount).OrderBy(a => a.CreatedAt).ThenBy(a => a.Id).ToListAsync(ct);
         var recovered = 0m;

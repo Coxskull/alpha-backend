@@ -252,6 +252,18 @@ public sealed class RefundRecoveryTests(DatabaseFixture fixture)
     }
 
     [Fact]
+    public async Task ConflictingSourceEvidenceBlocksAllocationAndFutureRecovery()
+    {
+        var source = await Settlement(); var original = await Refund(source.Payment, 30); await Allocate(original, Plan(source.Queue, 20, platform: 10));
+        var next = await Refund(source.Payment, 20);
+        using (var db = fixture.Context()) await db.OrderFinancials.Where(f => f.OrderId == source.Order).ExecuteUpdateAsync(s => s.SetProperty(f => f.FinancialStatus, "refund_evidence_conflict"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Allocate(next, Plan(source.Queue, 20)));
+        var future = await Settlement(paid: false, amount: 50, payee: source.Payee);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Pay(future.Queue, 30));
+        using var verify = fixture.Context(); Assert.Equal(0, (await verify.Set<Alpha.API.Models.RefundAllocation>().SingleAsync(a => a.OperationId == original && a.FutureRecovery)).RecoveredAmount);
+    }
+
+    [Fact]
     public async Task StripeCumulativeRefundDoesNotProportionallyClawBackEntrepreneurEarnings()
     {
         var source = await Earning(true); using var db = fixture.Context(); var payment = await db.Payments.SingleAsync(p => p.Id == source.Payment);
