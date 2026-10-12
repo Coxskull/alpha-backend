@@ -37,3 +37,6 @@ jobs:
           fi
       - name: Build Release
         run: dotnet build Alpha.API.csproj --configuration Release --no-restore
+
+      - name: Run PayPal capture validator tests
+        run: dotnet test Tests/Alpha.API.Tests/Alpha.API.Tests.csproj --configuration Release

@@ -209,51 +209,6 @@ public class PayPalController : ControllerBase
                 dto.PayPalOrderId
             );
 
-            var root = capture.RootElement;
-
-            if (!root.TryGetProperty(
-                    "status",
-                    out var statusElement))
-            {
-                return BadRequest(new
-                {
-                    message =
-                        "PayPal did not return a valid payment status."
-                });
-            }
-
-            var status = statusElement.GetString();
-
-            if (!string.Equals(
-                    status,
-                    "COMPLETED",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return BadRequest(new
-                {
-                    message =
-                        $"PayPal payment was not completed. Status: {status}"
-                });
-            }
-
-            string? captureId = null;
-
-            try
-            {
-                captureId = root
-                    .GetProperty("purchase_units")[0]
-                    .GetProperty("payments")
-                    .GetProperty("captures")[0]
-                    .GetProperty("id")
-                    .GetString();
-            }
-            catch
-            {
-                // Use the PayPal order ID as fallback when the
-                // nested capture ID is not available.
-                captureId = dto.PayPalOrderId;
-            }
-
             var financial = await _context.OrderFinancials
                 .FirstOrDefaultAsync(
                     x => x.OrderId == dto.OrderId,
@@ -265,6 +220,20 @@ public class PayPalController : ControllerBase
                 return NotFound(new
                 {
                     message = "Financial record not found."
+                });
+            }
+
+            if (!PayPalCaptureValidator.TryValidate(
+                    capture.RootElement,
+                    dto.PayPalOrderId,
+                    order.Id,
+                    financial.TotalAmount,
+                    financial.Currency,
+                    out var captureId))
+            {
+                return BadRequest(new
+                {
+                    message = "PayPal capture response did not match the expected order, amount, currency, and completed capture."
                 });
             }
 
@@ -396,13 +365,12 @@ public class PayPalController : ControllerBase
                 captureId
             });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
+            // Provider error bodies can contain sensitive operational details.
             return BadRequest(new
             {
-                message =
-                    "PayPal payment capture failed.",
-                error = ex.Message
+                message = "PayPal payment capture failed. Please retry or contact support."
             });
         }
     }
