@@ -1,0 +1,25 @@
+{
+  "reviewedPR": 34,
+  "reviewedHead": "19c6c2034b5577a78c1a66e39e2e207b1b10537f",
+  "followupPR": 35,
+  "correctionHead": "2d103cd4a74cadf9b19e21cb08df5c2d3ba0326d",
+  "scope": "Missing/operator-managed source data, not an API-delete or unauthenticated exploit",
+  "reviewProbeFailed": 1,
+  "targetedRegressionsPassed": 3,
+  "exactHeadCI": {
+    "unitPassed": 77,
+    "integrationPassed": 95,
+    "failed": 0,
+    "skipped": 0,
+    "warnings": 0,
+    "errors": 0,
+    "runtimeSourceCovered": 4357,
+    "runtimeSourceValid": 17892,
+    "schemaParity": "PASS",
+    "tables": 57,
+    "evidenceRun": 38253063515,
+    "companionRun": 38253063540,
+    "artifact": 11748852981,
+    "artifactSha256": "112d68506dfcd5bab8ad26a514147ef42688f699a36c19dd9d5525b433ad363b"
+  }
+}
