@@ -479,7 +479,8 @@ namespace Alpha.API.Migrations
                     b.Property<string>("PhoneNumber")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("phone");
 
                     b.HasKey("Id");
 
@@ -574,7 +575,8 @@ namespace Alpha.API.Migrations
                     b.Property<string>("VIN")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("vin");
 
                     b.Property<int>("Year")
                         .HasColumnType("integer")
@@ -939,40 +941,54 @@ namespace Alpha.API.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
 
                     b.Property<string>("Currency")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("currency");
 
                     b.Property<int>("EarningCount")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasColumnName("earning_count");
 
                     b.Property<DateTime?>("PaidAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paid_at");
 
                     b.Property<string>("PayoutReference")
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("payout_reference");
 
                     b.Property<Guid?>("ProcessedByUserId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("processed_by_user_id");
 
                     b.Property<DateTime>("SettlementDate")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("settlement_date");
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("status");
 
                     b.Property<decimal>("TotalAmount")
-                        .HasColumnType("numeric");
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("total_amount");
 
                     b.HasKey("Id");
 
-                    b.ToTable("EntrepreneurPayoutBatches");
+                    b.ToTable("entrepreneur_payout_batches");
                 });
 
             modelBuilder.Entity("Alpha.API.Models.Entrepreneur.EntrepreneurProgramConfiguration", b =>
@@ -1108,30 +1124,38 @@ namespace Alpha.API.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
 
                     b.Property<DateTime>("ChangedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("changed_at");
 
                     b.Property<Guid>("ChangedByUserId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("changed_by_user_id");
 
                     b.Property<Guid>("EntrepreneurReferralId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("entrepreneur_referral_id");
 
                     b.Property<Guid?>("NewEntrepreneurUserId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("new_entrepreneur_user_id");
 
                     b.Property<Guid?>("OldEntrepreneurUserId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("old_entrepreneur_user_id");
 
                     b.Property<string>("Reason")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
 
                     b.HasKey("Id");
 
-                    b.ToTable("EntrepreneurReferralAudits");
+                    b.ToTable("entrepreneur_referral_audits");
                 });
 
             modelBuilder.Entity("Alpha.API.Models.Entrepreneur.EntrepreneurTransactionCost", b =>
