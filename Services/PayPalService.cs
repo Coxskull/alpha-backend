@@ -98,6 +98,8 @@ public class PayPalService
         );
 
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        // Stable across retries for the same provider order; not a substitute for an atomic operation ledger.
+        request.Headers.TryAddWithoutValidation("PayPal-Request-Id", PayPalRequestId.ForCapture(paypalOrderId));
         request.Content = new StringContent("{}", Encoding.UTF8, "application/json");
 
         var response = await _http.SendAsync(request);
