@@ -338,6 +338,111 @@ namespace Alpha.API.Migrations
                     b.ToTable("cart_items", (string)null);
                 });
 
+            modelBuilder.Entity("Alpha.API.Models.CommunityBuilderCity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("ActiveMemberCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("active_member_count");
+
+                    b.Property<Guid>("BuilderUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("builder_user_id");
+
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("city");
+
+                    b.Property<int>("CompletedTransactionCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("completed_transaction_count");
+
+                    b.Property<DateTime>("ConnectedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("connected_at");
+
+                    b.Property<string>("Country")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("country");
+
+                    b.Property<int>("MemberCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("member_count");
+
+                    b.Property<string>("State")
+                        .HasColumnType("text")
+                        .HasColumnName("state");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BuilderUserId", "City", "State", "Country")
+                        .IsUnique();
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("BuilderUserId", "City", "State", "Country"), false);
+
+                    b.ToTable("community_builder_cities");
+                });
+
+            modelBuilder.Entity("Alpha.API.Models.CommunityBuilderProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("approved_at");
+
+                    b.Property<string>("BuilderStatus")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("builder_status");
+
+                    b.Property<string>("Country")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("country");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("HomeCity")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("home_city");
+
+                    b.Property<string>("HomeState")
+                        .HasColumnType("text")
+                        .HasColumnName("home_state");
+
+                    b.Property<int>("TotalCitiesConnected")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_cities_connected");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("community_builder_profiles");
+                });
+
             modelBuilder.Entity("Alpha.API.Models.Customer", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1185,6 +1290,58 @@ namespace Alpha.API.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("entrepreneur_roles");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0000-000000000001"),
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DisplayName = "Vehicle Owner",
+                            IsActive = true,
+                            IsOperationalRole = false,
+                            RoleKey = "customer",
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0000-000000000002"),
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DisplayName = "Motorcycle Rider",
+                            IsActive = true,
+                            IsOperationalRole = true,
+                            RoleKey = "driver",
+                            SortOrder = 2
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0000-000000000003"),
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DisplayName = "Mechanic",
+                            IsActive = true,
+                            IsOperationalRole = true,
+                            RoleKey = "mechanic",
+                            SortOrder = 3
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0000-000000000004"),
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DisplayName = "Auto Parts Store",
+                            IsActive = true,
+                            IsOperationalRole = true,
+                            RoleKey = "supplier",
+                            SortOrder = 4
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0000-000000000005"),
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DisplayName = "Community Builder",
+                            IsActive = true,
+                            IsOperationalRole = false,
+                            RoleKey = "community_builder",
+                            SortOrder = 5
+                        });
                 });
 
             modelBuilder.Entity("Alpha.API.Models.Invoice", b =>
@@ -1289,6 +1446,66 @@ namespace Alpha.API.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("mechanics", (string)null);
+                });
+
+            modelBuilder.Entity("Alpha.API.Models.MemberBusinessActivity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("CompletedDeliveries")
+                        .HasColumnType("integer")
+                        .HasColumnName("completed_deliveries");
+
+                    b.Property<int>("CompletedOrders")
+                        .HasColumnType("integer")
+                        .HasColumnName("completed_orders");
+
+                    b.Property<int>("CompletedServiceRequests")
+                        .HasColumnType("integer")
+                        .HasColumnName("completed_service_requests");
+
+                    b.Property<int>("CustomerPurchases")
+                        .HasColumnType("integer")
+                        .HasColumnName("customer_purchases");
+
+                    b.Property<DateTime?>("FirstBusinessActivityAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_business_activity_at");
+
+                    b.Property<int>("FulfilledPartsOrders")
+                        .HasColumnType("integer")
+                        .HasColumnName("fulfilled_parts_orders");
+
+                    b.Property<decimal>("GrossTransactionValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("gross_transaction_value");
+
+                    b.Property<bool>("IsBusinessActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_business_active");
+
+                    b.Property<DateTime?>("LastBusinessActivityAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_business_activity_at");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("member_business_activity");
                 });
 
             modelBuilder.Entity("Alpha.API.Models.OperationalAlert", b =>
@@ -3225,6 +3442,24 @@ namespace Alpha.API.Migrations
                     b.Navigation("Policy");
                 });
 
+            modelBuilder.Entity("Alpha.API.Models.CommunityBuilderCity", b =>
+                {
+                    b.HasOne("Alpha.API.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("BuilderUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Alpha.API.Models.CommunityBuilderProfile", b =>
+                {
+                    b.HasOne("Alpha.API.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Alpha.API.Models.DeliveryProof", b =>
                 {
                     b.HasOne("Alpha.API.Models.Order", null)
@@ -3276,6 +3511,15 @@ namespace Alpha.API.Migrations
                         .WithMany()
                         .HasForeignKey("RecruitedUserId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Alpha.API.Models.MemberBusinessActivity", b =>
+                {
+                    b.HasOne("Alpha.API.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

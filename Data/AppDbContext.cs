@@ -56,6 +56,9 @@ public class AppDbContext : DbContext
     public DbSet<EntrepreneurRole> EntrepreneurRoles { get; set; }
     public DbSet<UserRole> UserRoles { get; set; }
     public DbSet<EntrepreneurProfile> EntrepreneurProfiles { get; set; }
+    public DbSet<CommunityBuilderProfile> CommunityBuilderProfiles => Set<CommunityBuilderProfile>();
+    public DbSet<CommunityBuilderCity> CommunityBuilderCities => Set<CommunityBuilderCity>();
+    public DbSet<MemberBusinessActivity> MemberBusinessActivities => Set<MemberBusinessActivity>();
 
     public DbSet<ReferralCommissionRate> ReferralCommissionRates =>
     Set<ReferralCommissionRate>();
@@ -177,6 +180,31 @@ public class AppDbContext : DbContext
                 .HasForeignKey(user => user.ReferredByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
+        modelBuilder.Entity<CommunityBuilderProfile>(entity =>
+        {
+            entity.HasIndex(x => x.UserId).IsUnique();
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<CommunityBuilderCity>(entity =>
+        {
+            entity.HasIndex(x => new { x.BuilderUserId, x.City, x.State, x.Country })
+                .IsUnique().AreNullsDistinct(false);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.BuilderUserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<MemberBusinessActivity>(entity =>
+        {
+            entity.HasIndex(x => x.UserId).IsUnique();
+            entity.Property(x => x.GrossTransactionValue).HasPrecision(18, 2);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        // Catalog entries are definitions only; operational memberships still require verification.
+        modelBuilder.Entity<EntrepreneurRole>().HasData(
+            new EntrepreneurRole { Id = Guid.Parse("00000000-0000-0000-0000-000000000001"), RoleKey = "customer", DisplayName = "Vehicle Owner", IsOperationalRole = false, SortOrder = 1, CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc) },
+            new EntrepreneurRole { Id = Guid.Parse("00000000-0000-0000-0000-000000000002"), RoleKey = "driver", DisplayName = "Motorcycle Rider", IsOperationalRole = true, SortOrder = 2, CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc) },
+            new EntrepreneurRole { Id = Guid.Parse("00000000-0000-0000-0000-000000000003"), RoleKey = "mechanic", DisplayName = "Mechanic", IsOperationalRole = true, SortOrder = 3, CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc) },
+            new EntrepreneurRole { Id = Guid.Parse("00000000-0000-0000-0000-000000000004"), RoleKey = "supplier", DisplayName = "Auto Parts Store", IsOperationalRole = true, SortOrder = 4, CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc) },
+            new EntrepreneurRole { Id = Guid.Parse("00000000-0000-0000-0000-000000000005"), RoleKey = "community_builder", DisplayName = "Community Builder", IsOperationalRole = false, SortOrder = 5, CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc) });
+
         modelBuilder.Entity<UserRole>()
     .HasIndex(x => new { x.UserId, x.RoleKey })
     .IsUnique();

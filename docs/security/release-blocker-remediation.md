@@ -29,11 +29,19 @@ Webhook events receive atomic processing leases; failed events remain retryable 
 
 ## Schema migrations
 
-The checked-in chain now reproduces all 52 current model tables on an empty disposable PostgreSQL database, including payment_operations and webhook processing leases. Verification compares table/column presence, column types/nullability, declared indexes/uniqueness, FK/PK names and the EF snapshot. Legacy unassociated payments have nullable order_id and cannot reserve provider operations.
+The checked-in chain now reproduces all 55 current model tables on an empty disposable PostgreSQL database, including payment_operations and webhook processing leases. Verification compares table/column presence, column types/nullability, declared indexes/uniqueness, FK/PK names and the EF snapshot. Legacy unassociated payments have nullable order_id and cannot reserve provider operations.
 
 **Do not apply this provisioning chain to a manually provisioned existing hosted database.** The model-reproduction migration adds historical missing tables/columns, adjusts relationships and has a destructive Down path. An existing database may already contain these objects and out-of-band constraints. First obtain an approved sanitized non-production schema-only export and migration inventory, reconcile its baseline/constraints with the model, and create a reviewed target-specific upgrade/rollback plan. No hosted baseline was obtained or migration applied by this task.
 
 Development may opt into plaintext PostgreSQL only for a literal loopback IP via Database__AllowLocalPlaintext=true. Hosted/non-development connections continue to require VerifyFull. Confirm staging TLS/CA bindings before rollout.
+
+## Signup compatibility
+
+Registration now creates customers through their mapped entity, avoiding the obsolete `phone` column and omitted required columns. The provisioning chain includes community builder profiles/cities and member business activity, plus the five public role catalog definitions. Nullable city state participates in a NULLS NOT DISTINCT unique index so repeated city inserts retain one connection on PostgreSQL 15 or later; verification uses PostgreSQL 16.
+
+Disposable HTTP acceptance covers all five public roles, customer profile persistence, normalized-email duplicate rejection, consent and privileged-role rejection, invalid and valid referrals, login, active-only token claims, ownership and rollback after a late database failure. Driver/mechanic/supplier memberships remain profile_incomplete; registration itself creates no referral rewards. These checks do not certify an existing hosted schema, Supabase signup, email verification, or production readiness. Existing catalogs/tables require target-specific baseline reconciliation before applying the provisioning migration.
+
+Application content excludes the Tests directory to prevent recursive copying of test build outputs and avoid shipping test artifacts.
 
 ## Verification
 

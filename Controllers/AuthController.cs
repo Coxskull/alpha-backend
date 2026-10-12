@@ -483,27 +483,16 @@ public class AuthController : ControllerBase
                 EntrepreneurRoles.Customer,
                 StringComparer.OrdinalIgnoreCase))
             {
-                await _context.Database.ExecuteSqlInterpolatedAsync(
-                    $"""
-                INSERT INTO customers (
-                    id,
-                    full_name,
-                    email,
-                    phone
-                )
-                VALUES (
-                    {user.Id},
-                    {user.FullName},
-                    {user.Email},
-                    {user.Phone}
-                )
-                ON CONFLICT (id) DO UPDATE SET
-                    full_name = EXCLUDED.full_name,
-                    email = EXCLUDED.email,
-                    phone = EXCLUDED.phone;
-                """,
-                    cancellationToken
-                );
+                _context.Customers.Add(new Customer
+                {
+                    Id = user.Id,
+                    FullName = user.FullName,
+                    Email = user.Email,
+                    PhoneNumber = user.Phone ?? string.Empty,
+                    // Authentication belongs to User; never duplicate its credential hash.
+                    IsActive = user.IsActive,
+                    CreatedAt = now
+                });
             }
 
             // -----------------------------------------------------
