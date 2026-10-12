@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Alpha.API.Data;
 using Alpha.API.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -14,6 +15,7 @@ using Alpha.API.Services.Entrepreneur;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[AllowAnonymous]
 [Route("api/webhooks/stripe")]
 public class StripeWebhookController : ControllerBase
 {
@@ -149,59 +151,15 @@ public class StripeWebhookController : ControllerBase
         // 6. Prevent duplicate webhook processing
         // --------------------------------------------------------
 
-        var alreadyProcessed =
-            await _context.PaymentWebhookEvents
-                .AnyAsync(
-                    x =>
-                        x.Gateway == "stripe" &&
-                        x.GatewayEventId ==
-                            stripeEvent.Id,
-                    cancellationToken);
-
-        if (alreadyProcessed)
+        var lease = await new WebhookClaimService(_context).ClaimAsync(
+            "stripe", stripeEvent.Id, stripeEvent.Type, json, cancellationToken);
+        var webhookEvent = lease.Event;
+        if (webhookEvent.Processed) return Ok();
+        if (!lease.Claimed)
         {
-            _logger.LogInformation(
-                "Stripe webhook {EventId} was already processed.",
-                stripeEvent.Id);
-
-            return Ok();
+            Response.Headers.RetryAfter = "30";
+            return StatusCode(503);
         }
-
-        // --------------------------------------------------------
-        // 7. Save webhook event before processing
-        // --------------------------------------------------------
-
-        var webhookEvent =
-            new Models.PaymentWebhookEvent
-            {
-                Id = Guid.NewGuid(),
-
-                Gateway = "stripe",
-
-                GatewayEventId =
-                    stripeEvent.Id,
-
-                EventType =
-                    stripeEvent.Type,
-
-                Payload =
-                    JsonDocument.Parse(json),
-
-                Processed = false,
-
-                ReceivedAt =
-                    DateTime.UtcNow
-            };
-
-        _context.PaymentWebhookEvents.Add(
-            webhookEvent);
-
-        await _context.SaveChangesAsync(
-            cancellationToken);
-
-        // --------------------------------------------------------
-        // 8. Process event
-        // --------------------------------------------------------
 
         try
         {
@@ -283,6 +241,7 @@ public class StripeWebhookController : ControllerBase
             // ----------------------------------------------------
 
             webhookEvent.Processed = true;
+            webhookEvent.ProcessingUntil = null;
 
             webhookEvent.ProcessedAt =
                 DateTime.UtcNow;
@@ -296,14 +255,18 @@ public class StripeWebhookController : ControllerBase
         }
         catch (Exception ex)
         {
+            var failedEventId = webhookEvent.Id;
+            _context.ChangeTracker.Clear();
+            webhookEvent = await _context.PaymentWebhookEvents.SingleAsync(e => e.Id == failedEventId, CancellationToken.None);
+
             // ----------------------------------------------------
             // 10. Record processing error
             // ----------------------------------------------------
 
-            webhookEvent.ProcessingError =
-                ex.Message;
+            webhookEvent.ProcessingError = "processing_failed";
 
             webhookEvent.Processed = false;
+            webhookEvent.ProcessingUntil = null;
 
             await _context.SaveChangesAsync(
                 cancellationToken);
@@ -876,6 +839,10 @@ public class StripeWebhookController : ControllerBase
             return;
         }
 
+        await using var refundTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT id FROM payments WHERE gateway_payment_id = {paymentIntentId} FOR UPDATE", cancellationToken);
+
         var payment =
             await _context.Payments
                 .FirstOrDefaultAsync(
@@ -886,6 +853,11 @@ public class StripeWebhookController : ControllerBase
 
         if (payment == null)
             return;
+
+        await _context.Entry(payment).ReloadAsync(cancellationToken);
+        if (charge.Currency.ToUpperInvariant() != payment.Currency || charge.Amount / 100m != payment.Amount
+            || charge.AmountRefunded < 0 || charge.AmountRefunded > charge.Amount)
+            throw new InvalidOperationException("Stripe refund amount or currency did not match the payment.");
 
         var originalAmount =
             charge.Amount / 100m;
@@ -977,6 +949,8 @@ public class StripeWebhookController : ControllerBase
 
         await _context.SaveChangesAsync(
             cancellationToken);
+
+        await refundTransaction.CommitAsync(cancellationToken);
 
         _logger.LogInformation(
             "Stripe refund processed. " +

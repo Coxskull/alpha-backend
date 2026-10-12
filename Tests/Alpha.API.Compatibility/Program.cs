@@ -36,7 +36,9 @@ try
         "SELECT table_name AS \"Value\" FROM information_schema.tables WHERE table_schema = 'public'").ToListAsync();
     var missing = tables.Where(t => t != null && !actual.Contains(t)).ToArray();
     observations["missingModelTablesFromMigrations"] = missing;
-    observations["migrationModelParity"] = missing.Length == 0 ? "PASS (table presence only)" : "FAIL";
+    var mismatches = await SchemaComparison.CompareAsync(migrated);
+    observations["schemaMismatches"] = mismatches;
+    observations["migrationModelParity"] = missing.Length == 0 && mismatches.Count == 0 ? "PASS" : "FAIL";
 }
 catch (Exception ex)
 {
@@ -50,4 +52,4 @@ File.WriteAllText(Path.Combine(output, "database-compatibility.json"),
 Console.WriteLine(File.ReadAllText(Path.Combine(output, "database-compatibility.json")));
 if (!(bool)observations["modelOrdersReadable"] || !(bool)observations["modelPaymentsReadable"]
     || !(bool)observations["modelSecurityLogsReadable"]) throw new Exception("Model database smoke failed.");
-// A recorded migration parity failure remains a release blocker, not a failed evidence collection.
+if ((string)observations["migrationModelParity"] != "PASS") throw new Exception("Migration/model parity failed; see preserved evidence.");

@@ -12,16 +12,16 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Set up .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 8.0.425
       - name: Restore
-        run: dotnet restore Alpha.API.csproj
+        run: dotnet restore Alpha.API.csproj --locked-mode
       - name: Audit vulnerable NuGet dependencies
         shell: bash
         run: |
@@ -36,8 +36,7 @@ jobs:
             exit 1
           fi
       - name: Build Release
-        run: dotnet build Alpha.API.csproj --configuration Release --no-restore -warnaserror:CS0618,CS8602,CS8604,CS8618
+        run: dotnet build Alpha.API.csproj --configuration Release --no-restore -warnaserror
 
-      # Keep all backend tests in the required validation job.
-      - name: Run backend automated tests
-        run: dotnet test Tests/Alpha.API.Tests/Alpha.API.Tests.csproj --configuration Release
+      - name: Run backend unit and security tests
+        run: dotnet test Tests/Alpha.API.Tests/Alpha.API.Tests.csproj --configuration Release -p:RestoreLockedMode=true -warnaserror

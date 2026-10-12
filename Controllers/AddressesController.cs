@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authorization;
+using Alpha.API.Security;
 using Alpha.API.Data;
 using Alpha.API.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -8,6 +10,7 @@ using System.Threading.Tasks;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/[controller]")]
 public class AddressesController : ControllerBase
 {
@@ -21,6 +24,7 @@ public class AddressesController : ControllerBase
     [HttpGet("{customerId:guid}")]
     public async Task<IActionResult> GetAddresses(Guid customerId)
     {
+        if (!OrderAccess.CanAccessCustomer(User, customerId)) return Forbid();
         var addresses = await _context.CustomerAddresses
             .Where(x => x.CustomerId == customerId)
             .ToListAsync();
@@ -31,6 +35,7 @@ public class AddressesController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateAddress(CustomerAddress address)
     {
+        if (!OrderAccess.CanAccessCustomer(User, address.CustomerId)) return Forbid();
         address.Id = Guid.NewGuid();
         address.CreatedAt = DateTime.UtcNow;
 
@@ -48,6 +53,7 @@ public class AddressesController : ControllerBase
 
         if (address == null)
             return NotFound();
+        if (!OrderAccess.CanAccessCustomer(User, address.CustomerId)) return Forbid();
 
         _context.CustomerAddresses.Remove(address);
 

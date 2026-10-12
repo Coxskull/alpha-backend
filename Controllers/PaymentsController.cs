@@ -1,3 +1,5 @@
+using Alpha.API.Security;
+using Microsoft.AspNetCore.Authorization;
 using Alpha.API.Data;
 using Alpha.API.Models;
 using Alpha.API.Models.Payments;
@@ -11,6 +13,7 @@ using System.Threading.Tasks;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/payments")]
 public class PaymentsController : ControllerBase
 {
@@ -52,6 +55,8 @@ public class PaymentsController : ControllerBase
                 message = "Order not found."
             });
         }
+
+        if (!OrderAccess.CanPay(User, order)) return Forbid();
 
         var financial =
             await _context.OrderFinancials
@@ -162,7 +167,7 @@ public class PaymentsController : ControllerBase
                 return BadRequest(new
                 {
                     success = false,
-                    error = result.Error
+                    error = "Checkout could not be created."
                 });
             }
 
@@ -218,7 +223,7 @@ public class PaymentsController : ControllerBase
                     success = false,
                     error =
                         "Unable to create Stripe checkout.",
-                    detail = ex.Message
+                    detail = "Contact support with the request identifier."
                 });
         }
     }

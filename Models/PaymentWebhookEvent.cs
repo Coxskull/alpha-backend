@@ -33,6 +33,9 @@ public class PaymentWebhookEvent
     [Column("received_at")]
     public DateTime ReceivedAt { get; set; }
 
+    [Column("processing_until")]
+    public DateTime? ProcessingUntil { get; set; }
+
     [Column("processed_at")]
     public DateTime? ProcessedAt { get; set; }
 }

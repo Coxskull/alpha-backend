@@ -175,11 +175,11 @@ public class AutoPartsCommissionController : ControllerBase
 
             return Ok(result);
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
             return BadRequest(new
             {
-                message = ex.Message
+                message = "The request could not be completed."
             });
         }
     }

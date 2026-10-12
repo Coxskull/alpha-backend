@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+.ci-tools/
+evidence/
+TestResults/
+*.user
+.env
+.env.*
+!.env.example

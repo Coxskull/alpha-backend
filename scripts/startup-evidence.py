@@ -9,7 +9,7 @@ for key in list(env):
         del env[key]
 env.update({
     'ASPNETCORE_ENVIRONMENT': 'Development', 'ASPNETCORE_URLS': 'http://127.0.0.1:5084',
-    'PORT': '', 'SUPABASE_URL': 'http://127.0.0.1:59999',
+    'PORT': '', 'Database__AllowLocalPlaintext': 'true', 'SUPABASE_URL': 'http://127.0.0.1:59999',
     'SUPABASE_SERVICE_ROLE_KEY': 'synthetic-nonproduction-key',
     'Supabase__Url': 'http://127.0.0.1:59999', 'Supabase__ServiceRoleKey': 'synthetic-nonproduction-key',
     'Jwt__Key': 'synthetic-ci-only-signing-key-never-for-deployment-20261012',

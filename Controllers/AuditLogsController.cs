@@ -6,7 +6,7 @@ namespace Alpha.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Roles = "admin,dispatcher")]
 public class AuditLogsController : ControllerBase
 {
     private readonly AppDbContext _context;

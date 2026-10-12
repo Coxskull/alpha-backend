@@ -15,6 +15,7 @@ public class User
 
     public string Role { get; set; } = "customer";
 
+    [System.Text.Json.Serialization.JsonIgnore]
     public string PasswordHash { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

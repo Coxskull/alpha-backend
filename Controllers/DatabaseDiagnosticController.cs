@@ -1,3 +1,5 @@
+using Alpha.API.Security;
+using Microsoft.AspNetCore.Authorization;
 using Alpha.API.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +10,7 @@ using System.Threading.Tasks;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Authorize(Roles = "admin")]
 [Route("api/database-diagnostic")]
 public class DatabaseDiagnosticController
     : ControllerBase

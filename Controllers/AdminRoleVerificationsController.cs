@@ -553,8 +553,7 @@ public class AdminRoleVerificationsController : ControllerBase
                         "approving the application.",
 
                     detail =
-                        exception.InnerException?.Message
-                        ?? exception.Message
+                        "The request could not be completed."
                 });
         }
         catch (Exception exception)
@@ -575,7 +574,7 @@ public class AdminRoleVerificationsController : ControllerBase
                         "approving the application.",
 
                     detail =
-                        exception.Message
+                        "The request could not be completed."
                 });
         }
 
@@ -810,8 +809,7 @@ public class AdminRoleVerificationsController : ControllerBase
                         "requesting more information.",
 
                     detail =
-                        exception.InnerException?.Message
-                        ?? exception.Message
+                        "The request could not be completed."
                 });
         }
         catch (Exception exception)
@@ -833,7 +831,7 @@ public class AdminRoleVerificationsController : ControllerBase
                         "requesting more information.",
 
                     detail =
-                        exception.Message
+                        "The request could not be completed."
                 });
         }
 

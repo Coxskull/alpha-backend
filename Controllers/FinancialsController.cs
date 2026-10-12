@@ -1,3 +1,4 @@
+using OrderAccess = Alpha.API.Security.OrderAccess;
 using Alpha.API.Data;
 using Alpha.API.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -14,6 +15,7 @@ using Alpha.API.Constants;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/[controller]")]
 public class FinancialsController : ControllerBase
 {
@@ -32,6 +34,7 @@ public class FinancialsController : ControllerBase
     }
 
     [HttpGet("settlement-queue")]
+    [Authorize(Roles = "admin,dispatcher")]
     public async Task<IActionResult> GetSettlementQueue()
     {
         var queue = await _context.SettlementQueue
@@ -473,19 +476,9 @@ public class FinancialsController : ControllerBase
      CancellationToken cancellationToken)
     {
         var userId = User.GetUserId();
-        var roleClaim = User.GetRole();
-
-        if (string.IsNullOrWhiteSpace(roleClaim))
-            return Forbid();
-
-        var role = roleClaim
-            .Trim()
-            .ToLowerInvariant();
-
-        if (role is not ("admin" or "dispatcher" or "supplier" or "provider"))
-            return Forbid();
-
-        if (role == "supplier" || role == "provider")
+        var staff = OrderAccess.IsStaff(User);
+        if (!staff && !User.IsInRole("supplier") && !User.IsInRole("provider")) return Forbid();
+        if (!staff)
         {
             var supplier = await _context.Suppliers
                 .AsNoTracking()
@@ -535,8 +528,11 @@ public class FinancialsController : ControllerBase
     [Authorize(Roles = "admin,dispatcher,driver")]
     public async Task<IActionResult> GetDriverWallet(Guid driverId)
     {
+        if (!OrderAccess.IsStaff(User) && !await _context.Drivers.AnyAsync(
+            d => d.Id == driverId && d.UserId == User.GetUserId())) return Forbid();
+
         var orderEarnings = await _context.OrderFinancials
-            .Where(x => x.DriverAmount > 0)
+            .Where(x => x.DriverAmount > 0 && _context.Orders.Any(o => o.Id == x.OrderId && o.DriverId == driverId))
             .OrderByDescending(x => x.CreatedAt)
             .Select(x => new
             {
@@ -614,12 +610,12 @@ public class FinancialsController : ControllerBase
                     financial.ReconciliationDifference
             });
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
             return BadRequest(new
             {
                 success = false,
-                message = ex.Message
+                message = "The request could not be completed."
             });
         }
     }

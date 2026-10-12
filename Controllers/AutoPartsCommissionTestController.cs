@@ -1,3 +1,5 @@
+using Alpha.API.Security;
+using Microsoft.AspNetCore.Authorization;
 using Alpha.API.DTOs;
 using Alpha.API.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -8,6 +10,7 @@ using System.Threading.Tasks;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Authorize(Roles = "admin")]
 [Route("api/test/auto-parts-commission")]
 public class AutoPartsCommissionTestController : ControllerBase
 {

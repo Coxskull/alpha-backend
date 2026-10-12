@@ -115,6 +115,16 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.Entity<PaymentOperation>(entity =>
+        {
+            entity.HasKey(o => o.Id);
+            entity.Property(o => o.Amount).HasPrecision(18, 2);
+            entity.HasIndex(o => new { o.PaymentId, o.Kind, o.IdempotencyKey }).IsUnique();
+            entity.HasIndex(o => o.ProviderRequestId).IsUnique();
+            entity.HasIndex(o => new { o.Kind, o.ProviderReference }).IsUnique()
+                .HasFilter("provider_reference IS NOT NULL");
+            entity.HasOne<Payment>().WithMany().HasForeignKey(o => o.PaymentId).OnDelete(DeleteBehavior.Restrict);
+        });
 
         // ==========================
         // USERS

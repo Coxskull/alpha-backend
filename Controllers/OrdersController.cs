@@ -1,3 +1,4 @@
+using OrderAccess = Alpha.API.Security.OrderAccess;
 using Alpha.API.Data;
 using Alpha.API.DTOs;
 using Alpha.API.Models;
@@ -14,6 +15,7 @@ using Alpha.API.Extensions;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/[controller]")]
 public class OrdersController : ControllerBase
 {
@@ -52,6 +54,7 @@ public class OrdersController : ControllerBase
     // =========================================================
 
     [HttpPost]
+    [Authorize(Roles = "customer,admin,dispatcher")]
     public async Task<IActionResult> CreateOrder(
     CreateOrderDto dto,
     CancellationToken cancellationToken)
@@ -373,14 +376,14 @@ public class OrdersController : ControllerBase
                         DateTime.UtcNow,
                         cancellationToken);
             }
-            catch (InvalidOperationException ex)
+            catch (InvalidOperationException)
             {
                 await databaseTransaction.RollbackAsync(
                     CancellationToken.None);
 
                 return UnprocessableEntity(new
                 {
-                    message = ex.Message,
+                    message = "Order calculation could not be completed.",
                     code = "AUTO_PARTS_COMMISSION_POLICY_ERROR",
                     currency = currency
                 });
@@ -465,7 +468,7 @@ public class OrdersController : ControllerBase
 
             if (Guid.TryParse(userIdClaim, out var authenticatedUserId))
             {
-                var customerExists = await _context.Customers
+                var customerExists = await _context.Users
                     .AnyAsync(
                         x => x.Id == authenticatedUserId,
                         cancellationToken);
@@ -969,7 +972,7 @@ public class OrdersController : ControllerBase
                 })
             });
         }
-        catch (DbUpdateConcurrencyException ex)
+        catch (DbUpdateConcurrencyException)
         {
             await databaseTransaction.RollbackAsync(
                 cancellationToken);
@@ -978,10 +981,10 @@ public class OrdersController : ControllerBase
             {
                 message =
                     "The product inventory changed while the order was being created. Please refresh your cart and try again.",
-                error = ex.Message
+                error = "The request could not be completed."
             });
         }
-        catch (DbUpdateException ex)
+        catch (DbUpdateException)
         {
             await databaseTransaction.RollbackAsync(
                 cancellationToken);
@@ -993,8 +996,7 @@ public class OrdersController : ControllerBase
                     message =
                         "A database error occurred while creating the order.",
                     error =
-                        ex.InnerException?.Message ??
-                        ex.Message
+                        "The request could not be completed."
                 });
         }
         catch (OperationCanceledException)
@@ -1010,7 +1012,7 @@ public class OrdersController : ControllerBase
                         "The order request was cancelled or timed out."
                 });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             await databaseTransaction.RollbackAsync(
                 CancellationToken.None);
@@ -1021,7 +1023,7 @@ public class OrdersController : ControllerBase
                 {
                     message =
                         "An unexpected error occurred while creating the order.",
-                    error = ex.Message
+                    error = "The request could not be completed."
                 });
         }
     }
@@ -1032,6 +1034,7 @@ public class OrdersController : ControllerBase
     // =========================================================
 
     [HttpGet]
+    [Authorize(Roles = "admin,dispatcher")]
     public async Task<IActionResult> GetOrders()
     {
         try
@@ -1087,9 +1090,9 @@ public class OrdersController : ControllerBase
 
             return Ok(orders);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            return StatusCode(500, ex.ToString());
+            return StatusCode(500, new { message = "The request could not be completed." });
         }
     }
 
@@ -1099,8 +1102,12 @@ public class OrdersController : ControllerBase
     // =========================================================
 
     [HttpGet("{id}/status")]
+    [Authorize(Roles = "customer,admin,dispatcher")]
     public async Task<IActionResult> GetStatus(Guid id)
     {
+        var ownedOrder = await _context.Orders.FindAsync(id);
+        if (ownedOrder == null) return NotFound();
+        if (!OrderAccess.CanPay(User, ownedOrder)) return Forbid();
         var history = await _context.StatusHistory
             .Where(x => x.OrderId == id)
             .OrderBy(x => x.CreatedAt)
@@ -1114,6 +1121,7 @@ public class OrdersController : ControllerBase
     // POST: /api/Orders/{id}/assign-supplier
     // =========================================================
     [HttpPost("{id}/assign-supplier/{supplierId}")]
+    [Authorize(Roles = "admin,dispatcher")]
     public async Task<IActionResult> AssignSupplier(
     Guid id,
     Guid supplierId)
@@ -1172,6 +1180,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpPost("{id}/assign-supplier")]
+    [Authorize(Roles = "admin,dispatcher")]
     public async Task<IActionResult> AssignSupplierAuto(Guid id)
     {
         var order = await _context.Orders
@@ -1230,6 +1239,7 @@ public class OrdersController : ControllerBase
     // =========================================================
 
     [HttpPost("{id}/assign-driver/{driverId}")]
+    [Authorize(Roles = "admin,dispatcher")]
     public async Task<IActionResult> AssignDriver(
     Guid id,
     Guid driverId)
@@ -1288,6 +1298,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpPost("{id}/assign-driver")]
+    [Authorize(Roles = "admin,dispatcher")]
     public async Task<IActionResult> AssignDriverAuto(Guid id)
     {
         var order = await _context.Orders
@@ -1584,6 +1595,7 @@ public class OrdersController : ControllerBase
     // =========================================================
 
     [HttpPost("{id:guid}/proof")]
+    [Authorize(Roles = "driver,admin,dispatcher")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(20_000_000)]
     public async Task<IActionResult> UploadProof(
@@ -1603,6 +1615,8 @@ public class OrdersController : ControllerBase
                 message = "Order not found."
             });
         }
+        if (!OrderAccess.IsStaff(User) && !await _context.Drivers.AnyAsync(
+            d => d.Id == order.DriverId && d.UserId == User.GetUserId())) return Forbid();
 
         if (!string.Equals(
                 order.Status,
@@ -1739,6 +1753,7 @@ public class OrdersController : ControllerBase
         await _context.SaveChangesAsync();
     }
     [HttpGet("{id}/details")]
+    [Authorize(Roles = "customer,admin,dispatcher")]
     public async Task<IActionResult> GetDetails(Guid id)
     {
         var order = await _context.Orders
@@ -1748,6 +1763,7 @@ public class OrdersController : ControllerBase
 
         if (order == null)
             return NotFound();
+        if (!OrderAccess.CanPay(User, order)) return Forbid();
 
         return Ok(new
         {
@@ -1785,6 +1801,7 @@ public class OrdersController : ControllerBase
         });
     }
     [HttpGet("{id}/recommendations")]
+    [Authorize(Roles = "admin,dispatcher")]
     public async Task<IActionResult> GetRecommendations(Guid id)
     {
         var order = await _context.Orders
@@ -1816,39 +1833,11 @@ public class OrdersController : ControllerBase
         });
     }
     [HttpPost("{id}/confirm-payment")]
-    public async Task<IActionResult> ConfirmPayment(Guid id, string transactionReference)
-    {
-        var order = await _context.Orders.FindAsync(id);
+    [Authorize(Roles = "admin")]
+    public IActionResult ConfirmPayment(Guid id, string transactionReference)
+        => StatusCode(StatusCodes.Status410Gone, new
+        { message = "Direct payment confirmation is disabled. Use provider-verified payment completion." });
 
-        if (order == null)
-            return NotFound();
-
-        var payment = await _context.Payments
-            .FirstOrDefaultAsync(x => x.OrderId == id);
-
-        if (payment == null)
-            return NotFound("Payment record not found.");
-
-        payment.PaymentStatus = "paid";
-        payment.TransactionReference = transactionReference;
-        payment.PaidAt = DateTime.UtcNow;
-
-        order.Status = OrderStatuses.WaitingForSupplier;
-        order.UpdatedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
-
-        await AddStatusHistory(id, OrderStatuses.PaymentPaid);
-        await AddStatusHistory(id, OrderStatuses.WaitingForSupplier);
-        await AddAuditLog(id, "Payment Confirmed");
-
-        return Ok(new
-        {
-            message = "Payment confirmed. Order is now paid and pending dispatch.",
-            orderStatus = order.Status,
-            paymentStatus = payment.PaymentStatus
-        });
-    }
     [HttpPost("{id}/supplier-accept")]
     [Authorize(Roles = "supplier,provider")]
     public async Task<IActionResult> SupplierAccept(
@@ -2091,22 +2080,15 @@ public class OrdersController : ControllerBase
             return Unauthorized();
         }
 
-        var roleClaim = User.GetRole();
-
-        if (string.IsNullOrWhiteSpace(roleClaim))
-            return Forbid();
-
-        var role = roleClaim
-            .Trim()
-            .ToLowerInvariant();
-
-        if (role is not ("supplier" or "provider" or "driver" or "admin" or "dispatcher"))
-            return Forbid();
+        var staff = OrderAccess.IsStaff(User);
+        var supplierRole = User.IsInRole("supplier") || User.IsInRole("provider");
+        var driverRole = User.IsInRole("driver");
+        if (!staff && !supplierRole && !driverRole) return Forbid();
 
         Guid? supplierId = null;
         Guid? driverId = null;
 
-        if (role == "supplier" || role == "provider")
+        if (!staff && supplierRole)
         {
             var supplier = await _context.Suppliers
                 .AsNoTracking()
@@ -2120,7 +2102,7 @@ public class OrdersController : ControllerBase
             supplierId = supplier.Id;
         }
 
-        if (role == "driver")
+        if (!staff && driverRole)
         {
             var driver = await _context.Drivers
                 .AsNoTracking()
@@ -2140,21 +2122,13 @@ public class OrdersController : ControllerBase
             .Include(x => x.Supplier)
             .AsQueryable();
 
-        if (supplierId.HasValue)
+        if (!staff)
         {
+            if (supplierId == null && driverId == null) return Forbid();
             query = query.Where(order =>
-                order.SupplierId == supplierId.Value
-                ||
-                _context.OrderItems.Any(item =>
-                    item.OrderId == order.Id &&
-                    item.SupplierId == supplierId.Value
-                ));
-        }
-
-        if (driverId.HasValue)
-        {
-            query = query.Where(
-                order => order.DriverId == driverId.Value);
+                (supplierId.HasValue && (order.SupplierId == supplierId || _context.OrderItems.Any(item =>
+                    item.OrderId == order.Id && item.SupplierId == supplierId)))
+                || (driverId.HasValue && order.DriverId == driverId));
         }
 
         var orders = await query

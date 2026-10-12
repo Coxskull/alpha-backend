@@ -1,3 +1,5 @@
+using Alpha.API.Security;
+using Microsoft.AspNetCore.Authorization;
 using Alpha.API.Constants;
 using Alpha.API.Data;
 using Alpha.API.DTOs;
@@ -12,6 +14,7 @@ using System.Threading.Tasks;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/paymongo")]
 public class PayMongoController : ControllerBase
 {
@@ -58,6 +61,8 @@ public class PayMongoController : ControllerBase
                 message = "Order not found."
             });
         }
+
+        if (!OrderAccess.CanPay(User, order)) return Forbid();
 
         if (!string.Equals(
                 order.Status,
@@ -281,7 +286,7 @@ public class PayMongoController : ControllerBase
                 message =
                     "Unable to create PayMongo checkout.",
                 error =
-                    exception.Message
+                    "The request could not be completed."
             });
         }
     }
@@ -312,6 +317,10 @@ public class PayMongoController : ControllerBase
                     "Checkout session ID is required."
             });
         }
+
+        var ownedOrder = await _context.Orders.FindAsync(new object[] { dto.OrderId }, cancellationToken);
+        if (ownedOrder == null) return NotFound();
+        if (!OrderAccess.CanPay(User, ownedOrder)) return Forbid();
 
         var payment = await _context.Payments
             .FirstOrDefaultAsync(
@@ -403,23 +412,7 @@ public class PayMongoController : ControllerBase
                     "paid",
                     StringComparison.OrdinalIgnoreCase))
             {
-                /*
-                 * Store the latest gateway response even when
-                 * the checkout is still pending or has failed.
-                 */
-                payment.GatewayResponse =
-     string.IsNullOrWhiteSpace(rawJson)
-         ? null
-         : JsonDocument.Parse(rawJson);
-
-                payment.PaymentStatus =
-                    string.IsNullOrWhiteSpace(paymentStatus)
-                        ? "pending"
-                        : paymentStatus.Trim().ToLowerInvariant();
-
-                await _context.SaveChangesAsync(
-                    cancellationToken);
-
+                // A stale pending poll must never overwrite a concurrent paid webhook transition.
                 return Ok(new
                 {
                     paid = false,
@@ -430,9 +423,9 @@ public class PayMongoController : ControllerBase
                 });
             }
 
-            string? payMongoPaymentId =
-                ExtractPayMongoPaymentId(
-                    attributes);
+            if (!PayMongoCheckoutValidator.TryValidate(checkout.RootElement, dto.CheckoutSessionId,
+                dto.OrderId, payment.Amount, payment.Currency, out var payMongoPaymentId))
+                return Conflict(new { message = "Provider payment does not match the expected checkout, order, amount and currency." });
 
             await _paymentCompletionService
                 .CompleteOrderPaymentAsync(
@@ -481,7 +474,7 @@ public class PayMongoController : ControllerBase
                 message =
                     "Unable to verify PayMongo checkout.",
                 error =
-                    exception.Message
+                    "The request could not be completed."
             });
         }
     }
@@ -548,6 +541,8 @@ public class PayMongoController : ControllerBase
                 message = "Order not found."
             });
         }
+
+        if (!OrderAccess.CanPay(User, order)) return Forbid();
 
         var payment = await _context.Payments
             .AsNoTracking()

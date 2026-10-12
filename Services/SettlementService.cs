@@ -149,6 +149,12 @@ public class SettlementService
             await _context.Database.BeginTransactionAsync(
                 cancellationToken);
 
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT id FROM payments WHERE order_id = {orderId} FOR UPDATE", cancellationToken);
+        if (await _context.Set<PaymentOperation>().AnyAsync(o => o.Kind == "refund" && o.State != "failed"
+            && _context.Payments.Any(p => p.Id == o.PaymentId && p.OrderId == orderId), cancellationToken))
+            throw new InvalidOperationException("Refund allocation requires financial review before settlement.");
+
         try
         {
             // --------------------------------------------------------

@@ -19,6 +19,7 @@ using Alpha.API.Models.Entrepreneur;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("authentication")]
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
@@ -838,7 +839,7 @@ public class AuthController : ControllerBase
                 nextStep
             });
         }
-        catch (DbUpdateException exception)
+        catch (DbUpdateException)
         {
             await transaction.RollbackAsync(cancellationToken);
 
@@ -850,12 +851,11 @@ public class AuthController : ControllerBase
                         "Registration could not be completed because the account data could not be saved.",
 
                     detail =
-                        exception.InnerException?.Message ??
-                        exception.Message
+                        "The request could not be completed."
                 }
             );
         }
-        catch (Exception exception)
+        catch (Exception)
         {
             await transaction.RollbackAsync(cancellationToken);
 
@@ -866,7 +866,7 @@ public class AuthController : ControllerBase
                     message =
                         "An unexpected error occurred during registration.",
 
-                    detail = exception.Message
+                    detail = "The request could not be completed."
                 }
             );
         }
@@ -1208,23 +1208,11 @@ public class AuthController : ControllerBase
             throw new InvalidOperationException(
                 "JWT key is missing.");
 
-        var selectedRoles = await _context.UserRoles
-            .AsNoTracking()
-            .Where(role =>
-    role.UserId == user.Id &&
-    role.Status == "active")
-            .Select(role => role.RoleKey)
-            .Distinct()
-            .ToListAsync(cancellationToken);
-
-        // Support accounts created before user_roles existed.
-        if (!string.IsNullOrWhiteSpace(user.Role) &&
-            !selectedRoles.Contains(
-                user.Role,
-                StringComparer.OrdinalIgnoreCase))
-        {
-            selectedRoles.Insert(0, user.Role);
-        }
+        var memberships = await _context.UserRoles.AsNoTracking()
+            .Where(role => role.UserId == user.Id).ToListAsync(cancellationToken);
+        var selectedRoles = Alpha.API.Security.ActiveRoles.Select(user.Role, memberships);
+        if (!user.IsActive || selectedRoles.Count == 0)
+            throw new UnauthorizedAccessException("No active role is available.");
 
         var securityKey =
             new SymmetricSecurityKey(
@@ -1256,7 +1244,7 @@ public class AuthController : ControllerBase
 
             new System.Security.Claims.Claim(
                 "primary_role",
-                user.Role)
+                selectedRoles.Contains(user.Role) ? user.Role : selectedRoles[0])
             };
 
         foreach (var selectedRole in selectedRoles
@@ -1293,7 +1281,7 @@ public class AuthController : ControllerBase
                     claims,
 
                 expires:
-                    DateTime.UtcNow.AddDays(7),
+                    DateTime.UtcNow.AddMinutes(30),
 
                 signingCredentials:
                     credentials);

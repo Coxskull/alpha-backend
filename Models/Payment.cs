@@ -13,7 +13,7 @@ public class Payment
     public Guid Id { get; set; }
 
     [Column("order_id")]
-    public Guid OrderId { get; set; }
+    public Guid? OrderId { get; set; }
 
     [Column("amount")]
     public decimal Amount { get; set; }

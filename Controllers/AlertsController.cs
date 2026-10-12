@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Alpha.API.Data;
 using Alpha.API.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -6,6 +7,7 @@ using System.Threading.Tasks;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Authorize(Roles = "admin,dispatcher")]
 [Route("api/[controller]")]
 public class AlertsController : ControllerBase
 {

@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authorization;
+using Alpha.API.Security;
 using Alpha.API.Data;
 using Alpha.API.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -8,6 +10,7 @@ using System.Threading.Tasks;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/[controller]")]
 public class CustomersController : ControllerBase
 {
@@ -19,6 +22,7 @@ public class CustomersController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Roles = "admin,dispatcher")]
     public async Task<IActionResult> GetCustomers()
     {
         return Ok(await _context.Customers.ToListAsync());
@@ -27,6 +31,7 @@ public class CustomersController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetCustomer(Guid id)
     {
+        if (!OrderAccess.CanAccessCustomer(User, id)) return Forbid();
         var customer = await _context.Customers.FindAsync(id);
 
         if (customer == null)
@@ -36,6 +41,7 @@ public class CustomersController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "admin,dispatcher")]
     public async Task<IActionResult> CreateCustomer(Customer customer)
     {
         customer.Id = Guid.NewGuid();
@@ -52,6 +58,7 @@ public class CustomersController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "admin,dispatcher")]
     public async Task<IActionResult> DeleteCustomer(Guid id)
     {
         var customer = await _context.Customers.FindAsync(id);

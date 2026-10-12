@@ -389,8 +389,8 @@ public class EntrepreneurController : ControllerBase
             return StatusCode(500, new
             {
                 message = "Failed to load Entrepreneur dashboard.",
-                detail = ex.Message,
-                innerDetail = ex.InnerException?.Message
+                detail = "The request could not be completed.",
+                innerDetail = "The request could not be completed."
             });
         }
     }

@@ -81,6 +81,14 @@ public class PaymentCompletionService
         var normalizedPaymentMethod =
             paymentMethod.Trim().ToLowerInvariant();
 
+        await using var transaction =
+            await _context.Database.BeginTransactionAsync(
+                cancellationToken);
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT id FROM payments WHERE order_id = {orderId} FOR UPDATE", cancellationToken);
+        foreach (var entry in _context.ChangeTracker.Entries<Payment>())
+            await entry.ReloadAsync(cancellationToken);
+
         var order = await _context.Orders
             .FirstOrDefaultAsync(
                 x => x.Id == orderId,
@@ -115,6 +123,10 @@ public class PaymentCompletionService
             return;
         }
 
+        if (payment.PaymentStatus is "refunded" or "partially_refunded") return;
+        if (payment.PaymentGateway != null && payment.PaymentGateway != normalizedGateway)
+            throw new InvalidOperationException("Payment gateway does not match the recorded checkout.");
+
         if (!order.CustomerId.HasValue)
         {
             throw new InvalidOperationException(
@@ -148,9 +160,7 @@ public class PaymentCompletionService
         var storedGatewayResponse =
             NormalizeGatewayResponse(rawGatewayResponse);
 
-        await using var transaction =
-            await _context.Database.BeginTransactionAsync(
-                cancellationToken);
+
 
         try
         {

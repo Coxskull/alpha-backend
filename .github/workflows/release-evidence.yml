@@ -7,10 +7,10 @@ permissions:
   contents: read
 jobs:
   evidence:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
         env:
           POSTGRES_USER: alpha_ci
           POSTGRES_PASSWORD: disposable-ci-only
@@ -20,10 +20,11 @@ jobs:
           --health-cmd "pg_isready -U alpha_ci -d alpha_model_ci"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-dotnet@v4
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 8.0.425
       - name: Record exact execution identity
@@ -36,14 +37,16 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          dotnet restore Tests/Alpha.API.Tests/Alpha.API.Tests.csproj 2>&1 | tee evidence/restore.log
-          dotnet restore Tests/Alpha.API.Compatibility/Alpha.API.Compatibility.csproj 2>&1 | tee evidence/compatibility-restore.log
+          dotnet restore Tests/Alpha.API.Tests/Alpha.API.Tests.csproj --locked-mode 2>&1 | tee evidence/restore.log
+          dotnet restore Tests/Alpha.API.Compatibility/Alpha.API.Compatibility.csproj --locked-mode 2>&1 | tee evidence/compatibility-restore.log
+          dotnet restore Tests/Alpha.API.Integration.Tests/Alpha.API.Integration.Tests.csproj --locked-mode 2>&1 | tee evidence/integration-restore.log
       - name: Release build with warnings as errors
         shell: bash
         run: |
           set -o pipefail
           dotnet build Tests/Alpha.API.Tests/Alpha.API.Tests.csproj -c Release --no-restore -warnaserror 2>&1 | tee evidence/build.log
           dotnet build Tests/Alpha.API.Compatibility/Alpha.API.Compatibility.csproj -c Release --no-restore -warnaserror 2>&1 | tee evidence/compatibility-build.log
+          dotnet build Tests/Alpha.API.Integration.Tests/Alpha.API.Integration.Tests.csproj -c Release --no-restore -warnaserror 2>&1 | tee evidence/integration-build.log
       - name: Unit tests and application coverage
         shell: bash
         run: |
@@ -52,13 +55,13 @@ jobs:
           .ci-tools/coverlet Tests/Alpha.API.Tests/bin/Release/net8.0/Alpha.API.Tests.dll \
             --target dotnet \
             --targetargs "test Tests/Alpha.API.Tests/Alpha.API.Tests.csproj -c Release --no-build --no-restore --logger trx;LogFileName=tests.trx --results-directory evidence" \
-            --include '[Alpha.API]*' --format cobertura --output evidence/coverage.cobertura.xml \
+            --include '[Alpha.API]*' --format json --format cobertura --output evidence/unit-coverage \
             2>&1 | tee evidence/test-coverage.log
       - name: Audit application and test dependencies
         shell: bash
         run: |
           set -o pipefail
-          for project in Alpha.API.csproj Tests/Alpha.API.Tests/Alpha.API.Tests.csproj; do
+          for project in Alpha.API.csproj Tests/Alpha.API.Tests/Alpha.API.Tests.csproj Tests/Alpha.API.Integration.Tests/Alpha.API.Integration.Tests.csproj; do
             name=$(basename "$project" .csproj)
             dotnet list "$project" package --vulnerable --include-transitive 2>&1 | tee "evidence/audit-$name.log"
             grep -Fq 'has no vulnerable packages' "evidence/audit-$name.log"
@@ -69,11 +72,20 @@ jobs:
           set -o pipefail
           PGPASSWORD=disposable-ci-only psql -h 127.0.0.1 -U alpha_ci -d postgres -c 'CREATE DATABASE alpha_migrations_ci'
           dotnet run --project Tests/Alpha.API.Compatibility/Alpha.API.Compatibility.csproj -c Release --no-build --no-restore -- evidence 2>&1 | tee evidence/database.log
+      - name: PostgreSQL integration tests and combined coverage
+        shell: bash
+        run: |
+          set -o pipefail
+          .ci-tools/coverlet Tests/Alpha.API.Integration.Tests/bin/Release/net8.0/Alpha.API.Integration.Tests.dll \
+            --target dotnet \
+            --targetargs "test Tests/Alpha.API.Integration.Tests/Alpha.API.Integration.Tests.csproj -c Release --no-build --no-restore --logger trx;LogFileName=integration.trx --results-directory evidence" \
+            --include '[Alpha.API]*' --merge-with evidence/unit-coverage.json \
+            --format cobertura --output evidence/coverage.cobertura.xml 2>&1 | tee evidence/integration-coverage.log
       - name: Application startup with synthetic loopback configuration
         run: python3 scripts/startup-evidence.py dotnet evidence bin/Release/net8.0/Alpha.API.dll
       - name: Preserve evidence even when a check fails
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: release-evidence-${{ github.event.pull_request.head.sha || github.sha }}
           path: evidence/
