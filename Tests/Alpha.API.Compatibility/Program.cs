@@ -39,7 +39,7 @@ try
     // Compare mapped columns as well as table names: table presence alone can mask
     // schema drift after a successful migration. Read-only against disposable DB.
     var actualColumns = await migrated.Database.SqlQueryRaw<string>(
-        "SELECT table_name || '.' || column_name AS \\"Value\\" FROM information_schema.columns WHERE table_schema = 'public'").ToListAsync();
+        "SELECT table_name || '.' || column_name AS \"Value\" FROM information_schema.columns WHERE table_schema = 'public'").ToListAsync();
     var actualColumnSet = actualColumns.ToHashSet(StringComparer.Ordinal);
     var mappedColumns = model.Model.GetEntityTypes()
         .Where(e => e.GetTableName() != null)
