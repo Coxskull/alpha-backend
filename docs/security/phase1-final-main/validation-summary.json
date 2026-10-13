@@ -1,0 +1,137 @@
+{
+  "phase1": "PASS",
+  "commit": "eebeb85d23a9068cd799b763a2f37a405e0d09b3",
+  "mainObservedAtValidation": "eebeb85d23a9068cd799b763a2f37a405e0d09b3",
+  "ancestorChecks": {
+    "e2f969c4bc89fab8417d93e72b43bed388808d31": true,
+    "d47919b6a8b6d54d3d21e63889021b294fd94b87": true,
+    "907809b497f26ec89876090e567868314fb44eae": true
+  },
+  "treeIdenticalToTestedPR37Head": true,
+  "sourceWorktreeClean": true,
+  "tests": {
+    "unit": {
+      "total": 77,
+      "passed": 77,
+      "failed": 0,
+      "notExecuted": 0
+    },
+    "integration": {
+      "total": 98,
+      "passed": 98,
+      "failed": 0,
+      "notExecuted": 0
+    }
+  },
+  "migrations": 9,
+  "modelTables": 57,
+  "schemaParity": "PASS",
+  "coverage": {
+    "assembly": {
+      "linesCovered": 28613,
+      "linesValid": 46201,
+      "lineRate": 0.6193,
+      "branchesCovered": 1003,
+      "branchesValid": 3363,
+      "branchRate": 0.2982,
+      "includesGeneratedMigrations": true
+    },
+    "nonMigrationSource": {
+      "uniqueLinesCovered": 4366,
+      "uniqueLinesValid": 17895,
+      "lineRate": 0.2439787650181615
+    },
+    "scope": "Merged unit and disposable PostgreSQL/HTTP integration coverage; migration code shown separately"
+  },
+  "startup": {
+    "startup": "PASS",
+    "healthStatus": 200,
+    "healthBody": "API WORKING",
+    "scope": "Development; synthetic keys; loopback targets; health only",
+    "databaseReadinessFromHealth": false,
+    "supabaseIntegrationVerified": false
+  },
+  "execution": [
+    {
+      "check": "identity",
+      "exitCode": 0,
+      "seconds": 0.0
+    },
+    {
+      "check": "dotnet-info",
+      "exitCode": 0,
+      "seconds": 0.16
+    },
+    {
+      "check": "unit-restore",
+      "exitCode": 0,
+      "seconds": 1.77
+    },
+    {
+      "check": "unit-build",
+      "exitCode": 0,
+      "seconds": 12.99
+    },
+    {
+      "check": "integration-restore",
+      "exitCode": 0,
+      "seconds": 1.12
+    },
+    {
+      "check": "integration-build",
+      "exitCode": 0,
+      "seconds": 2.28
+    },
+    {
+      "check": "compatibility-restore",
+      "exitCode": 0,
+      "seconds": 1.12
+    },
+    {
+      "check": "compatibility-build",
+      "exitCode": 0,
+      "seconds": 1.32
+    },
+    {
+      "check": "unit-coverage",
+      "exitCode": 0,
+      "seconds": 6.22
+    },
+    {
+      "check": "audit-Alpha.API",
+      "exitCode": 0,
+      "seconds": 2.23
+    },
+    {
+      "check": "audit-Alpha.API.Tests",
+      "exitCode": 0,
+      "seconds": 1.93
+    },
+    {
+      "check": "audit-Alpha.API.Integration.Tests",
+      "exitCode": 0,
+      "seconds": 1.88
+    },
+    {
+      "check": "database",
+      "exitCode": 0,
+      "seconds": 3.58
+    },
+    {
+      "check": "integration-coverage",
+      "exitCode": 0,
+      "seconds": 79.18
+    },
+    {
+      "check": "coverage-summary",
+      "exitCode": 0,
+      "seconds": 0.27
+    },
+    {
+      "check": "startup",
+      "exitCode": 0,
+      "seconds": 0.72
+    }
+  ],
+  "scope": "Exact merged main local gate only; hosted/independent acceptance pending"
+}
