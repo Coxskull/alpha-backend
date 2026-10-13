@@ -1,0 +1,139 @@
+{
+  "date": "2026-10-13",
+  "backend": {
+    "pr": 44,
+    "head": "f515c6a7de88f60cdfd573d4c64443e378ac5418",
+    "tests": {
+      "unit": {
+        "passed": 77,
+        "failed": 0,
+        "notExecuted": 0
+      },
+      "integration": {
+        "passed": 159,
+        "failed": 0,
+        "notExecuted": 0
+      }
+    },
+    "sourceCoverage": {
+      "uniqueLinesCovered": 4864,
+      "uniqueLinesValid": 18361,
+      "lineRate": 0.26490931866456074
+    },
+    "releaseCI": 38379584066,
+    "companionCI": 38379583754,
+    "ciConclusion": "success",
+    "ciArtifact": {
+      "artifacts": [
+        {
+          "id": 11802813057,
+          "name": "release-evidence-f515c6a7de88f60cdfd573d4c64443e378ac5418",
+          "size_in_bytes": 1086215,
+          "url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/artifacts/11802813057",
+          "archive_download_url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/artifacts/11802813057/zip",
+          "expired": false,
+          "created_at": "2026-10-13T09:57:44Z",
+          "expires_at": "2026-11-12T09:57:42Z",
+          "updated_at": "2026-10-13T09:57:44Z",
+          "digest": "sha256:589f0cdc26ccafdacbbb8ce0b07f5e812eab6266f10a24fd41916dabda519e6d",
+          "workflow_run": {
+            "id": 38379584066,
+            "repository_id": 1265044034,
+            "head_repository_id": 1265044034,
+            "head_branch": "fix/inventory-invalid-numeric",
+            "head_sha": "f515c6a7de88f60cdfd573d4c64443e378ac5418"
+          }
+        }
+      ]
+    }
+  },
+  "frontend": {
+    "pr": 4,
+    "head": "ee6ced8c9ccf9e4a0a9cde5fecb984aa83dc0294",
+    "contractTests": 18,
+    "browserCases": [
+      {
+        "name": "Missing supplier source is visible without mutation controls",
+        "result": "PASS",
+        "writes": 0
+      },
+      {
+        "name": "Driver and batch inventories preserve type and absent attribution",
+        "result": "PASS",
+        "writes": 0
+      },
+      {
+        "name": "Large recorded decimal retains cents without conversion",
+        "result": "PASS",
+        "writes": 0
+      },
+      {
+        "name": "Cursor paging and mobile inventory remain read-only",
+        "result": "PASS",
+        "writes": 0
+      },
+      {
+        "name": "API denial cannot imply a clean inventory",
+        "result": "PASS",
+        "writes": 0
+      },
+      {
+        "name": "Malformed amount fails validation",
+        "result": "PASS",
+        "writes": 0
+      },
+      {
+        "name": "Invalid numeric marker stays visible without invented zero or blocked paging",
+        "result": "PASS",
+        "writes": 0
+      }
+    ],
+    "productionAudit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "fullGraphResidual": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 5,
+      "critical": 0,
+      "total": 5
+    },
+    "ci": 38379587594,
+    "vercel": {
+      "statuses": [
+        {
+          "context": "Vercel",
+          "state": "success",
+          "target_url": "https://vercel.com/alpha-auto-s-projects/alpha-auto-mvp/2D3MZXsrLRxxQYeayZZsni7xbHYf"
+        }
+      ]
+    },
+    "ciConclusion": "success"
+  },
+  "finding": {
+    "severity": "medium",
+    "originalProbeFailures": 4,
+    "scope": "Invalid native numeric records crash inventory or are omitted; legacy/out-of-band corruption only",
+    "status": "corrected"
+  },
+  "mergedBases": {
+    "phase5-review-backend": {
+      "base": "65bda0356f3a42375aafc0b64ce2429f868e170e",
+      "tree": "7a81d6fcbf69aab90fd164642c112454232f46c9",
+      "reviewedParent": "ab0d98bf88abfed744ec600785ed8f95e50f8ac9",
+      "parentTreeIdentical": true
+    },
+    "phase5-review-frontend": {
+      "base": "ebf9e68c6a25a35b794d429315e7b2b28b1b62eb",
+      "tree": "abb4d9eac9009988b96d1ce4a6e24a655973ec9d",
+      "reviewedParent": "0e441b609ff00dd419c314f78303f66eb54613c6",
+      "parentTreeIdentical": true
+    }
+  }
+}
