@@ -1,0 +1,171 @@
+{
+  "runs": {
+    "workflow_runs": [
+      {
+        "id": 38340274124,
+        "name": ".NET backend validation",
+        "status": "completed",
+        "conclusion": "success",
+        "run_number": 115,
+        "jobs_url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/runs/38340274124/jobs",
+        "logs_url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/runs/38340274124/logs",
+        "workflow_id": 381112911
+      },
+      {
+        "id": 38340274140,
+        "name": "Exact-head release evidence",
+        "status": "completed",
+        "conclusion": "success",
+        "run_number": 19,
+        "jobs_url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/runs/38340274140/jobs",
+        "logs_url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/runs/38340274140/logs",
+        "workflow_id": 381725934
+      }
+    ]
+  },
+  "jobs": {
+    "jobs": [
+      {
+        "id": 115109464773,
+        "name": "evidence",
+        "status": "completed",
+        "conclusion": "success",
+        "run_id": 38340274140,
+        "logs_url": null,
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1
+          },
+          {
+            "name": "Initialize containers",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2
+          },
+          {
+            "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3
+          },
+          {
+            "name": "Run actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4
+          },
+          {
+            "name": "Record exact execution identity",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5
+          },
+          {
+            "name": "Restore projects",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6
+          },
+          {
+            "name": "Release build with warnings as errors",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7
+          },
+          {
+            "name": "Unit tests and application coverage",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 8
+          },
+          {
+            "name": "Audit application and test dependencies",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9
+          },
+          {
+            "name": "Disposable database compatibility evidence",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 10
+          },
+          {
+            "name": "PostgreSQL integration tests and combined coverage",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 11
+          },
+          {
+            "name": "Validate coverage evidence",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 12
+          },
+          {
+            "name": "Application startup with synthetic loopback configuration",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 13
+          },
+          {
+            "name": "Preserve evidence even when a check fails",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 14
+          },
+          {
+            "name": "Post Run actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 26
+          },
+          {
+            "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 27
+          },
+          {
+            "name": "Stop containers",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 28
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 29
+          }
+        ]
+      }
+    ]
+  },
+  "artifacts": {
+    "artifacts": [
+      {
+        "id": 11786654014,
+        "name": "release-evidence-442f3ed5c946b08580f0d6934dfa54f2f943cba8",
+        "size_in_bytes": 992228,
+        "url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/artifacts/11786654014",
+        "archive_download_url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/artifacts/11786654014/zip",
+        "expired": false,
+        "created_at": "2026-10-13T03:11:14Z",
+        "expires_at": "2026-11-12T03:11:14Z",
+        "updated_at": "2026-10-13T03:11:14Z",
+        "digest": "sha256:9ebb87e48697822b5fc1b195da0c221edf005b4ce06118f06f42a883a2c772aa",
+        "workflow_run": {
+          "id": 38340274140,
+          "repository_id": 1265044034,
+          "head_repository_id": 1265044034,
+          "head_branch": "feature/phase2-conflict-review",
+          "head_sha": "442f3ed5c946b08580f0d6934dfa54f2f943cba8"
+        }
+      }
+    ]
+  }
+}
