@@ -12,6 +12,7 @@ using Alpha.API.Services;
 using Microsoft.Extensions.Logging;
 using Alpha.API.Services.Entrepreneur;
 var builder = WebApplication.CreateBuilder(args);
+Alpha.API.Security.RuntimeSecurity.Validate(builder.Configuration);
 
 // Railway / Production port binding
 builder.WebHost.ConfigureKestrel(options =>
@@ -29,6 +30,7 @@ builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        options.Events = new JwtBearerEvents { OnTokenValidated = Alpha.API.Security.ActiveTokenValidator.Validate };
         var key = builder.Configuration["Jwt:Key"];
 
         if (string.IsNullOrEmpty(key))
@@ -57,7 +59,21 @@ builder.Services.AddScoped<TaxEngineService>();
 builder.Services.AddScoped<SettlementService>();
 builder.Services.AddScoped<OrderWorkflowService>();
 builder.Services.AddHttpClient<Alpha.API.Services.PayPalService>();
-builder.Services.AddAuthorization();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("authentication", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+        { PermitLimit = 20, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+});
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser().Build();
+});
+builder.Services.AddScoped<PaymentOperationService>();
+builder.Services.AddScoped<WebhookClaimService>();
 builder.Services.AddScoped<ReferralCodeService>();
 builder.Services.AddScoped<ReferralCommissionService>();
 builder.Services.AddScoped<ReferralNetworkService>();
@@ -228,8 +244,10 @@ var databaseUrl = builder.Configuration["DATABASE_URL"];
 
 if (!string.IsNullOrEmpty(databaseUrl))
 {
-    var uri = new Uri(databaseUrl);
-    var userInfo = uri.UserInfo.Split(':');
+    if (!Uri.TryCreate(databaseUrl, UriKind.Absolute, out var uri) || uri.Scheme is not ("postgres" or "postgresql"))
+        throw new InvalidOperationException("DATABASE_URL must be a PostgreSQL URL.");
+    var userInfo = uri.UserInfo.Split(':', 2);
+    if (userInfo.Length != 2) throw new InvalidOperationException("DATABASE_URL requires username and password.");
 
     // Hosted environments must validate the PostgreSQL certificate chain and
     // server hostname. When a provider-specific CA bundle is configured, use it.
@@ -251,11 +269,13 @@ if (!string.IsNullOrEmpty(databaseUrl))
     var connectionBuilder = new NpgsqlConnectionStringBuilder
     {
         Host = uri.Host,
-        Port = uri.Port,
-        Username = userInfo[0],
-        Password = userInfo[1],
-        Database = uri.AbsolutePath.Trim('/'),
-        SslMode = isDevelopment ? SslMode.Require : SslMode.VerifyFull
+        Port = uri.Port > 0 ? uri.Port : 5432,
+        Username = Uri.UnescapeDataString(userInfo[0]),
+        Password = Uri.UnescapeDataString(userInfo[1]),
+        Database = Uri.UnescapeDataString(uri.AbsolutePath.Trim('/')),
+        SslMode = isDevelopment && builder.Configuration.GetValue<bool>("Database:AllowLocalPlaintext")
+            && System.Net.IPAddress.TryParse(uri.Host, out var address) && System.Net.IPAddress.IsLoopback(address)
+                ? SslMode.Disable : isDevelopment ? SslMode.Require : SslMode.VerifyFull
     };
 
     if (!isDevelopment && !string.IsNullOrWhiteSpace(rootCertificatePath))
@@ -320,11 +340,11 @@ app.Use(async (context, next) =>
         }
 
         context.Response.Clear();
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.StatusCode = ex is UnauthorizedAccessException ? StatusCodes.Status401Unauthorized : StatusCodes.Status500InternalServerError;
         await context.Response.WriteAsJsonAsync(new
         {
             title = "An unexpected error occurred.",
-            status = StatusCodes.Status500InternalServerError
+            status = context.Response.StatusCode
         });
     }
 });
@@ -341,6 +361,7 @@ if (app.Environment.IsDevelopment()
 app.UseStaticFiles();
 app.UseCors("AllowFrontend");
 
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.Use(async (context, next) =>
@@ -372,12 +393,13 @@ app.Use(async (context, next) =>
             CreatedAt = DateTime.UtcNow
         });
 
-        await db.SaveChangesAsync();
+        try { await db.SaveChangesAsync(); }
+        catch (Exception ex) { app.Logger.LogError(ex, "Denied-request audit persistence failed."); }
     }
 });
 app.MapControllers();
 
-app.MapGet("/", () => Results.Redirect("/swagger"));
-app.MapGet("/health", () => "API WORKING");
+app.MapGet("/", () => Results.Redirect("/swagger")).AllowAnonymous();
+app.MapGet("/health", () => "API WORKING").AllowAnonymous();
 
 app.Run();

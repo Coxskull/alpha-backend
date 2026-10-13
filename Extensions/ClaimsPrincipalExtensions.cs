@@ -22,9 +22,7 @@ namespace Alpha.API.Extensions
 
         public static string? GetRole(this ClaimsPrincipal user)
         {
-            return user.FindFirst(ClaimTypes.Role)?.Value
-                ?? user.FindFirst("role")?.Value
-                ?? user.FindFirst("role_key")?.Value;
+            return Alpha.API.Security.AuthUser.GetRole(user);
         }
     }
 }

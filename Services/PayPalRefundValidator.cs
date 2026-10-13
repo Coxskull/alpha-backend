@@ -27,4 +27,26 @@ public static class PayPalRefundValidator
         refundId = id.GetString()!;
         return true;
     }
+
+    public static bool TryValidate(JsonElement root, decimal amount, string currency, string captureId, out string refundId)
+    {
+        refundId = string.Empty;
+        if (!TryGetCompletedRefundId(root, out var id)
+            || !root.TryGetProperty("amount", out var money) || money.ValueKind != JsonValueKind.Object
+            || !money.TryGetProperty("value", out var value) || value.ValueKind != JsonValueKind.String
+            || !decimal.TryParse(value.GetString(), System.Globalization.NumberStyles.AllowDecimalPoint,
+                System.Globalization.CultureInfo.InvariantCulture, out var returnedAmount) || returnedAmount != amount
+            || !money.TryGetProperty("currency_code", out var code) || code.ValueKind != JsonValueKind.String
+            || code.GetString() != currency
+            || !root.TryGetProperty("links", out var links) || links.ValueKind != JsonValueKind.Array)
+            return false;
+        var expectedPath = "/v2/payments/captures/" + Uri.EscapeDataString(captureId);
+        var linkedCapture = links.EnumerateArray().Any(link => link.ValueKind == JsonValueKind.Object
+            && link.TryGetProperty("rel", out var rel) && rel.ValueKind == JsonValueKind.String && rel.GetString() == "up"
+            && link.TryGetProperty("href", out var href) && href.ValueKind == JsonValueKind.String
+            && Uri.TryCreate(href.GetString(), UriKind.Absolute, out var uri) && uri.AbsolutePath == expectedPath);
+        if (!linkedCapture) return false;
+        refundId = id;
+        return true;
+    }
 }

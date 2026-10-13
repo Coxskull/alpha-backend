@@ -1,3 +1,4 @@
+using OrderAccess = Alpha.API.Security.OrderAccess;
 using Alpha.API.Data;
 using Alpha.API.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -14,6 +15,7 @@ using Alpha.API.Constants;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/[controller]")]
 public class FinancialsController : ControllerBase
 {
@@ -32,6 +34,7 @@ public class FinancialsController : ControllerBase
     }
 
     [HttpGet("settlement-queue")]
+    [Authorize(Roles = "admin,dispatcher")]
     public async Task<IActionResult> GetSettlementQueue()
     {
         var queue = await _context.SettlementQueue
@@ -43,6 +46,9 @@ public class FinancialsController : ControllerBase
                 x.PayeeType,
                 x.PayeeId,
                 x.Amount,
+                x.RefundAdjustment,
+                x.RecoveryOffset,
+                netRecorded = x.Amount - x.RefundAdjustment - x.RecoveryOffset,
                 x.Status,
                 x.ReviewedBy,
                 x.ReviewedAt,
@@ -224,246 +230,21 @@ public class FinancialsController : ControllerBase
         return Ok(record);
     }
 
-    [HttpPost("settlement/{id}/mark-paid")]
+    [HttpGet("settlement/{id:guid}/payout-quote")]
     [Authorize(Roles = "admin")]
-    public async Task<IActionResult> MarkSettlementPaid(
-    Guid id,
-    CancellationToken cancellationToken)
+    public async Task<IActionResult> SettlementQuote(Guid id, CancellationToken ct)
     {
-        var settlement = await _context.SettlementQueue
-            .FirstOrDefaultAsync(
-                x => x.Id == id,
-                cancellationToken);
+        try { return Ok(await new PayoutAccountingService(_context).SettlementAsync(id, null, Guid.Empty, null, ct)); }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
 
-        if (settlement == null)
-            return NotFound();
-
-        if (settlement.Status == "paid")
-        {
-            return Ok(new
-            {
-                success = true,
-                message = "Settlement is already marked as paid.",
-                settlementId = settlement.Id
-            });
-        }
-
-        if (settlement.Status != "pending_payout" &&
-            settlement.Status != "ready_for_payout")
-        {
-            return BadRequest(new
-            {
-                message =
-                    $"Settlement cannot be paid from status '{settlement.Status}'."
-            });
-        }
-
-        var financial =
-            await _context.OrderFinancials
-                .FirstOrDefaultAsync(
-                    x => x.Id == settlement.OrderFinancialId,
-                    cancellationToken);
-
-        if (financial == null)
-        {
-            return NotFound(new
-            {
-                message = "Financial record not found."
-            });
-        }
-
-        if (!financial.OrderId.HasValue)
-        {
-            return BadRequest(new
-            {
-                message = "Financial record has no order ID."
-            });
-        }
-
-        var order =
-            await _context.Orders
-                .FirstOrDefaultAsync(
-                    x => x.Id == financial.OrderId.Value,
-                    cancellationToken);
-
-        if (order == null)
-        {
-            return NotFound(new
-            {
-                message = "Order not found."
-            });
-        }
-
-        // Mark this settlement as paid
-        settlement.Status = "paid";
-        settlement.ReviewedAt = DateTime.UtcNow;
-        settlement.ReviewedBy =
-            User.Identity?.Name ?? "admin";
-
-        // Check whether all settlement rows
-        // belonging to this order are now paid.
-        var remainingSettlements =
-            await _context.SettlementQueue
-                .AnyAsync(
-                    x =>
-                        x.OrderFinancialId ==
-                            settlement.OrderFinancialId
-                        &&
-                        x.Id != settlement.Id
-                        &&
-                        x.Status != "paid",
-                    cancellationToken);
-
-
-
-        await _entrepreneurCommissionService
-    .GenerateForPaidSettlementAsync(
-        settlement,
-        order,
-        financial,
-        cancellationToken);
-        // Only mark the complete financial settlement
-        // as paid when every settlement row is paid.
-        if (!remainingSettlements)
-        {
-            financial.PayoutStatus = "paid";
-            financial.SettlementStatus = "paid";
-            financial.ProviderPayoutStatus = "paid";
-        }
-        if (settlement.PayeeType == "supplier")
-        {
-            if (!settlement.PayeeId.HasValue)
-            {
-                return BadRequest(new
-                {
-                    message = "Supplier settlement has no supplier ID."
-                });
-            }
-
-            var supplier = await _context.Suppliers
-                .FirstOrDefaultAsync(
-                    x => x.Id == settlement.PayeeId.Value,
-                    cancellationToken);
-
-            if (supplier == null)
-            {
-                return BadRequest(new
-                {
-                    message = "Supplier not found."
-                });
-            }
-
-            var existingPayout =
-                await _context.SupplierPayouts
-                    .FirstOrDefaultAsync(
-                        x =>
-                            x.OrderId == order.Id &&
-                            x.SupplierId == supplier.Id,
-                        cancellationToken);
-
-            if (existingPayout == null)
-            {
-                _context.SupplierPayouts.Add(
-                    new SupplierPayout
-                    {
-                        Id = Guid.NewGuid(),
-
-                        SupplierId = supplier.Id,
-
-                        OrderId = order.Id,
-
-                        Amount = settlement.Amount,
-
-                        Currency = financial.Currency,
-
-                        PayoutStatus = "paid",
-
-                        PaidAt = DateTime.UtcNow,
-
-                        CreatedAt = DateTime.UtcNow
-                    }
-                );
-            }
-        }
-
-        if (settlement.PayeeType == "driver")
-        {
-            if (!settlement.PayeeId.HasValue)
-            {
-                return BadRequest(new
-                {
-                    message = "Driver settlement has no driver ID."
-                });
-            }
-
-            var driver = await _context.Drivers
-                .FirstOrDefaultAsync(
-                    x => x.Id == settlement.PayeeId.Value,
-                    cancellationToken);
-
-            if (driver == null)
-            {
-                return BadRequest(new
-                {
-                    message = "Driver not found."
-                });
-            }
-
-            var existingPayout =
-                await _context.DriverPayouts
-                    .FirstOrDefaultAsync(
-                        x =>
-                            x.OrderId == order.Id &&
-                            x.DriverId == driver.Id,
-                        cancellationToken);
-
-            if (existingPayout == null)
-            {
-                _context.DriverPayouts.Add(
-                    new DriverPayout
-                    {
-                        Id = Guid.NewGuid(),
-
-                        DriverId = driver.Id,
-
-                        OrderId = order.Id,
-
-                        Amount = settlement.Amount,
-
-                        Currency = financial.Currency,
-
-                        PayoutStatus = "paid",
-
-                        PaidAt = DateTime.UtcNow,
-
-                        CreatedAt = DateTime.UtcNow
-                    }
-                );
-            }
-        }
-
-        await _context.SaveChangesAsync(
-            cancellationToken);
-
-        // Generate entrepreneur commission ONLY
-        // after every settlement for this order has
-        // been paid.
-        if (!remainingSettlements)
-        {
-            await _entrepreneurCommissionService
-                .GenerateForOrderAsync(
-                    order.Id,
-                    cancellationToken);
-        }
-
-        return Ok(new
-        {
-            success = true,
-            settlementId = settlement.Id,
-            settlementStatus = settlement.Status,
-            orderId = order.Id,
-            allSettlementsPaid = !remainingSettlements
-        });
+    [HttpPost("settlement/{id:guid}/mark-paid")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> MarkSettlementPaid(Guid id, [FromBody] Alpha.API.DTOs.PayoutConfirmationDto confirmation, CancellationToken ct)
+    {
+        if (!Guid.TryParse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var admin)) return Unauthorized();
+        try { return Ok(await new PayoutAccountingService(_context).SettlementAsync(id, confirmation, admin, _entrepreneurCommissionService, ct)); }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
 
     [HttpGet("supplier/{supplierId}/earnings")]
@@ -473,11 +254,9 @@ public class FinancialsController : ControllerBase
      CancellationToken cancellationToken)
     {
         var userId = User.GetUserId();
-        var role = (User.GetRole() ?? string.Empty)
-            .Trim()
-            .ToLowerInvariant();
-
-        if (role == "supplier" || role == "provider")
+        var staff = OrderAccess.IsStaff(User);
+        if (!staff && !User.IsInRole("supplier") && !User.IsInRole("provider")) return Forbid();
+        if (!staff)
         {
             var supplier = await _context.Suppliers
                 .AsNoTracking()
@@ -527,8 +306,11 @@ public class FinancialsController : ControllerBase
     [Authorize(Roles = "admin,dispatcher,driver")]
     public async Task<IActionResult> GetDriverWallet(Guid driverId)
     {
+        if (!OrderAccess.IsStaff(User) && !await _context.Drivers.AnyAsync(
+            d => d.Id == driverId && d.UserId == User.GetUserId())) return Forbid();
+
         var orderEarnings = await _context.OrderFinancials
-            .Where(x => x.DriverAmount > 0)
+            .Where(x => x.DriverAmount > 0 && _context.Orders.Any(o => o.Id == x.OrderId && o.DriverId == driverId))
             .OrderByDescending(x => x.CreatedAt)
             .Select(x => new
             {
@@ -606,12 +388,12 @@ public class FinancialsController : ControllerBase
                     financial.ReconciliationDifference
             });
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
             return BadRequest(new
             {
                 success = false,
-                message = ex.Message
+                message = "The request could not be completed."
             });
         }
     }

@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authorization;
+using Alpha.API.Security;
 using Alpha.API.Data;
 using Alpha.API.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -10,6 +12,7 @@ using System.Threading.Tasks;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/invoices")]
 public class InvoicesController : ControllerBase
 {
@@ -25,6 +28,7 @@ public class InvoicesController : ControllerBase
     {
         var order = await _context.Orders.FindAsync(orderId);
         if (order == null) return NotFound("Order not found.");
+        if (!OrderAccess.CanPay(User, order)) return Forbid();
 
         var financial = await _context.OrderFinancials
             .FirstOrDefaultAsync(x => x.OrderId == orderId);
@@ -62,6 +66,7 @@ public class InvoicesController : ControllerBase
     {
         var order = await _context.Orders.FindAsync(orderId);
         if (order == null) return NotFound("Order not found.");
+        if (!OrderAccess.CanPay(User, order)) return Forbid();
 
         var financial = await _context.OrderFinancials
             .FirstOrDefaultAsync(x => x.OrderId == orderId);

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 ﻿using Alpha.API.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -5,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Authorize(Roles = "admin,dispatcher")]
 [Route("api/[controller]")]
 public class StatusHistoryController : ControllerBase
 {

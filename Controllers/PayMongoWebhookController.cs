@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Alpha.API.Data;
 using Alpha.API.Models;
 using Alpha.API.Services;
@@ -12,10 +13,12 @@ using System.Threading.Tasks;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[AllowAnonymous]
 [Route("api/webhooks/paymongo")]
 public class PayMongoWebhookController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly IConfiguration _configuration;
     private readonly PayMongoService _payMongo;
     private readonly PaymentCompletionService
         _paymentCompletionService;
@@ -26,9 +29,11 @@ public class PayMongoWebhookController : ControllerBase
         AppDbContext context,
         PayMongoService payMongo,
         PaymentCompletionService paymentCompletionService,
-        ILogger<PayMongoWebhookController> logger)
+        ILogger<PayMongoWebhookController> logger,
+        IConfiguration configuration)
     {
         _context = context;
+        _configuration = configuration;
         _payMongo = payMongo;
         _paymentCompletionService =
             paymentCompletionService;
@@ -48,6 +53,12 @@ public class PayMongoWebhookController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(rawBody))
             return BadRequest();
+
+        var secret = _configuration["PayMongo:WebhookSecret"];
+        if (string.IsNullOrWhiteSpace(secret)) return StatusCode(503);
+        if (!Alpha.API.Security.PayMongoSignature.Verify(rawBody,
+            Request.Headers["Paymongo-Signature"].ToString(), secret,
+            _configuration.GetValue<bool>("PayMongo:LiveMode"), DateTimeOffset.UtcNow)) return BadRequest();
 
         using var document =
             JsonDocument.Parse(rawBody);
@@ -70,34 +81,15 @@ public class PayMongoWebhookController : ControllerBase
             return BadRequest();
         }
 
-        var alreadyProcessed =
-            await _context.PaymentWebhookEvents
-                .AnyAsync(
-                    x =>
-                        x.Gateway == "paymongo" &&
-                        x.GatewayEventId == eventId,
-                    cancellationToken);
-
-        if (alreadyProcessed)
-            return Ok();
-
-        var webhookEvent =
-            new PaymentWebhookEvent
-            {
-                Id = Guid.NewGuid(),
-                Gateway = "paymongo",
-                GatewayEventId = eventId,
-                EventType = eventType,
-                Payload = JsonDocument.Parse(rawBody),
-                Processed = false,
-                ReceivedAt = DateTime.UtcNow
-            };
-
-        _context.PaymentWebhookEvents.Add(
-            webhookEvent);
-
-        await _context.SaveChangesAsync(
-            cancellationToken);
+        var lease = await new WebhookClaimService(_context).ClaimAsync(
+            "paymongo", eventId, eventType, rawBody, cancellationToken);
+        var webhookEvent = lease.Event;
+        if (webhookEvent.Processed) return Ok();
+        if (!lease.Claimed)
+        {
+            Response.Headers.RetryAfter = "30";
+            return StatusCode(503);
+        }
 
         try
         {
@@ -112,6 +104,7 @@ public class PayMongoWebhookController : ControllerBase
             }
 
             webhookEvent.Processed = true;
+            webhookEvent.ProcessingUntil = null;
             webhookEvent.ProcessedAt =
                 DateTime.UtcNow;
 
@@ -122,8 +115,12 @@ public class PayMongoWebhookController : ControllerBase
         }
         catch (Exception exception)
         {
-            webhookEvent.ProcessingError =
-                exception.Message;
+            var failedEventId = webhookEvent.Id;
+            _context.ChangeTracker.Clear();
+            webhookEvent = await _context.PaymentWebhookEvents.SingleAsync(e => e.Id == failedEventId, CancellationToken.None);
+
+            webhookEvent.ProcessingError = "processing_failed";
+            webhookEvent.ProcessingUntil = null;
 
             await _context.SaveChangesAsync(
                 cancellationToken);
@@ -169,11 +166,8 @@ public class PayMongoWebhookController : ControllerBase
             ?? throw new InvalidOperationException(
                 "Alpha payment was not found.");
 
-        var checkoutSessionId =
-            payment.GatewayCheckoutSessionId
-            ?? resourceId
-            ?? throw new InvalidOperationException(
-                "Checkout session ID was not found.");
+        var checkoutSessionId = payment.GatewayCheckoutSessionId
+            ?? throw new InvalidOperationException("No checkout session is bound to the payment.");
 
         // Retrieve the session directly from PayMongo.
         // Do not trust only the incoming webhook body.
@@ -204,20 +198,9 @@ public class PayMongoWebhookController : ControllerBase
                 $"PayMongo session is not paid. Status: {status}");
         }
 
-        string? gatewayPaymentId = null;
-
-        if (checkoutAttributes.TryGetProperty(
-                "payments",
-                out var payments) &&
-            payments.ValueKind ==
-                JsonValueKind.Array &&
-            payments.GetArrayLength() > 0)
-        {
-            gatewayPaymentId =
-                payments[0]
-                    .GetProperty("id")
-                    .GetString();
-        }
+        if (!PayMongoCheckoutValidator.TryValidate(checkout.RootElement, checkoutSessionId,
+            orderId, payment.Amount, payment.Currency, out var gatewayPaymentId))
+            throw new InvalidOperationException("Provider payment did not match the expected checkout, order, amount and currency.");
 
         await _paymentCompletionService
             .CompleteOrderPaymentAsync(

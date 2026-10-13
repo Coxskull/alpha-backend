@@ -553,8 +553,7 @@ public class AdminRoleVerificationsController : ControllerBase
                         "approving the application.",
 
                     detail =
-                        exception.InnerException?.Message
-                        ?? exception.Message
+                        "The request could not be completed."
                 });
         }
         catch (Exception exception)
@@ -575,7 +574,7 @@ public class AdminRoleVerificationsController : ControllerBase
                         "approving the application.",
 
                     detail =
-                        exception.Message
+                        "The request could not be completed."
                 });
         }
 
@@ -765,24 +764,19 @@ public class AdminRoleVerificationsController : ControllerBase
          * This makes them available for replacement
          * from the applicant verification page.
          */
-        if (application.Documents != null)
+        foreach (var document in application.Documents)
         {
-            foreach (
-                var document in
-                application.Documents)
-            {
-                document.VerificationStatus =
-                    "needs_more_information";
+            document.VerificationStatus =
+                "needs_more_information";
 
-                document.ReviewerNotes =
-                    reviewerNotes;
+            document.ReviewerNotes =
+                reviewerNotes;
 
-                document.ReviewedAt =
-                    now;
+            document.ReviewedAt =
+                now;
 
-                document.ReviewedByUserId =
-                    reviewerId;
-            }
+            document.ReviewedByUserId =
+                reviewerId;
         }
 
         await UpdateUserRoleStatus(
@@ -815,8 +809,7 @@ public class AdminRoleVerificationsController : ControllerBase
                         "requesting more information.",
 
                     detail =
-                        exception.InnerException?.Message
-                        ?? exception.Message
+                        "The request could not be completed."
                 });
         }
         catch (Exception exception)
@@ -838,7 +831,7 @@ public class AdminRoleVerificationsController : ControllerBase
                         "requesting more information.",
 
                     detail =
-                        exception.Message
+                        "The request could not be completed."
                 });
         }
 

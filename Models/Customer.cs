@@ -20,6 +20,7 @@ public class Customer
     public string PhoneNumber { get; set; } = string.Empty;
 
     [MaxLength(255)]
+    [System.Text.Json.Serialization.JsonIgnore]
     public string PasswordHash { get; set; } = string.Empty;
 
     public bool IsActive { get; set; } = true;

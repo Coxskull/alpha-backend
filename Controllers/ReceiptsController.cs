@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authorization;
+using Alpha.API.Security;
 using Alpha.API.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +11,7 @@ using System.Threading.Tasks;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/receipts")]
 public class ReceiptsController : ControllerBase
 {
@@ -24,6 +27,7 @@ public class ReceiptsController : ControllerBase
     {
         var order = await _context.Orders.FindAsync(orderId);
         if (order == null) return NotFound("Order not found.");
+        if (!OrderAccess.CanPay(User, order)) return Forbid();
 
         var payment = await _context.Payments
             .FirstOrDefaultAsync(x => x.OrderId == orderId);

@@ -1,149 +1,57 @@
-// Services/PayPalService.cs
 using Alpha.API.Models;
-using System;
-using System.Collections.Generic;
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
-
 namespace Alpha.API.Services;
 
-public class PayPalService
+public class PayPalService(HttpClient http, IConfiguration configuration)
 {
-    private readonly HttpClient _http;
-    private readonly IConfiguration _config;
+    private string BaseUrl => configuration["PayPal:BaseUrl"] ?? "https://api-m.sandbox.paypal.com";
 
-    public PayPalService(HttpClient http, IConfiguration config)
+    public async Task<string> GetAccessToken(CancellationToken cancellationToken = default)
     {
-        _http = http;
-        _config = config;
+        var clientId = configuration["PayPal:ClientId"] ?? throw new InvalidOperationException("PayPal credentials are missing.");
+        var secret = configuration["PayPal:ClientSecret"] ?? throw new InvalidOperationException("PayPal credentials are missing.");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/v1/oauth2/token");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{secret}")));
+        request.Content = new FormUrlEncodedContent(new Dictionary<string, string> { ["grant_type"] = "client_credentials" });
+        using var response = await http.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode) throw new HttpRequestException("PayPal authentication failed.");
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+        return document.RootElement.GetProperty("access_token").GetString() ?? throw new InvalidOperationException("PayPal token is missing.");
     }
 
-    private string BaseUrl => _config["PayPal:BaseUrl"] ?? "https://api-m.sandbox.paypal.com";
-    private string ClientId => _config["PayPal:ClientId"] ?? throw new Exception("Missing PayPal ClientId");
-    private string ClientSecret => _config["PayPal:ClientSecret"] ?? throw new Exception("Missing PayPal ClientSecret");
-
-    public async Task<string> GetAccessToken()
+    private async Task<JsonDocument> SendAsync(HttpMethod method, string path, object? body,
+        string? requestId, CancellationToken cancellationToken)
     {
-        var basic = Convert.ToBase64String(
-            Encoding.UTF8.GetBytes($"{ClientId}:{ClientSecret}")
-        );
+        using var request = new HttpRequestMessage(method, $"{BaseUrl}/{path}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await GetAccessToken(cancellationToken));
+        request.Headers.TryAddWithoutValidation("Prefer", "return=representation");
+        if (requestId != null) request.Headers.Add("PayPal-Request-Id", requestId);
+        if (body != null) request.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+        using var response = await http.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode) throw new HttpRequestException("PayPal operation could not be confirmed.");
+        return JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+    }
 
-        var request = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/v1/oauth2/token");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Basic", basic);
-        request.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+    public async Task<string> CreateOrder(Order order, OrderFinancial financial, CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(HttpMethod.Post, "v2/checkout/orders", new
         {
-            ["grant_type"] = "client_credentials"
-        });
-
-        var response = await _http.SendAsync(request);
-        var json = await response.Content.ReadAsStringAsync();
-
-        if (!response.IsSuccessStatusCode)
-            throw new Exception($"PayPal token error: {json}");
-
-        using var doc = JsonDocument.Parse(json);
-        return doc.RootElement.GetProperty("access_token").GetString()!;
+            intent = "CAPTURE", purchase_units = new[] { new { reference_id = order.Id.ToString(), custom_id = order.Id.ToString(),
+                invoice_id = order.OrderNumber, amount = new { currency_code = financial.Currency,
+                    value = financial.TotalAmount.ToString("0.00", CultureInfo.InvariantCulture) } } }
+        }, order.Id.ToString("N"), cancellationToken);
+        return response.RootElement.GetProperty("id").GetString() ?? throw new InvalidOperationException("PayPal order ID is missing.");
     }
-
-    public async Task<string> CreateOrder(Order order, OrderFinancial financial)
-    {
-        var token = await GetAccessToken();
-
-        var payload = new
-        {
-            intent = "CAPTURE",
-            purchase_units = new[]
-            {
-                new
-                {
-                    reference_id = order.Id.ToString(),
-                    custom_id = order.Id.ToString(),
-                    invoice_id = order.OrderNumber,
-                    amount = new
-                    {
-                        currency_code = financial.Currency ?? "USD",
-                        value = financial.TotalAmount.ToString("0.00")
-                    }
-                }
-            }
-        };
-
-        var request = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/v2/checkout/orders");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(payload),
-            Encoding.UTF8,
-            "application/json"
-        );
-
-        var response = await _http.SendAsync(request);
-        var json = await response.Content.ReadAsStringAsync();
-
-        if (!response.IsSuccessStatusCode)
-            throw new Exception($"PayPal create order error: {json}");
-
-        using var doc = JsonDocument.Parse(json);
-        return doc.RootElement.GetProperty("id").GetString()!;
-    }
-
-    public async Task<JsonDocument> CaptureOrder(string paypalOrderId)
-    {
-        var token = await GetAccessToken();
-
-        var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            $"{BaseUrl}/v2/checkout/orders/{paypalOrderId}/capture"
-        );
-
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        // Stable across retries for the same provider order; not a substitute for an atomic operation ledger.
-        request.Headers.TryAddWithoutValidation("PayPal-Request-Id", PayPalRequestId.ForCapture(paypalOrderId));
-        request.Content = new StringContent("{}", Encoding.UTF8, "application/json");
-
-        var response = await _http.SendAsync(request);
-        var json = await response.Content.ReadAsStringAsync();
-
-        if (!response.IsSuccessStatusCode)
-            throw new Exception($"PayPal capture error: {json}");
-
-        return JsonDocument.Parse(json);
-    }
-
-    public async Task<JsonDocument> RefundCapture(string captureId, decimal amount, string currency)
-    {
-        var token = await GetAccessToken();
-
-        var payload = new
-        {
-            amount = new
-            {
-                value = amount.ToString("0.00"),
-                currency_code = currency
-            }
-        };
-
-        var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            $"{BaseUrl}/v2/payments/captures/{captureId}/refund"
-        );
-
-        request.Headers.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(payload),
-            Encoding.UTF8,
-            "application/json"
-        );
-
-        var response = await _http.SendAsync(request);
-        var json = await response.Content.ReadAsStringAsync();
-
-        if (!response.IsSuccessStatusCode)
-            throw new Exception($"PayPal refund error: {json}");
-
-        return JsonDocument.Parse(json);
-    }
+    public Task<JsonDocument> CaptureOrder(string id, string requestId, CancellationToken cancellationToken = default)
+        => SendAsync(HttpMethod.Post, $"v2/checkout/orders/{Uri.EscapeDataString(id)}/capture", new { }, requestId, cancellationToken);
+    public Task<JsonDocument> RefundCapture(string id, decimal amount, string currency, string requestId, CancellationToken cancellationToken = default)
+        => SendAsync(HttpMethod.Post, $"v2/payments/captures/{Uri.EscapeDataString(id)}/refund", new
+        { amount = new { value = amount.ToString("0.00", CultureInfo.InvariantCulture), currency_code = currency } }, requestId, cancellationToken);
+    public Task<JsonDocument> GetOrder(string id, CancellationToken cancellationToken)
+        => SendAsync(HttpMethod.Get, $"v2/checkout/orders/{Uri.EscapeDataString(id)}", null, null, cancellationToken);
+    public Task<JsonDocument> GetRefund(string id, CancellationToken cancellationToken)
+        => SendAsync(HttpMethod.Get, $"v2/payments/refunds/{Uri.EscapeDataString(id)}", null, null, cancellationToken);
 }

@@ -11,12 +11,16 @@ public static class AuthUser
         if (string.IsNullOrEmpty(id))
             throw new UnauthorizedAccessException("Missing user id.");
 
-        return Guid.Parse(id);
+        return Guid.TryParse(id, out var userId) ? userId : throw new UnauthorizedAccessException("Invalid user id.");
     }
 
     public static string GetRole(this ClaimsPrincipal user)
     {
-        return user.FindFirstValue(ClaimTypes.Role) ?? "";
+        var roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value.Trim().ToLowerInvariant()).Distinct().ToArray();
+        if (roles.Contains(AppRoles.Admin)) return AppRoles.Admin;
+        if (roles.Contains(AppRoles.Dispatcher)) return AppRoles.Dispatcher;
+        // Never choose an arbitrary first role that can bypass ownership filtering.
+        return roles.Length == 1 ? roles[0] : string.Empty;
     }
 
     public static string GetEmail(this ClaimsPrincipal user)

@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authorization;
+using Alpha.API.Security;
 using Alpha.API.Data;
 using Alpha.API.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -8,6 +10,7 @@ using System.Threading.Tasks;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/[controller]")]
 public class VehiclesController : ControllerBase
 {
@@ -21,6 +24,7 @@ public class VehiclesController : ControllerBase
     [HttpGet("customer/{customerId:guid}")]
     public async Task<IActionResult> GetVehicles(Guid customerId)
     {
+        if (!OrderAccess.CanAccessCustomer(User, customerId)) return Forbid();
         var vehicles = await _context.CustomerVehicles
             .Where(x => x.CustomerId == customerId)
             .ToListAsync();
@@ -36,6 +40,7 @@ public class VehiclesController : ControllerBase
 
         if (vehicle == null)
             return NotFound();
+        if (!OrderAccess.CanAccessCustomer(User, vehicle.CustomerId)) return Forbid();
 
         return Ok(vehicle);
     }
@@ -43,6 +48,7 @@ public class VehiclesController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> AddVehicle(CustomerVehicle vehicle)
     {
+        if (!OrderAccess.CanAccessCustomer(User, vehicle.CustomerId)) return Forbid();
         vehicle.Id = Guid.NewGuid();
         vehicle.CreatedAt = DateTime.UtcNow;
 
@@ -60,6 +66,7 @@ public class VehiclesController : ControllerBase
 
         if (vehicle == null)
             return NotFound();
+        if (!OrderAccess.CanAccessCustomer(User, vehicle.CustomerId)) return Forbid();
 
         _context.CustomerVehicles.Remove(vehicle);
 

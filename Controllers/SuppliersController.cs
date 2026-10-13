@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Alpha.API.Data;
 using Microsoft.AspNetCore.Authorization;
@@ -64,9 +64,9 @@ public class SuppliersController : ControllerBase
 
             return Ok(suppliers);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            return StatusCode(500, ex.ToString());
+            return StatusCode(500, new { message = "The request could not be completed." });
         }
     }
 

@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authorization;
+using Alpha.API.Security;
 ﻿using Alpha.API.Data;
 using Alpha.API.DTOs;
 using Alpha.API.Models;
@@ -7,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/[controller]")]
 public class ProductsController : ControllerBase
 {
@@ -22,6 +25,7 @@ public class ProductsController : ControllerBase
     // ============================================================
 
     [HttpGet]
+    [AllowAnonymous]
     public async Task<IActionResult> GetProducts()
     {
         var products = await _context.Products
@@ -40,6 +44,7 @@ public class ProductsController : ControllerBase
     // ============================================================
 
     [HttpGet("{id:guid}")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetProduct(Guid id)
     {
         var product = await _context.Products
@@ -62,6 +67,7 @@ public class ProductsController : ControllerBase
     // ============================================================
 
     [HttpGet("search")]
+    [AllowAnonymous]
     public async Task<IActionResult> Search(
         [FromQuery] string keyword)
     {
@@ -96,6 +102,7 @@ public class ProductsController : ControllerBase
     // ============================================================
 
     [HttpPost]
+    [Authorize(Roles = "supplier,provider,admin,dispatcher")]
     public async Task<IActionResult> CreateProduct(
         [FromBody] CreateProductDto dto)
     {
@@ -175,6 +182,7 @@ public class ProductsController : ControllerBase
     // ============================================================
 
     [HttpGet("supplier/{supplierId:guid}")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetSupplierProducts(
         Guid supplierId)
     {
@@ -210,6 +218,7 @@ public class ProductsController : ControllerBase
     // ============================================================
 
     [HttpGet("supplier/user/{userId:guid}")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetSupplierProductsByUser(
         Guid userId)
     {
@@ -246,6 +255,7 @@ public class ProductsController : ControllerBase
     // ============================================================
 
     [HttpGet("supplier-id/user/{userId:guid}")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetSupplierIdByUser(
         Guid userId)
     {
@@ -275,6 +285,7 @@ public class ProductsController : ControllerBase
     // ============================================================
 
     [HttpPost("upload")]
+    [Authorize(Roles = "supplier,provider,admin,dispatcher")]
     [RequestSizeLimit(10_000_000)]
     public async Task<IActionResult> UploadProduct(
         [FromForm] CreateProductUploadDto dto)
@@ -420,6 +431,7 @@ public class ProductsController : ControllerBase
     // ============================================================
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = "supplier,provider,admin,dispatcher")]
     [RequestSizeLimit(10_000_000)]
     public async Task<IActionResult> UpdateProduct(
         Guid id,
@@ -572,6 +584,7 @@ public class ProductsController : ControllerBase
     // ============================================================
 
     [HttpDelete("{id:guid}/supplier/{supplierId:guid}")]
+    [Authorize(Roles = "supplier,provider,admin,dispatcher")]
     public async Task<IActionResult> DeleteProduct(
         Guid id,
         Guid supplierId)
@@ -620,19 +633,12 @@ public class ProductsController : ControllerBase
     // 2. Users.Id
     // ============================================================
 
-    private async Task<Supplier?> FindSupplier(
-        Guid id)
+    private async Task<Supplier?> FindSupplier(Guid id)
     {
-        var supplier = await _context.Suppliers
-            .FirstOrDefaultAsync(s =>
-                s.Id == id);
-
-        if (supplier != null)
-            return supplier;
-
-        return await _context.Suppliers
-            .FirstOrDefaultAsync(s =>
-                s.UserId == id);
+        var ownId = AuthUser.GetUserId(User);
+        var staff = OrderAccess.IsStaff(User);
+        return await _context.Suppliers.FirstOrDefaultAsync(s => (s.Id == id || s.UserId == id)
+            && (staff || s.UserId == ownId));
     }
 
     // ============================================================

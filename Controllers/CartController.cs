@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authorization;
+using Alpha.API.Security;
 using Alpha.API.Data;
 using Alpha.API.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -8,6 +10,7 @@ using System.Threading.Tasks;
 namespace Alpha.API.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/[controller]")]
 public class CartController : ControllerBase
 {
@@ -21,6 +24,7 @@ public class CartController : ControllerBase
     [HttpGet("{customerId:guid}")]
     public async Task<IActionResult> GetCart(Guid customerId)
     {
+        if (!OrderAccess.CanAccessCustomer(User, customerId)) return Forbid();
         var items = await _context.CartItems
             .Where(x => x.CustomerId == customerId)
             .ToListAsync();
@@ -31,6 +35,7 @@ public class CartController : ControllerBase
     [HttpPost("add")]
     public async Task<IActionResult> AddToCart(CartItem item)
     {
+        if (!OrderAccess.CanAccessCustomer(User, item.CustomerId)) return Forbid();
         item.Id = Guid.NewGuid();
         item.CreatedAt = DateTime.UtcNow;
 
@@ -50,6 +55,7 @@ public class CartController : ControllerBase
 
         if (item == null)
             return NotFound();
+        if (!OrderAccess.CanAccessCustomer(User, item.CustomerId)) return Forbid();
 
         item.Quantity = quantity;
 
@@ -65,6 +71,7 @@ public class CartController : ControllerBase
 
         if (item == null)
             return NotFound();
+        if (!OrderAccess.CanAccessCustomer(User, item.CustomerId)) return Forbid();
 
         _context.CartItems.Remove(item);
 
@@ -76,6 +83,7 @@ public class CartController : ControllerBase
     [HttpDelete("clear/{customerId:guid}")]
     public async Task<IActionResult> ClearCart(Guid customerId)
     {
+        if (!OrderAccess.CanAccessCustomer(User, customerId)) return Forbid();
         var items = await _context.CartItems
             .Where(x => x.CustomerId == customerId)
             .ToListAsync();

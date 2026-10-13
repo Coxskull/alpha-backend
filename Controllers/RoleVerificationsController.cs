@@ -305,12 +305,12 @@ public sealed class RoleVerificationsController : ControllerBase
         {
             _storage.ValidateFile(file);
         }
-        catch (InvalidOperationException exception)
+        catch (InvalidOperationException)
         {
             return BadRequest(new
             {
                 message =
-                    exception.Message
+                    "The request could not be completed."
             });
         }
 
