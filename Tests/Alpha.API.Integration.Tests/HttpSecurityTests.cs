@@ -552,10 +552,20 @@ public sealed class HttpSecurityTests(DatabaseFixture fixture) : IAsyncLifetime
     [InlineData(null, 401)]
     [InlineData("dispatcher", 403)]
     [InlineData("supplier", 403)]
-    [InlineData("admin", 403)]
+    [InlineData("admin", 401)]
+    [InlineData("admin-active", 200)]
+    [InlineData("admin-inactive", 401)]
     public async Task ReconciliationHttpRejectsAnonymousNonAdminAndUnknownAdmin(string? role, int status)
     {
-        var token=role == null ? null : Token(Guid.NewGuid(),role);
+        var id=Guid.NewGuid();
+        var tokenRole=role?.StartsWith("admin-",StringComparison.Ordinal)==true ? "admin" : role;
+        if(role != null && role != "admin")
+        {
+            using var db=fixture.Context();
+            db.Users.Add(new Alpha.API.Models.User {Id=id,FullName="Synthetic HTTP operator",Email=id+"@example.invalid",Role=tokenRole!,IsActive=role != "admin-inactive"});
+            await db.SaveChangesAsync();
+        }
+        var token=role == null ? null : Token(id,tokenRole!);
         using var response=await Request("/api/payout-reconciliation",token);
         Assert.Equal(status,(int)response.StatusCode);
     }
