@@ -5,6 +5,8 @@ using System.Text.Json;
 using Alpha.API.Data;
 using Alpha.API.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Alpha.API.Models.Entrepreneur;
 namespace Alpha.API.Services;
 
 public sealed record ReconciliationSnapshot(string Kind, Guid Id, Guid OrderId, string PayeeType, Guid? PayeeId,
@@ -43,11 +45,12 @@ public sealed class PayoutReconciliationService(AppDbContext db)
         foreach(var row in rows)
         {
             try { snapshots.Add(await Snapshot(kind,row.Id,ct)); }
-            catch(InvalidOperationException ex) when(ex.Data["ReconciliationScopeExceeded"] is true)
+            catch(InvalidOperationException ex) when(ex.Data["ReconciliationScopeExceeded"] is true || ex.Data["ReconciliationNonfiniteNumeric"] is true)
             {
-                // A bounded manual-review marker is not evidence or a zero-value payout.
+                // Only identified data limitations become markers; operational failures still propagate.
+                var issue=ex.Data["ReconciliationNonfiniteNumeric"] is true ? "manual_review_nonfinite_numeric" : "manual_review_scope_exceeded";
                 snapshots.Add(new(kind,row.Id,Guid.Empty,"unknown",null,"",row.Status,null,null,null,null,null,null,
-                    ["manual_review_scope_exceeded"],Hash(new {kind,row.Id,scope="manual_review_scope_exceeded"})) {InspectionAvailable=false});
+                    [issue],Hash(new {kind,row.Id,scope=issue})) {InspectionAvailable=false});
             }
         }
         await tx.CommitAsync(ct);
@@ -65,19 +68,42 @@ public sealed class PayoutReconciliationService(AppDbContext db)
         var error=new InvalidOperationException(message);error.Data["ReconciliationScopeExceeded"]=true;return error;
     }
 
+    // Check native numeric values before Npgsql attempts decimal materialization.
+    // Identifiers come only from the EF model; predicates are internal constants and values are parameters.
+    private async Task RequireFinite<T>(string predicate, object[] parameters, CancellationToken ct)
+    {
+        var entity=db.Model.FindEntityType(typeof(T))!;
+        var table=entity.GetTableName()!;
+        var store=StoreObjectIdentifier.Table(table,entity.GetSchema());
+        static string Quote(string identifier) => "\""+identifier.Replace("\"","\"\"")+"\"";
+        var numeric=entity.GetProperties().Where(p => (Nullable.GetUnderlyingType(p.ClrType) ?? p.ClrType)==typeof(decimal))
+            .Select(p => $"r.{Quote(p.GetColumnName(store)!)}::text IN ('NaN','Infinity','-Infinity')");
+        var sql=$"SELECT EXISTS (SELECT 1 FROM {Quote(table)} r WHERE ({predicate}) AND ({string.Join(" OR ",numeric)})) AS \"Value\"";
+        if(await db.Database.SqlQueryRaw<bool>(sql,parameters).SingleAsync(ct))
+        {
+            var error=new InvalidOperationException("Nonfinite financial numeric requires manual review.");
+            error.Data["ReconciliationNonfiniteNumeric"]=true;
+            throw error;
+        }
+    }
+
     private async Task<ReconciliationSnapshot> Snapshot(string kind, Guid id, CancellationToken ct)
     {
         var issues = new List<string>(); object source; object records; Guid order; Guid? payee; string type, currency, status;
         decimal gross, adjustment, declaredOffset = 0; decimal? recorded = null; string? reference = null;
         if (kind == "settlement")
         {
+            await RequireFinite<SettlementQueue>("r.id={0}",[id],ct);
             var q = await db.SettlementQueue.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct)
                 ?? throw new KeyNotFoundException("Payout source not found.");
+            await RequireFinite<OrderFinancial>("r.id={0}",[q.OrderFinancialId],ct);
             var f = await db.OrderFinancials.AsNoTracking().SingleOrDefaultAsync(x => x.Id == q.OrderFinancialId, ct);
             order = f?.OrderId ?? Guid.Empty; currency = f?.Currency ?? ""; payee = q.PayeeId; type = q.PayeeType; status = q.Status;
             gross = q.Amount; adjustment = -q.RefundAdjustment; declaredOffset = q.RecoveryOffset; source = new { q, f };
             if (type is not ("supplier" or "driver")) throw new ArgumentException("Unsupported settlement payee type.");
             if (order == Guid.Empty || !payee.HasValue) issues.Add("missing_source_attribution");
+            await RequireFinite<SupplierPayout>("r.order_id={0}",[order],ct);
+            await RequireFinite<DriverPayout>("r.order_id={0}",[order],ct);
             var suppliers = await db.SupplierPayouts.AsNoTracking().Where(x => x.OrderId == order).OrderBy(x => x.Id).Take(201).ToListAsync(ct);
             var drivers = await db.DriverPayouts.AsNoTracking().Where(x => x.OrderId == order).OrderBy(x => x.Id).Take(201).ToListAsync(ct);
             if(suppliers.Count > 200 || drivers.Count > 200) throw ScopeExceeded("Order exceeds bounded reconciliation scope; manual review required.");
@@ -96,10 +122,12 @@ public sealed class PayoutReconciliationService(AppDbContext db)
         }
         else
         {
+            await RequireFinite<EntrepreneurEarning>("r.id={0}",[id],ct);
             var e = await db.EntrepreneurEarnings.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct)
                 ?? throw new KeyNotFoundException("Payout source not found.");
             order = e.OrderId; payee = e.EntrepreneurUserId; type = "entrepreneur"; currency = e.Currency; status = e.EarningStatus;
             gross = e.EntrepreneurEarningsAmount; adjustment = e.RefundAdjustment + e.ChargebackAdjustment; source = e;
+            if(e.PayoutBatchId.HasValue) await RequireFinite<EntrepreneurPayoutBatch>("r.id={0}",[e.PayoutBatchId.Value],ct);
             var batch = await db.EntrepreneurPayoutBatches.AsNoTracking().SingleOrDefaultAsync(x => x.Id == e.PayoutBatchId, ct);
             var members = await db.EntrepreneurEarnings.AsNoTracking().Where(x => e.PayoutBatchId != null && x.PayoutBatchId == e.PayoutBatchId).OrderBy(x => x.Id).Take(201).Select(x => new {x.Id,x.EntrepreneurUserId,x.Currency,x.EarningStatus}).ToListAsync(ct);
             if(members.Count > 200) throw ScopeExceeded("Batch exceeds bounded reconciliation scope; manual review required.");
@@ -118,9 +146,12 @@ public sealed class PayoutReconciliationService(AppDbContext db)
         }
         var orderRow = await db.Orders.AsNoTracking().Where(x => x.Id == order).Select(x => new {x.Id,x.Currency}).SingleOrDefaultAsync(ct);
         if(orderRow == null || orderRow.Currency != currency || payee == null || payee == Guid.Empty) issues.Add("missing_or_mismatched_order");
+        await RequireFinite<PayoutRecoveryOffset>("r.target_id={0}",[id],ct);
         var offsets = await db.Set<PayoutRecoveryOffset>().AsNoTracking().Where(x => x.TargetId == id).OrderBy(x => x.Id).Take(201).ToListAsync(ct);
         if(offsets.Count > 200) throw ScopeExceeded("Offsets exceed bounded reconciliation scope; manual review required.");
         var allocationIds = offsets.Select(x => x.AllocationId).ToArray();
+        await RequireFinite<RefundAllocation>("r.id = ANY({0})",[allocationIds],ct);
+        await RequireFinite<PayoutRecoveryOffset>("r.allocation_id = ANY({0})",[allocationIds],ct);
         var claims = await db.Set<RefundAllocation>().AsNoTracking().Where(x => allocationIds.Contains(x.Id)).OrderBy(x => x.Id).ToListAsync(ct);
         var totals = await db.Set<PayoutRecoveryOffset>().Where(x => allocationIds.Contains(x.AllocationId)).GroupBy(x => x.AllocationId).Select(g => new {Id=g.Key, Amount=g.Sum(x => x.Amount)}).OrderBy(x => x.Id).ToListAsync(ct);
         foreach(var offset in offsets)
