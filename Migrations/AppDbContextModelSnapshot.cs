@@ -1458,6 +1458,53 @@ namespace Alpha.API.Migrations
                     b.ToTable("financial_conflict_reviews");
                 });
 
+            modelBuilder.Entity("Alpha.API.Models.FinancialRecoveryRelease", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AllocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("allocation_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Evidence")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("evidence");
+
+                    b.Property<Guid>("ReviewId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("review_id");
+
+                    b.Property<Guid>("ReviewerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reviewer_id");
+
+                    b.Property<string>("SourceFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("source_fingerprint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AllocationId");
+
+                    b.HasIndex("ReviewerId");
+
+                    b.HasIndex("ReviewId", "AllocationId")
+                        .IsUnique();
+
+                    b.ToTable("financial_recovery_releases");
+                });
+
             modelBuilder.Entity("Alpha.API.Models.Invoice", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3792,6 +3839,27 @@ namespace Alpha.API.Migrations
                     b.HasOne("Alpha.API.Models.Payment", null)
                         .WithMany()
                         .HasForeignKey("PaymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Alpha.API.Models.FinancialRecoveryRelease", b =>
+                {
+                    b.HasOne("Alpha.API.Models.RefundAllocation", null)
+                        .WithMany()
+                        .HasForeignKey("AllocationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Alpha.API.Models.FinancialConflictReview", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Alpha.API.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

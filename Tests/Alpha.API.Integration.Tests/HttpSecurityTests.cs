@@ -535,6 +535,10 @@ public sealed class HttpSecurityTests(DatabaseFixture fixture) : IAsyncLifetime
         var approvePath = $"/api/financial-conflicts/reviews/{id}/approval";
         Assert.Equal(HttpStatusCode.Conflict, (await Post(approvePath, admin, new { Evidence = "Self approval" })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await Post(approvePath, Token(second.Id, "admin"), new { Evidence = "Independent synthetic verification" })).StatusCode);
+        var releasePath = $"/api/financial-conflicts/reviews/{id}/recovery-releases";
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Request(releasePath, method: HttpMethod.Post)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Post(releasePath, Token(seed.CustomerId, "customer"), new { AllocationId = Guid.NewGuid(), Evidence = "Unauthorized release" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Post(releasePath, admin, new { AllocationId = Guid.Empty, Evidence = "Missing claim" })).StatusCode);
         var status = await Request($"/api/financial-conflicts/reviews/{id}", admin);
         Assert.Equal(HttpStatusCode.OK, status.StatusCode);
         using var result = JsonDocument.Parse(await status.Content.ReadAsStringAsync());

@@ -137,19 +137,20 @@ public sealed class RefundAllocationService(AppDbContext db)
         await LockPayeeAsync(type, payeeId, currency, ct);
         if (await db.Set<PayoutRecoveryOffset>().AnyAsync(o => o.TargetKind == targetKind && o.TargetId == targetId, ct))
             throw new InvalidOperationException("This payout already has recovery offsets.");
-        if (await (from allocation in db.Set<RefundAllocation>()
-            join operation in db.Set<PaymentOperation>() on allocation.OperationId equals operation.Id
-            join payment in db.Payments on operation.PaymentId equals payment.Id
-            where allocation.FutureRecovery && allocation.PayeeType == type && allocation.PayeeId == payeeId
-                && allocation.Currency == currency && allocation.RecoveredAmount < allocation.Amount
-                && (payment.OrderId == null
-                    || !db.OrderFinancials.Any(f => f.OrderId == payment.OrderId)
-                    || db.OrderFinancials.Any(f => f.OrderId == payment.OrderId && f.FinancialStatus == RefundConflictGuard.Status)
-                    || db.Payments.Any(p => p.OrderId == payment.OrderId && p.RefundEvidenceConflict))
-            select allocation.Id).AnyAsync(ct))
-            throw new InvalidOperationException("Recovery is held for missing or conflicting source financial evidence.");
         var claims = await db.Set<RefundAllocation>().Where(a => a.FutureRecovery && a.PayeeType == type && a.PayeeId == payeeId
             && a.Currency == currency && a.RecoveredAmount < a.Amount).OrderBy(a => a.CreatedAt).ThenBy(a => a.Id).ToListAsync(ct);
+        // Preflight every matching claim before creating any offset or consuming debt.
+        foreach (var claim in claims)
+        {
+            var operation = await db.Set<PaymentOperation>().AsNoTracking().SingleAsync(x => x.Id == claim.OperationId, ct);
+            var payment = await db.Payments.AsNoTracking().SingleAsync(x => x.Id == operation.PaymentId, ct);
+            if (payment.OrderId == null || !await db.OrderFinancials.AnyAsync(f => f.OrderId == payment.OrderId, ct))
+                throw new InvalidOperationException("Recovery is held for missing or conflicting source financial evidence.");
+            var conflict = await db.OrderFinancials.AnyAsync(f => f.OrderId == payment.OrderId && f.FinancialStatus == RefundConflictGuard.Status, ct)
+                || await RefundConflictGuard.HasAsync(db, payment.OrderId, ct);
+            if (conflict && !await FinancialRecoveryReleaseService.EffectiveAsync(db, claim.Id, payment.OrderId.Value, ct))
+                throw new InvalidOperationException("Recovery is held for missing or conflicting source financial evidence.");
+        }
         var recovered = 0m;
         foreach (var claim in claims)
         {

@@ -13,7 +13,7 @@ using Xunit;
 namespace Alpha.API.Integration.Tests;
 
 [Collection("Disposable PostgreSQL")]
-public sealed class RefundRecoveryTests(DatabaseFixture fixture)
+public sealed partial class RefundRecoveryTests(DatabaseFixture fixture)
 {
     private static readonly CancellationToken Ct = CancellationToken.None;
     private static readonly Guid Admin = Guid.NewGuid();
