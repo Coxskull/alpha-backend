@@ -21,7 +21,7 @@ public sealed partial class RefundRecoveryTests
         Assert.True(quote.GetProperty("zeroNet").GetBoolean());
         Assert.True(quote.GetProperty("quoteIsAdvisory").GetBoolean());
         Assert.True(quote.GetProperty("eligibleForConfirmation").GetBoolean());
-        Assert.Equal(0m, (await db.Set<Alpha.API.Models.RefundAllocation>().SingleAsync(a => a.OperationId == refund)).RecoveredAmount);
+        Assert.Equal(0m, (await db.Set<Alpha.API.Models.RefundAllocation>().SingleAsync(a => a.OperationId == refund && a.FutureRecovery)).RecoveredAmount);
         var paid = JsonSerializer.SerializeToElement(await new PayoutAccountingService(db).SettlementAsync(future.Queue,
             new() { PaidAmount = 0, Currency = "USD", PayoutReference = "synthetic-zero-offset" }, Admin, null, Ct));
         Assert.False(paid.GetProperty("confirmationRequired").GetBoolean());
