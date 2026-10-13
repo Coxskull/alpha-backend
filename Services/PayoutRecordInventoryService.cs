@@ -57,7 +57,7 @@ public sealed class PayoutRecordInventoryService(AppDbContext db)
                 """).ToListAsync(ct)
         };
         var more=rows.Count>limit;rows=rows.Take(limit).ToList();await tx.CommitAsync(ct);
-        return new {kind,rows=rows.Select(r=>new {r.Id,r.OrderId,r.PayeeId,r.Amount,r.Currency,r.Status,r.Reference,r.SourceCount,r.ExpectedSourceCount,r.PaidCurrencySourceCount,
+        return new {kind,rows=rows.Select(r=>new {r.Id,r.OrderId,r.PayeeId,amount=r.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture),r.Currency,r.Status,r.Reference,r.SourceCount,r.ExpectedSourceCount,r.PaidCurrencySourceCount,
             issues=Issues(r)}),next=more?(Guid?)rows[^1].Id:null,scope="internal_record_link_inventory_only"};
     }
     private static string[] Issues(PayoutRecordInventoryRow row)
