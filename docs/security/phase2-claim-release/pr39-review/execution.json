@@ -1,0 +1,42 @@
+[
+  {
+    "check": "docker-start",
+    "exitCode": 0
+  },
+  {
+    "check": "base-identity",
+    "exitCode": 0
+  },
+  {
+    "check": "base-restore",
+    "exitCode": 0
+  },
+  {
+    "check": "base-build",
+    "exitCode": 0
+  },
+  {
+    "check": "candidate-identity",
+    "exitCode": 0
+  },
+  {
+    "check": "candidate-restore",
+    "exitCode": 0
+  },
+  {
+    "check": "candidate-build",
+    "exitCode": 0
+  },
+  {
+    "check": "baseline-v1-seed",
+    "exitCode": 0
+  },
+  {
+    "check": "candidate-upgrade-review",
+    "exitCode": 0
+  },
+  {
+    "check": "cleanup",
+    "exitCode": 0
+  }
+]

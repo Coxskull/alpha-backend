@@ -1,0 +1,11 @@
+{
+  "upgrade": "PASS",
+  "migrations": 11,
+  "existingMoneyAndV1RecordsUnchanged": true,
+  "oldAttestations": "STALE",
+  "staleRelease": "REJECTED_NO_RECORD",
+  "freshV2Attestations": "PASS",
+  "boundedSyntheticRecovery": 30,
+  "originalOrderHold": "RETAINED",
+  "scope": "Disposable synthetic local upgrade only; no bank/provider transfers"
+}
