@@ -20,6 +20,7 @@ public sealed partial class RefundRecoveryTests
         var record=kind=="supplier"?await db.SupplierPayouts.Where(x=>x.OrderId==source.Order).Select(x=>x.Id).SingleAsync():await db.DriverPayouts.Where(x=>x.OrderId==source.Order).Select(x=>x.Id).SingleAsync();
         var result=JsonSerializer.SerializeToElement(await new PayoutRecordInventoryService(db).ReadAsync(kind,Before(record),1,actor,Ct));
         Assert.Contains(result.GetProperty("rows").EnumerateArray(),r=>r.GetProperty("OrderId").GetGuid()==source.Order&&r.GetProperty("issues").ToString().Contains("missing_payout_source"));
+        Assert.Equal(JsonValueKind.String,result.GetProperty("rows")[0].GetProperty("amount").ValueKind);Assert.Equal("80.00",result.GetProperty("rows")[0].GetProperty("amount").GetString());
         Assert.Equal(audits,await db.AuditLogs.CountAsync());Assert.False(await db.SettlementQueue.AnyAsync(x=>x.Id==source.Queue));
     }
     [Fact]
@@ -30,7 +31,11 @@ public sealed partial class RefundRecoveryTests
         var record=await db.SupplierPayouts.Where(x=>x.OrderId==source.Order).Select(x=>x.Id).SingleAsync();
         var result=JsonSerializer.SerializeToElement(await new PayoutRecordInventoryService(db).ReadAsync("supplier",Before(record),1,actor,Ct));
         Assert.Contains(result.GetProperty("rows").EnumerateArray(),r=>r.GetProperty("OrderId").GetGuid()==source.Order&&r.GetProperty("issues").ToString().Contains("source_state_or_currency_mismatch"));
-        await db.SettlementQueue.Where(x=>x.Id==source.Queue).ExecuteUpdateAsync(x=>x.SetProperty(q=>q.PayeeType,"driver"));
+        var other=Guid.NewGuid();db.Suppliers.Add(new Supplier {Id=other,Name="Synthetic other inventory payee"});await db.SaveChangesAsync();
+        await db.SettlementQueue.Where(x=>x.Id==source.Queue).ExecuteUpdateAsync(x=>x.SetProperty(q=>q.PayeeId,other));
+        result=JsonSerializer.SerializeToElement(await new PayoutRecordInventoryService(db).ReadAsync("supplier",Before(record),1,actor,Ct));
+        Assert.Equal(0,result.GetProperty("rows")[0].GetProperty("SourceCount").GetInt64());
+        await db.SettlementQueue.Where(x=>x.Id==source.Queue).ExecuteUpdateAsync(x=>x.SetProperty(q=>q.PayeeId,source.Payee).SetProperty(q=>q.PayeeType,"driver"));
         result=JsonSerializer.SerializeToElement(await new PayoutRecordInventoryService(db).ReadAsync("supplier",Before(record),1,actor,Ct));
         Assert.Contains(result.GetProperty("rows").EnumerateArray(),r=>r.GetProperty("OrderId").GetGuid()==source.Order&&r.GetProperty("SourceCount").GetInt64()==0);
     }
