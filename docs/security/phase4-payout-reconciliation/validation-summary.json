@@ -1,0 +1,270 @@
+{
+  "date": "2026-10-13",
+  "backend": {
+    "draftPR": 42,
+    "head": "08b31205949db27dcc8cb049fef1d930ccb2289a",
+    "base": "59f9ba41f52b39b96c70c52ae6294f59383fad5e",
+    "tests": {
+      "unit": {
+        "passed": 77,
+        "failed": 0,
+        "notExecuted": 0
+      },
+      "integration": {
+        "passed": 147,
+        "failed": 0,
+        "notExecuted": 0
+      }
+    },
+    "coverage": {
+      "uniqueLinesCovered": 4797,
+      "uniqueLinesValid": 18293,
+      "lineRate": 0.262231454654786
+    },
+    "execution": [
+      {
+        "check": "identity",
+        "exitCode": 0,
+        "seconds": 0.0
+      },
+      {
+        "check": "dotnet-info",
+        "exitCode": 0,
+        "seconds": 0.16
+      },
+      {
+        "check": "unit-restore",
+        "exitCode": 0,
+        "seconds": 0.82
+      },
+      {
+        "check": "unit-build",
+        "exitCode": 0,
+        "seconds": 14.36
+      },
+      {
+        "check": "integration-restore",
+        "exitCode": 0,
+        "seconds": 1.07
+      },
+      {
+        "check": "integration-build",
+        "exitCode": 0,
+        "seconds": 2.73
+      },
+      {
+        "check": "compatibility-restore",
+        "exitCode": 0,
+        "seconds": 1.02
+      },
+      {
+        "check": "compatibility-build",
+        "exitCode": 0,
+        "seconds": 1.17
+      },
+      {
+        "check": "unit-coverage",
+        "exitCode": 0,
+        "seconds": 7.92
+      },
+      {
+        "check": "audit-Alpha.API",
+        "exitCode": 0,
+        "seconds": 2.42
+      },
+      {
+        "check": "audit-Alpha.API.Tests",
+        "exitCode": 0,
+        "seconds": 2.02
+      },
+      {
+        "check": "audit-Alpha.API.Integration.Tests",
+        "exitCode": 0,
+        "seconds": 2.08
+      },
+      {
+        "check": "database",
+        "exitCode": 0,
+        "seconds": 4.19
+      },
+      {
+        "check": "integration-coverage",
+        "exitCode": 0,
+        "seconds": 115.17
+      },
+      {
+        "check": "coverage-summary",
+        "exitCode": 0,
+        "seconds": 0.31
+      },
+      {
+        "check": "startup",
+        "exitCode": 0,
+        "seconds": 0.67
+      }
+    ],
+    "releaseCI": 38354134964,
+    "companionCI": 38354134888,
+    "ciStatus": {
+      "workflow_runs": [
+        {
+          "id": 38354134888,
+          "name": ".NET backend validation",
+          "status": "completed",
+          "conclusion": "success",
+          "run_number": 124,
+          "jobs_url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/runs/38354134888/jobs",
+          "logs_url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/runs/38354134888/logs",
+          "workflow_id": 381112911
+        },
+        {
+          "id": 38354134964,
+          "name": "Exact-head release evidence",
+          "status": "completed",
+          "conclusion": "success",
+          "run_number": 24,
+          "jobs_url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/runs/38354134964/jobs",
+          "logs_url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/runs/38354134964/logs",
+          "workflow_id": 381725934
+        }
+      ]
+    },
+    "ciArtifact": {
+      "artifacts": [
+        {
+          "id": 11791834369,
+          "name": "release-evidence-08b31205949db27dcc8cb049fef1d930ccb2289a",
+          "size_in_bytes": 1080479,
+          "url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/artifacts/11791834369",
+          "archive_download_url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/artifacts/11791834369/zip",
+          "expired": false,
+          "created_at": "2026-10-13T06:01:16Z",
+          "expires_at": "2026-11-12T06:01:15Z",
+          "updated_at": "2026-10-13T06:01:16Z",
+          "digest": "sha256:31fba877a82bd6b89dd5daf4508e4d8fa53539f1f42b44ae70928aac3d2ac6cd",
+          "workflow_run": {
+            "id": 38354134964,
+            "repository_id": 1265044034,
+            "head_repository_id": 1265044034,
+            "head_branch": "feature/phase4-payout-reconciliation",
+            "head_sha": "08b31205949db27dcc8cb049fef1d930ccb2289a"
+          }
+        }
+      ]
+    }
+  },
+  "frontend": {
+    "draftPR": 2,
+    "head": "5806378a81902d5985f4a3c1c553b2995a6d5f55",
+    "node": "24.19.0",
+    "contractTests": 12,
+    "browserCases": [
+      {
+        "name": "Balanced snapshot displays net/reference and captures exact fingerprint",
+        "result": "PASS",
+        "posts": 1
+      },
+      {
+        "name": "Exceptions can be inspected and captured without releasing anything",
+        "result": "PASS",
+        "posts": 1
+      },
+      {
+        "name": "Stale capture requires new inspection and never auto retries",
+        "result": "PASS",
+        "posts": 1
+      },
+      {
+        "name": "Unknown capture outcome resolves from immutable history without repeat",
+        "result": "PASS",
+        "posts": 1
+      },
+      {
+        "name": "Malformed queue fails closed",
+        "result": "PASS",
+        "posts": 0
+      },
+      {
+        "name": "Administrator API denial prevents inspection and capture",
+        "result": "PASS",
+        "posts": 0
+      },
+      {
+        "name": "Keyset pagination and page-only exception filter are explicit",
+        "result": "PASS",
+        "posts": 0
+      },
+      {
+        "name": "Entrepreneur queue uses earning-scoped inspection and capture",
+        "result": "PASS",
+        "posts": 1
+      }
+    ],
+    "execution": [
+      {
+        "check": "clean-install",
+        "exitCode": 0
+      },
+      {
+        "check": "exact-identity",
+        "exitCode": 0
+      },
+      {
+        "check": "node-version",
+        "exitCode": 0
+      },
+      {
+        "check": "typecheck-final",
+        "exitCode": 0
+      },
+      {
+        "check": "changed-lint-final",
+        "exitCode": 0
+      },
+      {
+        "check": "contract-test-build",
+        "exitCode": 0
+      },
+      {
+        "check": "contract-tests",
+        "exitCode": 0
+      },
+      {
+        "check": "production-audit",
+        "exitCode": 0
+      },
+      {
+        "check": "build-node24",
+        "exitCode": 0
+      }
+    ],
+    "productionAudit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "fullGraphAudit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 5,
+      "critical": 0,
+      "total": 5
+    },
+    "ci": 38354180898,
+    "vercel": {
+      "statuses": [
+        {
+          "context": "Vercel",
+          "state": "success",
+          "target_url": "https://vercel.com/alpha-auto-s-projects/alpha-auto-mvp/5BVhQvFij3QCwUmAHHGYMb8k4mo8"
+        }
+      ]
+    },
+    "ciConclusion": "success"
+  },
+  "scope": "Internal supported source consistency and immutable observations only; no external bank/provider or hosted financial acceptance"
+}
