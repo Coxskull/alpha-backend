@@ -71,7 +71,7 @@ public class EntrepreneurAdminController : ControllerBase
             return Ok(await _payoutService.MarkPaidAsync(earningId, request.PayoutReference.Trim(), adminUserId,
                 request.PaidAmount, request.Currency, cancellationToken));
         }
-        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+        catch (InvalidOperationException ex) { return Conflict(new { code = Alpha.API.Services.PayoutOperatorContract.Code(ex), message = ex.Message }); }
 
     }
 
@@ -79,7 +79,7 @@ public class EntrepreneurAdminController : ControllerBase
     public async Task<IActionResult> EarningQuote(Guid earningId, CancellationToken ct)
     {
         try { return Ok(await _payoutService.QuoteAsync(earningId, ct)); }
-        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+        catch (InvalidOperationException ex) { return Conflict(new { code = Alpha.API.Services.PayoutOperatorContract.Code(ex), message = ex.Message }); }
     }
 
     // ============================================================
