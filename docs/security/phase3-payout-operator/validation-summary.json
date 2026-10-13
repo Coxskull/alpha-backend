@@ -1,0 +1,227 @@
+{
+  "date": "2026-10-13",
+  "backend": {
+    "repository": "Coxskull/alpha-backend",
+    "draftPR": 40,
+    "basePR": 39,
+    "head": "ebd572b613ba60b8e1befd063c30fcc429b37217",
+    "tests": {
+      "unit": {
+        "passed": 77,
+        "failed": 0,
+        "notExecuted": 0
+      },
+      "integration": {
+        "passed": 131,
+        "failed": 0,
+        "notExecuted": 0
+      }
+    },
+    "sourceCoverage": {
+      "uniqueLinesCovered": 4654,
+      "uniqueLinesValid": 18150,
+      "lineRate": 0.25641873278236915
+    },
+    "migrations": 11,
+    "tables": 60,
+    "execution": [
+      {
+        "check": "identity",
+        "exitCode": 0,
+        "seconds": 0.0
+      },
+      {
+        "check": "dotnet-info",
+        "exitCode": 0,
+        "seconds": 0.27
+      },
+      {
+        "check": "unit-restore",
+        "exitCode": 0,
+        "seconds": 1.61
+      },
+      {
+        "check": "unit-build",
+        "exitCode": 0,
+        "seconds": 26.49
+      },
+      {
+        "check": "integration-restore",
+        "exitCode": 0,
+        "seconds": 1.87
+      },
+      {
+        "check": "integration-build",
+        "exitCode": 0,
+        "seconds": 2.85
+      },
+      {
+        "check": "compatibility-restore",
+        "exitCode": 0,
+        "seconds": 0.92
+      },
+      {
+        "check": "compatibility-build",
+        "exitCode": 0,
+        "seconds": 1.28
+      },
+      {
+        "check": "unit-coverage",
+        "exitCode": 0,
+        "seconds": 7.69
+      },
+      {
+        "check": "audit-Alpha.API",
+        "exitCode": 0,
+        "seconds": 2.28
+      },
+      {
+        "check": "audit-Alpha.API.Tests",
+        "exitCode": 0,
+        "seconds": 2.08
+      },
+      {
+        "check": "audit-Alpha.API.Integration.Tests",
+        "exitCode": 0,
+        "seconds": 1.92
+      },
+      {
+        "check": "database",
+        "exitCode": 0,
+        "seconds": 3.79
+      },
+      {
+        "check": "integration-coverage",
+        "exitCode": 0,
+        "seconds": 86.81
+      },
+      {
+        "check": "coverage-summary",
+        "exitCode": 0,
+        "seconds": 0.31
+      },
+      {
+        "check": "startup",
+        "exitCode": 0,
+        "seconds": 0.72
+      }
+    ],
+    "releaseCI": 38345894577,
+    "companionCI": 38345894603
+  },
+  "frontend": {
+    "repository": "Coxskull/Alpha-Auto-MVP",
+    "draftPR": 1,
+    "head": "9031196bf15df6d36cd68dc363dcde4ebe7ad4f6",
+    "base": "d351b81c8ea0989b7fcc633f8c4caf755c0a54b2",
+    "node": "20.20.2",
+    "next": "16.4.0",
+    "contractCases": 8,
+    "browserCases": [
+      {
+        "name": "Exact net/currency/reference required; gross cannot be posted",
+        "result": "PASS",
+        "posts": 1
+      },
+      {
+        "name": "Zero net and carry-forward record explicit zero",
+        "result": "PASS",
+        "posts": 1
+      },
+      {
+        "name": "Changed quote requires refresh and a new explicit decision",
+        "result": "PASS",
+        "posts": 2
+      },
+      {
+        "name": "Held payout cannot be confirmed",
+        "result": "PASS",
+        "posts": 0
+      },
+      {
+        "name": "Dispatcher quote denial cannot enable confirmation",
+        "result": "PASS",
+        "posts": 0
+      },
+      {
+        "name": "Unknown POST outcome reconciles as already recorded without repeat",
+        "result": "PASS",
+        "posts": 1
+      },
+      {
+        "name": "Mobile dialog fits and keyboard focus remains inside",
+        "result": "PASS",
+        "posts": 0
+      },
+      {
+        "name": "Entrepreneur threshold blocks confirmation",
+        "result": "PASS",
+        "posts": 0
+      }
+    ],
+    "execution": [
+      {
+        "check": "exact-identity",
+        "exitCode": 0
+      },
+      {
+        "check": "node-version",
+        "exitCode": 0
+      },
+      {
+        "check": "typecheck-final",
+        "exitCode": 0
+      },
+      {
+        "check": "changed-lint-final",
+        "exitCode": 0
+      },
+      {
+        "check": "contract-test-build",
+        "exitCode": 0
+      },
+      {
+        "check": "contract-tests",
+        "exitCode": 0
+      },
+      {
+        "check": "production-audit",
+        "exitCode": 0
+      },
+      {
+        "check": "build-node20",
+        "exitCode": 0
+      },
+      {
+        "check": "browser",
+        "exitCode": 0
+      }
+    ],
+    "productionAudit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "baselineProductionAudit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 11,
+      "high": 7,
+      "critical": 1,
+      "total": 19
+    },
+    "fullAuditResidual": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 5,
+      "critical": 0,
+      "total": 5
+    },
+    "ci": 38348889250
+  },
+  "scope": "Draft implementation and disposable/mock acceptance only; no production or transfers"
+}
