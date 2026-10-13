@@ -28,23 +28,30 @@ public sealed class EntrepreneurPayoutService(AppDbContext db)
             {
                 var batch = await db.EntrepreneurPayoutBatches.SingleAsync(b => b.Id == earning.PayoutBatchId, ct);
                 if (confirmation != null && (confirmation.PaidAmount != batch.TotalAmount || confirmation.Currency != batch.Currency || confirmation.PayoutReference != batch.PayoutReference))
-                    throw new InvalidOperationException("Replay does not match the recorded payout.");
+                    throw PayoutOperatorContract.Error("payout_replay_conflict", "Replay does not match the recorded payout.");
                 await tx.CommitAsync(ct); return new { earningId = id, paidAmount = batch.TotalAmount, batch.Currency, status = "PAID" };
             }
             if (!earning.EarningStatus.Equals("APPROVED", StringComparison.OrdinalIgnoreCase) || earning.RefundAdjustment > 0 || earning.ChargebackAdjustment > 0)
                 throw new InvalidOperationException("Only approved earnings with resolved adjustments can be paid.");
             var payable = earning.EntrepreneurEarningsAmount + earning.RefundAdjustment + earning.ChargebackAdjustment;
             if (!RefundAllocationService.Money(payable)) throw new InvalidOperationException("Invalid earning balance requires review.");
+            var outstanding = await PayoutOperatorContract.OutstandingAsync(db, "entrepreneur", earning.EntrepreneurUserId, earning.Currency, ct);
             var offset = await recovery.RecoverAsync("entrepreneur", earning.EntrepreneurUserId, earning.Currency, "earning", id, payable, ct);
             var net = payable - offset;
-            var result = new { earningId = id, grossAmount = earning.EntrepreneurEarningsAmount, refundAdjustment = earning.RefundAdjustment,
-                recoveryOffset = offset, paidAmount = net, earning.Currency, status = confirmation == null ? "quote" : "PAID" };
-            if (confirmation == null) { await tx.RollbackAsync(ct); return result; }
-            if (admin == Guid.Empty || confirmation.PaidAmount != net || confirmation.Currency != earning.Currency
-                || string.IsNullOrWhiteSpace(confirmation.PayoutReference) || confirmation.PayoutReference.Length > 128)
-                throw new InvalidOperationException("Confirm the exact quoted net amount, currency and payout reference.");
             var minimum = await db.EntrepreneurProgramConfigurations.AsNoTracking().Select(c => c.MinimumPayoutThreshold).FirstOrDefaultAsync(ct);
-            if (net > 0 && net < minimum) throw new InvalidOperationException("Net payout is below the minimum payout threshold.");
+            var result = new { earningId = id, grossAmount = earning.EntrepreneurEarningsAmount, refundAdjustment = earning.RefundAdjustment,
+                chargebackAdjustment = earning.ChargebackAdjustment, recoveryOffset = offset, payableBeforeRecovery = payable, paidAmount = net, netAmount = net, remainingRecoveryBalance = outstanding - offset,
+                zeroNet = net == 0, quoteIsAdvisory = confirmation == null, confirmationRequired = confirmation == null,
+                minimumPayoutThreshold = minimum, eligibleForConfirmation = confirmation == null && (net == 0 || net >= minimum),
+                blockedReasonCode = net > 0 && net < minimum ? "payout_threshold_not_met" : (string?)null,
+                earning.Currency, status = confirmation == null ? "quote" : "PAID" };
+            if (confirmation == null) { await tx.RollbackAsync(ct); return result; }
+            if (admin == Guid.Empty || confirmation.PaidAmount == null || string.IsNullOrWhiteSpace(confirmation.Currency)
+                || string.IsNullOrWhiteSpace(confirmation.PayoutReference) || confirmation.PayoutReference.Length > 128)
+                throw PayoutOperatorContract.Error("invalid_confirmation", "Supply the net amount, currency and payout reference.");
+            if (confirmation.PaidAmount != net || confirmation.Currency != earning.Currency)
+                throw PayoutOperatorContract.Error("payout_quote_changed", "Refresh the quote and confirm its current net amount and currency.");
+            if (net > 0 && net < minimum) throw PayoutOperatorContract.Error("payout_threshold_not_met", "Net payout is below the minimum payout threshold.");
             var batchRecord = new EntrepreneurPayoutBatch { Id = Guid.NewGuid(), SettlementDate = DateTime.UtcNow, Currency = earning.Currency,
                 TotalAmount = net, EarningCount = 1, Status = "PAID", PayoutReference = confirmation.PayoutReference,
                 CreatedAt = DateTime.UtcNow, PaidAt = DateTime.UtcNow, ProcessedByUserId = admin };
