@@ -2079,6 +2079,10 @@ namespace Alpha.API.Migrations
                         .HasColumnType("text")
                         .HasColumnName("payment_status");
 
+                    b.Property<bool>("RefundEvidenceConflict")
+                        .HasColumnType("boolean")
+                        .HasColumnName("refund_evidence_conflict");
+
                     b.Property<string>("RefundReference")
                         .HasColumnType("text")
                         .HasColumnName("refund_reference");

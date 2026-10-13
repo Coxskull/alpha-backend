@@ -140,7 +140,10 @@ public class PayPalController(AppDbContext context, PayPalService paypal,
     private async Task<bool> ApplyAsync(PaymentOperation operation, JsonElement response, CancellationToken cancellationToken)
     {
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
-        await Operations.LockPaymentAsync(operation.PaymentId, cancellationToken);
+        var orderId = await context.Payments.AsNoTracking().Where(p => p.Id == operation.PaymentId)
+            .Select(p => p.OrderId).SingleAsync(cancellationToken);
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT id FROM payments WHERE order_id = {orderId} ORDER BY id FOR UPDATE", cancellationToken);
         await context.Entry(operation).ReloadAsync(cancellationToken);
         if (operation.State == "completed") { await transaction.CommitAsync(cancellationToken); return true; }
         var payment = await context.Payments.SingleAsync(p => p.Id == operation.PaymentId, cancellationToken);
@@ -178,7 +181,9 @@ public class PayPalController(AppDbContext context, PayPalService paypal,
             if (!PayPalRefundValidator.TryValidate(response, operation.Amount, operation.Currency,
                 operation.ProviderParentReference, out var refundId)
                 || (operation.ProviderReference != null && operation.ProviderReference != refundId)
-                || payment.RefundedAmount + operation.Amount > payment.Amount) return false;
+                || payment.RefundedAmount + operation.Amount > payment.Amount
+                || financial.Currency != operation.Currency || payment.Currency != operation.Currency
+                || await context.Payments.AnyAsync(p => p.OrderId == order.Id && p.RefundedAmount > 0 && p.Currency != financial.Currency, cancellationToken)) return false;
             providerId = refundId;
             payment.RefundedAmount += operation.Amount;
             payment.RefundReference = refundId;
@@ -186,9 +191,11 @@ public class PayPalController(AppDbContext context, PayPalService paypal,
             var full = payment.RefundedAmount == payment.Amount;
             payment.RefundStatus = full ? "fully_refunded" : "partially_refunded";
             if (full) { payment.PaymentStatus = "refunded"; order.Status = "refunded"; }
-            financial.RefundAmount = payment.RefundedAmount;
+            financial.RefundAmount = payment.RefundedAmount + await context.Payments
+                .Where(p => p.OrderId == order.Id && p.Id != payment.Id).SumAsync(p => p.RefundedAmount, cancellationToken);
             // Partial refund allocation needs financial review; never release unadjusted payouts.
-            financial.FinancialStatus = "refund_review";
+            if (financial.FinancialStatus != RefundConflictGuard.Status)
+                financial.FinancialStatus = await RefundConflictGuard.HasAsync(context, order.Id, cancellationToken) ? RefundConflictGuard.Status : "refund_review";
             financial.PayoutStatus = "on_hold";
             financial.SettlementStatus = "blocked";
             var queues = await context.SettlementQueue.Where(q => q.OrderFinancialId == financial.Id && q.Status != "paid").ToListAsync(cancellationToken);

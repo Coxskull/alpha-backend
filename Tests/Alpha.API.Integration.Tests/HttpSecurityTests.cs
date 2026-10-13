@@ -283,6 +283,47 @@ public sealed class HttpSecurityTests(DatabaseFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ConcurrentStripeRefundsOnSeparatePaymentsPreserveOrderRefundTotal()
+    {
+        var first = await StripeSeed(); var second = await StripeSeed();
+        using (var db = fixture.Context())
+            await db.Payments.Where(p => p.Id == second.PaymentId).ExecuteUpdateAsync(s => s.SetProperty(p => p.OrderId, first.OrderId));
+        var responses = await Task.WhenAll(
+            StripeWebhook(StripePayload(first.Intent, first.Charge, "evt_" + Guid.NewGuid())),
+            StripeWebhook(StripePayload(second.Intent, second.Charge, "evt_" + Guid.NewGuid())));
+        Assert.All(responses, response => Assert.Equal(HttpStatusCode.OK, response.StatusCode));
+        using var verify = fixture.Context();
+        Assert.Equal(60m, (await verify.OrderFinancials.SingleAsync(f => f.OrderId == first.OrderId)).RefundAmount);
+        Assert.Equal(60m, await verify.Payments.Where(p => p.OrderId == first.OrderId).SumAsync(p => p.RefundedAmount));
+        Assert.Equal(2, await verify.Set<Alpha.API.Models.PaymentOperation>().CountAsync(o => o.PaymentId == first.PaymentId || o.PaymentId == second.PaymentId));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ValidStripeEvidenceMustNotClearUnresolvedConflict(bool otherPayment)
+    {
+        var first = await StripeSeed();
+        Assert.Equal(HttpStatusCode.OK, (await StripeWebhook(StripePayload(first.Intent, first.Charge, "evt_" + Guid.NewGuid()))).StatusCode);
+        var conflict = StripePayload(first.Intent, first.Charge, "evt_" + Guid.NewGuid(),
+            items: new[] { StripeRefund("re_" + first.Charge[3..], 3000, "ch_wrong_parent", first.Intent) });
+        Assert.Equal(HttpStatusCode.OK, (await StripeWebhook(conflict)).StatusCode);
+        using (var db = fixture.Context())
+            Assert.Equal("refund_evidence_conflict", (await db.OrderFinancials.SingleAsync(f => f.OrderId == first.OrderId)).FinancialStatus);
+        var next = first;
+        if (otherPayment)
+        {
+            next = await StripeSeed();
+            using var db = fixture.Context();
+            await db.Payments.Where(p => p.Id == next.PaymentId).ExecuteUpdateAsync(s => s.SetProperty(p => p.OrderId, first.OrderId));
+        }
+        Assert.Equal(HttpStatusCode.OK, (await StripeWebhook(StripePayload(next.Intent, next.Charge, "evt_" + Guid.NewGuid()))).StatusCode);
+        using var verify = fixture.Context();
+        Assert.Equal("refund_evidence_conflict", (await verify.OrderFinancials.SingleAsync(f => f.OrderId == first.OrderId)).FinancialStatus);
+        Assert.True((await verify.Payments.SingleAsync(p => p.Id == first.PaymentId)).RefundEvidenceConflict);
+    }
+
+    [Fact]
     public async Task ConcurrentSignedStripeEventsCreateOneRefundOperation()
     {
         var seed = await StripeSeed();
@@ -359,8 +400,10 @@ public sealed class HttpSecurityTests(DatabaseFixture fixture) : IAsyncLifetime
         Assert.True(await PayoutAccountingService.HasPendingStripeRefundAsync(verify, second.OrderId, CancellationToken.None));
     }
 
-    [Fact]
-    public async Task StripeEvidenceConflictWaitsForExistingPayeesRecoveryLock()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StripeEvidenceConflictWaitsForExistingPayeesRecoveryLock(bool otherPayment)
     {
         var seed = await StripeSeed();
         Assert.Equal(HttpStatusCode.OK, (await StripeWebhook(StripePayload(seed.Intent, seed.Charge, "evt_" + Guid.NewGuid()))).StatusCode);
@@ -374,9 +417,16 @@ public sealed class HttpSecurityTests(DatabaseFixture fixture) : IAsyncLifetime
             await new RefundAllocationService(db).AllocateAsync(operation.Id, new Alpha.API.DTOs.RefundAllocationDto { Evidence = "Synthetic attributable paid earning",
                 Lines = new() { new() { SourceKind = "earning", SourceId = earning.Id, Amount = 30 } } }, Guid.NewGuid(), CancellationToken.None);
         }
+        var target = seed;
+        if (otherPayment)
+        {
+            target = await StripeSeed();
+            using var db = fixture.Context();
+            await db.Payments.Where(p => p.Id == target.PaymentId).ExecuteUpdateAsync(s => s.SetProperty(p => p.OrderId, seed.OrderId));
+        }
         using var gate = fixture.Context(); await using var tx = await gate.Database.BeginTransactionAsync();
         await new RefundAllocationService(gate).LockPayeeAsync("entrepreneur", seed.CustomerId, "USD", CancellationToken.None);
-        var payload = StripePayload(seed.Intent, seed.Charge, "evt_" + Guid.NewGuid(), items: new[] { StripeRefund("re_" + seed.Charge[3..], 3000, "ch_wrong_parent", seed.Intent) });
+        var payload = StripePayload(target.Intent, target.Charge, "evt_" + Guid.NewGuid(), items: new[] { StripeRefund("re_" + target.Charge[3..], 3000, "ch_wrong_parent", target.Intent) });
         var webhook = StripeWebhook(payload); var released = false;
         try
         {

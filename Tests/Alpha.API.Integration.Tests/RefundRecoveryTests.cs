@@ -251,6 +251,58 @@ public sealed class RefundRecoveryTests(DatabaseFixture fixture)
         finally { await db.Database.ExecuteSqlRawAsync("DROP TRIGGER recovery_review_failure ON supplier_payouts; DROP FUNCTION recovery_review_failure();"); }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MissingSourceFinancialBlocksRecoveryEvenIfConflictDisplayRowIsGone(bool conflict)
+    {
+        var source = await Settlement(); var operation = await Refund(source.Payment, 30); await Allocate(operation, Plan(source.Queue, 30));
+        using (var db = fixture.Context())
+        {
+            await db.Payments.Where(p => p.Id == source.Payment).ExecuteUpdateAsync(s => s.SetProperty(p => p.RefundEvidenceConflict, conflict));
+            await db.OrderFinancials.Where(f => f.OrderId == source.Order).ExecuteDeleteAsync();
+        }
+        var future = await Settlement(paid: false, amount: 50, payee: source.Payee);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Pay(future.Queue, 20));
+        using var verify = fixture.Context();
+        Assert.Equal(0m, (await verify.Set<RefundAllocation>().SingleAsync(a => a.OperationId == operation && a.FutureRecovery)).RecoveredAmount);
+        Assert.False(await verify.Set<PayoutRecoveryOffset>().AnyAsync(o => o.TargetId == future.Queue));
+        Assert.False(await verify.SupplierPayouts.AnyAsync(p => p.OrderId == future.Order));
+    }
+
+    [Fact]
+    public async Task UnassociatedRecoverySourceRequiresManualReviewWithoutConsumingDebt()
+    {
+        var source = await Settlement(); var operation = await Refund(source.Payment, 30); await Allocate(operation, Plan(source.Queue, 30));
+        using (var db = fixture.Context())
+            await db.Payments.Where(p => p.Id == source.Payment).ExecuteUpdateAsync(s => s.SetProperty(p => p.OrderId, (Guid?)null));
+        var future = await Settlement(paid: false, amount: 50, payee: source.Payee);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Pay(future.Queue, 20));
+        using var verify = fixture.Context();
+        Assert.Equal(0m, (await verify.Set<RefundAllocation>().SingleAsync(a => a.OperationId == operation && a.FutureRecovery)).RecoveredAmount);
+        Assert.False(await verify.Set<PayoutRecoveryOffset>().AnyAsync(o => o.TargetId == future.Queue));
+    }
+
+    [Fact]
+    public async Task DurableConflictBlocksRecoveryAndAllocationAfterDisplayStatusChangesAndLaterReservations()
+    {
+        var source = await Settlement(); var operation = await Refund(source.Payment, 30); await Allocate(operation, Plan(source.Queue, 30));
+        using (var db = fixture.Context())
+        {
+            await db.Payments.Where(p => p.Id == source.Payment).ExecuteUpdateAsync(s => s.SetProperty(p => p.RefundEvidenceConflict, true));
+            await db.OrderFinancials.Where(f => f.OrderId == source.Order).ExecuteUpdateAsync(s => s.SetProperty(f => f.FinancialStatus, "needs_review"));
+        }
+        var future = await Settlement(paid: false, amount: 50, payee: source.Payee);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Pay(future.Queue, 20));
+        var next = await Refund(source.Payment, 5);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Allocate(next, Plan(source.Queue, 5)));
+        using var context = fixture.Context(); var payment = await context.Payments.SingleAsync(p => p.Id == source.Payment);
+        await new PaymentOperationService(context).ReserveAsync(payment.Id, "refund", Guid.NewGuid().ToString(), 5, "USD", payment.TransactionReference!, Ct);
+        Assert.Equal(RefundConflictGuard.Status, (await context.OrderFinancials.SingleAsync(f => f.OrderId == source.Order)).FinancialStatus);
+        Assert.Equal(0m, (await context.Set<RefundAllocation>().SingleAsync(a => a.OperationId == operation && a.FutureRecovery)).RecoveredAmount);
+        Assert.False(await context.Set<PayoutRecoveryOffset>().AnyAsync(o => o.TargetId == future.Queue));
+    }
+
     [Fact]
     public async Task ConflictingSourceEvidenceBlocksAllocationAndFutureRecovery()
     {
