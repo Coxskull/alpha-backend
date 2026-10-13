@@ -548,4 +548,15 @@ public sealed class HttpSecurityTests(DatabaseFixture fixture) : IAsyncLifetime
         await db.Users.Where(u => u.Id == second.Id).ExecuteUpdateAsync(s => s.SetProperty(u => u.IsActive, false));
         Assert.Equal(HttpStatusCode.Unauthorized, (await Post(approvePath, Token(second.Id, "admin"), new { Evidence = "Independent synthetic verification" })).StatusCode);
     }
+    [Theory]
+    [InlineData(null, 401)]
+    [InlineData("dispatcher", 403)]
+    [InlineData("supplier", 403)]
+    [InlineData("admin", 403)]
+    public async Task ReconciliationHttpRejectsAnonymousNonAdminAndUnknownAdmin(string? role, int status)
+    {
+        var token=role == null ? null : Token(Guid.NewGuid(),role);
+        using var response=await Request("/api/payout-reconciliation",token);
+        Assert.Equal(status,(int)response.StatusCode);
+    }
 }

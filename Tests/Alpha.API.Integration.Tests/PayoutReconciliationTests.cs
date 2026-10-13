@@ -26,7 +26,8 @@ public sealed partial class RefundRecoveryTests
         var s=await Settlement(); var actor=await ReconciliationAdmin(); using var db=fixture.Context();
         await db.SupplierPayouts.Where(x => x.OrderId==s.Order).ExecuteUpdateAsync(x => x.SetProperty(p=>p.Currency,"EUR"));
         var result=await new PayoutReconciliationService(db).InspectAsync("settlement",s.Queue,actor,Ct); Assert.Contains("payout_currency_mismatch",result.Issues); Assert.Contains("missing_or_duplicate_payout_audit",result.Issues);
-        await db.SupplierPayouts.Where(x => x.OrderId==s.Order).ExecuteUpdateAsync(x => x.SetProperty(p=>p.SupplierId,Guid.NewGuid()));
+        var other=Guid.NewGuid();db.Suppliers.Add(new Supplier {Id=other,Name="Synthetic unrelated supplier"});await db.SaveChangesAsync();
+        await db.SupplierPayouts.Where(x => x.OrderId==s.Order).ExecuteUpdateAsync(x => x.SetProperty(p=>p.SupplierId,other));
         result=await new PayoutReconciliationService(db).InspectAsync("settlement",s.Queue,actor,Ct); Assert.Null(result.RecordedNet); Assert.Contains("missing_or_duplicate_payout",result.Issues);
     }
     [Fact]
@@ -79,5 +80,15 @@ public sealed partial class RefundRecoveryTests
         var batch=await db.EntrepreneurEarnings.Where(x=>x.Id==e.Earning).Select(x=>x.PayoutBatchId).SingleAsync();
         await db.EntrepreneurPayoutBatches.Where(x=>x.Id==batch).ExecuteUpdateAsync(x=>x.SetProperty(b=>b.Currency,"EUR"));
         Assert.Contains("payout_currency_mismatch",(await service.InspectAsync("earning",e.Earning,actor,Ct)).Issues);
+    }
+    [Fact]
+    public async Task ReconciliationConcurrentWithPayoutObservesOneCommittedState()
+    {
+        var s=await Settlement(paid:false);var actor=await ReconciliationAdmin();
+        async Task<ReconciliationSnapshot> Inspect(){using var db=fixture.Context();return await new PayoutReconciliationService(db).InspectAsync("settlement",s.Queue,actor,Ct);}
+        var inspect=Inspect();var pay=Pay(s.Queue,80);await Task.WhenAll(inspect,pay);var observed=await inspect;
+        Assert.Empty(observed.Issues);
+        if(observed.Status=="paid")Assert.Equal(80,observed.RecordedNet);else Assert.Null(observed.RecordedNet);
+        using var check=fixture.Context();Assert.Equal(1,await check.SupplierPayouts.CountAsync(x=>x.OrderId==s.Order));
     }
 }

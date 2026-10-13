@@ -129,6 +129,8 @@ public sealed class PayoutReconciliationService(AppDbContext db)
             else { var action=audits[0].Action; var marker=action.IndexOf("; reference=",StringComparison.Ordinal);
                 var auditReference=marker < 0 ? null : action[(marker+12)..];
                 if(string.IsNullOrWhiteSpace(auditReference) || string.IsNullOrWhiteSpace(audits[0].PerformedBy)) issues.Add("missing_payout_reference");
+                var expectedAudit = kind == "settlement" ? $"Payout recorded {id}; net={expected}; recovery={recovered}; reference=" : $"Entrepreneur payout recorded {id}; net={expected}; recovery={recovered}; reference=";
+                if(!action.StartsWith(expectedAudit,StringComparison.Ordinal)) issues.Add("payout_audit_balance_mismatch");
                 if(kind == "settlement") reference=auditReference;
                 else if(reference != auditReference) issues.Add("reference_mismatch"); }
         }
@@ -144,9 +146,9 @@ public sealed class PayoutReconciliationService(AppDbContext db)
         await Admin(actor,ct);
         // Serializes only capture replays; payout operations remain independent. Repeatable-read gives one coherent observation.
         await db.Database.OpenConnectionAsync(ct);
-        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_lock(hashtextextended({request.Id.ToString()}, 4))",ct);
         try
         {
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_lock(hashtextextended({request.Id.ToString()}, 4))",ct);
             await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead,ct);
             await Admin(actor,ct);
             var existing = await db.AuditLogs.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.Id,ct);
@@ -164,7 +166,11 @@ public sealed class PayoutReconciliationService(AppDbContext db)
             db.AuditLogs.Add(new AuditLog {Id=request.Id,OrderId=snapshot.OrderId,Action=Prefix+JsonSerializer.Serialize(capture),PerformedBy=actor.ToString(),CreatedAt=capture.CapturedAt});
             await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return capture;
         }
-        finally { await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_unlock(hashtextextended({request.Id.ToString()}, 4))",CancellationToken.None); db.ChangeTracker.Clear(); await db.Database.CloseConnectionAsync(); }
+        finally
+        {
+            try { await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_unlock(hashtextextended({request.Id.ToString()}, 4))",CancellationToken.None); }
+            finally { db.ChangeTracker.Clear(); await db.Database.CloseConnectionAsync(); }
+        }
     }
 
     public async Task<object> HistoryAsync(string kind, Guid id, Guid? after, int limit, Guid actor, CancellationToken ct)
