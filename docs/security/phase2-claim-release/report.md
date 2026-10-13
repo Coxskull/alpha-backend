@@ -33,3 +33,9 @@ The additive migration needs an approved isolated hosted baseline/upgrade rehear
 ## Stack and merge order
 
 PR #39 targets PR #38's branch, while #38 remains an open draft targeting main. Either merge #39 into #38 first, then integrate #38 into main with a rewritten combined description and fresh exact-main verification; or merge #38 first and **retarget #39 to main before merging it**. Merging into a former branch after its parent PR is already merged will not update main. No merge is performed by this work.
+
+## Exact-head CI agreement
+
+Both [release evidence](https://github.com/Coxskull/alpha-backend/actions/runs/38343086645) and [companion validation](https://github.com/Coxskull/alpha-backend/actions/runs/38343086768) passed at cdffbfc5bdb8acfa710cbed0c7f6eda93f561b66. Release job 115118233828 confirms 77 unit + 128 integration tests, zero failures/skips, source line rate 0.25532149553325245 and synthetic health 200. Decoded job logs are permanently preserved in the evidence archive.
+
+[Artifact 11788150164](https://github.com/Coxskull/alpha-backend/actions/runs/38343086645/artifacts/11788150164) has SHA-256 1884cf4357499d966433e99f9acd7e4a1c220124b8b7f1b138c6843fe431fef5 and expires 2026-11-12. github-ci.json retains workflow/artifact identity.
