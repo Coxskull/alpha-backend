@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-13",
+  "parentPR38Merged": true,
+  "main": "923554c0005c26f0e80e38051d41c9eb1699b65e",
+  "parentHead": "442f3ed5c946b08580f0d6934dfa54f2f943cba8",
+  "parentTreeIdenticalToMain": true,
+  "PR39Base": "main",
+  "PR39Head": "cdffbfc5bdb8acfa710cbed0c7f6eda93f561b66",
+  "prospectiveMergeTree": "1a1b9f43ac86e28ec2d5761e1833784e869f27dd",
+  "testedPR39Tree": "1a1b9f43ac86e28ec2d5761e1833784e869f27dd",
+  "conflictFree": true,
+  "applicationChanges": false,
+  "existingExactHeadTests": 205,
+  "existingCI": "both success",
+  "retestsPerformed": false,
+  "mergePerformed": false
+}
