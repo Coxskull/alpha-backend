@@ -29,9 +29,12 @@ public sealed class FinancialRecoveryReleaseService(AppDbContext db)
         {
             if (existing.ReviewerId != actor || existing.Evidence != request.Evidence.Trim())
                 throw new InvalidOperationException("Recorded release cannot be changed or reassigned.");
-            var effective = allocation.RecoveredAmount < allocation.Amount && existing.SourceFingerprint == await reviews.SnapshotAsync(orderId, ct, recovery: true);
+            var effective = allocation.RecoveredAmount < allocation.Amount && !await PayoutAccountingService.HasPendingStripeRefundAsync(db, orderId, ct)
+                && existing.SourceFingerprint == await reviews.SnapshotAsync(orderId, ct, recovery: true);
             await tx.CommitAsync(ct); return new { release = existing, scope = "existing_future_recovery_claim_only", effective, originalOrderHoldReleased = false };
         }
+        if (await PayoutAccountingService.HasPendingStripeRefundAsync(db, orderId, ct))
+            throw new InvalidOperationException("A pending signed refund event must finish processing before claim release.");
         var approval = await db.Set<FinancialConflictApproval>().AsNoTracking().SingleOrDefaultAsync(x => x.ReviewId == reviewId, ct)
             ?? throw new InvalidOperationException("Two administrator attestations are required.");
         if (actor != review.FirstReviewerId && actor != approval.ReviewerId || review.FirstReviewerId == approval.ReviewerId)
@@ -39,7 +42,7 @@ public sealed class FinancialRecoveryReleaseService(AppDbContext db)
         await reviews.AdministratorAsync(review.FirstReviewerId, ct);
         await reviews.AdministratorAsync(approval.ReviewerId, ct);
         // Recovery can progress under this payee lock; always reload after acquiring it.
-        await db.Entry(allocation).ReloadAsync(ct);
+        allocation = await db.Set<RefundAllocation>().AsNoTracking().SingleAsync(x => x.Id == request.AllocationId, ct);
         if (allocation.RecoveredAmount >= allocation.Amount || review.OrderId != orderId
             || review.SnapshotHash != await reviews.SnapshotAsync(orderId, ct))
             throw new InvalidOperationException("The reviewed financial evidence changed or the claim is fully recovered. A fresh review is required.");

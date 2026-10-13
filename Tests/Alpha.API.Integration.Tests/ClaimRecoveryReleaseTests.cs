@@ -152,4 +152,31 @@ public sealed partial class RefundRecoveryTests
         var future = await Settlement(amount: 50, paid: false, payee: seed.Payee);
         await Assert.ThrowsAsync<InvalidOperationException>(() => Pay(future.Queue, 20));
     }
+    [Fact]
+    public async Task PendingSignedSourceRefundEventBlocksClaimReleaseAndRecovery()
+    {
+        var seed = await ReviewedClaim();
+        // Establish Stripe identity before a fresh review so the later pending event is the only change.
+        var intent = "pi_synthetic_" + Guid.NewGuid().ToString("N");
+        using (var db = fixture.Context())
+        {
+            await db.Payments.Where(x => x.Id == seed.Payment).ExecuteUpdateAsync(s => s.SetProperty(x => x.PaymentGateway, "stripe").SetProperty(x => x.GatewayPaymentId, intent));
+            var reviews = new FinancialConflictReviewService(db);
+            var fresh = await reviews.SubmitAsync(seed.Payment, new() { IdempotencyKey = "stripe-source-review", Evidence = "Synthetic Stripe source reviewed" }, seed.First, Ct);
+            await reviews.ApproveAsync(fresh.Id, new() { Evidence = "Independent Stripe source review" }, seed.Second, Ct);
+            seed.Review = fresh.Id;
+        }
+        await Release(seed.Review, seed.Claim, seed.Second);
+        using (var db = fixture.Context())
+        {
+            db.PaymentWebhookEvents.Add(new PaymentWebhookEvent { Id = Guid.NewGuid(), Gateway = "stripe", GatewayEventId = "evt_synthetic_" + Guid.NewGuid(), EventType = "charge.refunded", Processed = false,
+                Payload = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(new { data = new { @object = new { payment_intent = intent } } })), ReceivedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
+        var future = await Settlement(amount: 50, paid: false, payee: seed.Payee);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Pay(future.Queue, 20));
+        var replay = await Release(seed.Review, seed.Claim, seed.Second);
+        Assert.False(System.Text.Json.JsonSerializer.SerializeToElement(replay).GetProperty("effective").GetBoolean());
+        using var check = fixture.Context(); Assert.Equal(0m, (await check.Set<RefundAllocation>().SingleAsync(x => x.Id == seed.Claim)).RecoveredAmount);
+    }
 }

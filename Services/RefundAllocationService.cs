@@ -146,6 +146,8 @@ public sealed class RefundAllocationService(AppDbContext db)
             var payment = await db.Payments.AsNoTracking().SingleAsync(x => x.Id == operation.PaymentId, ct);
             if (payment.OrderId == null || !await db.OrderFinancials.AnyAsync(f => f.OrderId == payment.OrderId, ct))
                 throw new InvalidOperationException("Recovery is held for missing or conflicting source financial evidence.");
+            if (await PayoutAccountingService.HasPendingStripeRefundAsync(db, payment.OrderId.Value, ct))
+                throw new InvalidOperationException("Recovery is held for an unprocessed signed source refund event.");
             var conflict = await db.OrderFinancials.AnyAsync(f => f.OrderId == payment.OrderId && f.FinancialStatus == RefundConflictGuard.Status, ct)
                 || await RefundConflictGuard.HasAsync(db, payment.OrderId, ct);
             if (conflict && !await FinancialRecoveryReleaseService.EffectiveAsync(db, claim.Id, payment.OrderId.Value, ct))
