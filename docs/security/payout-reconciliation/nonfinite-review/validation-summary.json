@@ -1,0 +1,153 @@
+{
+  "backendHead": "281a78019284f2d29005ecb55f446afb4f4ac4d7",
+  "backendMergedBase": "197affe709259e9aeea3d504ed56e56c2e1ba834",
+  "frontendHead": "ee6ced8c9ccf9e4a0a9cde5fecb984aa83dc0294",
+  "frontendMergedMain": "6a34589d83c888703bd920b2d896c7fbcedf7048",
+  "checks": [
+    {
+      "check": "identity",
+      "exitCode": 0,
+      "seconds": 0.0
+    },
+    {
+      "check": "dotnet-info",
+      "exitCode": 0,
+      "seconds": 0.21
+    },
+    {
+      "check": "unit-restore",
+      "exitCode": 0,
+      "seconds": 0.87
+    },
+    {
+      "check": "unit-build",
+      "exitCode": 0,
+      "seconds": 15.52
+    },
+    {
+      "check": "integration-restore",
+      "exitCode": 0,
+      "seconds": 0.98
+    },
+    {
+      "check": "integration-build",
+      "exitCode": 0,
+      "seconds": 2.66
+    },
+    {
+      "check": "compatibility-restore",
+      "exitCode": 0,
+      "seconds": 0.97
+    },
+    {
+      "check": "compatibility-build",
+      "exitCode": 0,
+      "seconds": 1.33
+    },
+    {
+      "check": "unit-coverage",
+      "exitCode": 0,
+      "seconds": 7.97
+    },
+    {
+      "check": "audit-Alpha.API",
+      "exitCode": 0,
+      "seconds": 1.98
+    },
+    {
+      "check": "audit-Alpha.API.Tests",
+      "exitCode": 0,
+      "seconds": 2.03
+    },
+    {
+      "check": "audit-Alpha.API.Integration.Tests",
+      "exitCode": 0,
+      "seconds": 2.22
+    },
+    {
+      "check": "database",
+      "exitCode": 0,
+      "seconds": 4.09
+    },
+    {
+      "check": "integration-coverage",
+      "exitCode": 0,
+      "seconds": 100.54
+    },
+    {
+      "check": "coverage-summary",
+      "exitCode": 0,
+      "seconds": 0.37
+    },
+    {
+      "check": "startup",
+      "exitCode": 0,
+      "seconds": 0.72
+    }
+  ],
+  "coverage": {
+    "assembly": {
+      "linesCovered": 37202,
+      "linesValid": 54946,
+      "lineRate": 0.677,
+      "branchesCovered": 1327,
+      "branchesValid": 3821,
+      "branchRate": 0.3472,
+      "includesGeneratedMigrations": true
+    },
+    "nonMigrationSource": {
+      "uniqueLinesCovered": 4887,
+      "uniqueLinesValid": 18384,
+      "lineRate": 0.2658289817232376
+    },
+    "scope": "Merged unit and disposable PostgreSQL/HTTP integration coverage; migration code shown separately"
+  },
+  "browser": [
+    {
+      "name": "Balanced snapshot displays net/reference and captures exact fingerprint",
+      "result": "PASS",
+      "posts": 1
+    },
+    {
+      "name": "Exceptions can be inspected and captured without releasing anything",
+      "result": "PASS",
+      "posts": 1
+    },
+    {
+      "name": "Stale capture requires new inspection and never auto retries",
+      "result": "PASS",
+      "posts": 1
+    },
+    {
+      "name": "Unknown capture outcome resolves from immutable history without repeat",
+      "result": "PASS",
+      "posts": 1
+    },
+    {
+      "name": "Malformed queue fails closed",
+      "result": "PASS",
+      "posts": 0
+    },
+    {
+      "name": "Administrator API denial prevents inspection and capture",
+      "result": "PASS",
+      "posts": 0
+    },
+    {
+      "name": "Keyset pagination and page-only exception filter are explicit",
+      "result": "PASS",
+      "posts": 0
+    },
+    {
+      "name": "Entrepreneur queue uses earning-scoped inspection and capture",
+      "result": "PASS",
+      "posts": 1
+    },
+    {
+      "name": "Nonfinite source remains a manual row and does not block pagination",
+      "result": "PASS",
+      "posts": 0
+    }
+  ],
+  "PR": "https://github.com/Coxskull/alpha-backend/pull/45"
+}
