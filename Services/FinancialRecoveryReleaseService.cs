@@ -23,6 +23,11 @@ public sealed class FinancialRecoveryReleaseService(AppDbContext db)
         if (operation.PaymentId != review.PaymentId || operation.Kind != "refund" || operation.State != "completed"
             || !allocation.FutureRecovery || allocation.Amount <= 0)
             throw new InvalidOperationException("Only an existing future-recovery claim on the reviewed payment is eligible.");
+        if (operation.Currency != allocation.Currency
+            || await db.Payments.AnyAsync(x => x.OrderId == orderId && x.Currency != allocation.Currency, ct)
+            || !await db.Orders.AnyAsync(x => x.Id == orderId && x.Currency == allocation.Currency, ct)
+            || !await db.OrderFinancials.AnyAsync(x => x.OrderId == orderId && x.Currency == allocation.Currency, ct))
+            throw new InvalidOperationException("Recovery source currencies must agree; mixed currency evidence remains held.");
         await new RefundAllocationService(db).LockPayeeAsync(allocation.PayeeType, allocation.PayeeId, allocation.Currency, ct);
         var existing = await db.Set<FinancialRecoveryRelease>().AsNoTracking().SingleOrDefaultAsync(x => x.ReviewId == reviewId && x.AllocationId == allocation.Id, ct);
         if (existing is not null)

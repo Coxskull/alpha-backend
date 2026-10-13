@@ -179,4 +179,15 @@ public sealed partial class RefundRecoveryTests
         Assert.False(System.Text.Json.JsonSerializer.SerializeToElement(replay).GetProperty("effective").GetBoolean());
         using var check = fixture.Context(); Assert.Equal(0m, (await check.Set<RefundAllocation>().SingleAsync(x => x.Id == seed.Claim)).RecoveredAmount);
     }
+    [Fact]
+    public async Task FreshAttestationsCannotOverrideMixedSourceCurrency()
+    {
+        var seed = await ReviewedClaim(); using var db = fixture.Context();
+        await db.OrderFinancials.Where(x => x.OrderId == seed.Order).ExecuteUpdateAsync(s => s.SetProperty(x => x.Currency, "EUR"));
+        var reviews = new FinancialConflictReviewService(db);
+        var fresh = await reviews.SubmitAsync(seed.Payment, new() { IdempotencyKey = "mixed-currency", Evidence = "Mixed source reviewed but not repaired" }, seed.First, Ct);
+        await reviews.ApproveAsync(fresh.Id, new() { Evidence = "Independent mixed source review" }, seed.Second, Ct);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Release(fresh.Id, seed.Claim, seed.Second));
+        Assert.False(await db.Set<FinancialRecoveryRelease>().AnyAsync(x => x.ReviewId == fresh.Id));
+    }
 }
