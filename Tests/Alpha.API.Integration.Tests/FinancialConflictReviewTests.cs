@@ -67,6 +67,16 @@ public sealed class FinancialConflictReviewTests(DatabaseFixture fixture)
     }
 
     [Fact]
+    public async Task ChangedOrderCurrencyRequiresFreshReview()
+    {
+        var seed = await Seed(); using var db = fixture.Context(); var service = new FinancialConflictReviewService(db);
+        var review = await service.SubmitAsync(seed.Payment, Request(), seed.First, default);
+        await db.Orders.Where(x => x.Id == seed.Order).ExecuteUpdateAsync(x => x.SetProperty(o => o.Currency, "EUR"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.ApproveAsync(review.Id, Approval(), seed.Second, default));
+        Assert.False(await db.Set<FinancialConflictApproval>().AnyAsync(x => x.ReviewId == review.Id));
+    }
+
+    [Fact]
     public async Task ConcurrentSecondApprovalsHaveOneEffect()
     {
         var seed = await Seed(); Guid reviewId;

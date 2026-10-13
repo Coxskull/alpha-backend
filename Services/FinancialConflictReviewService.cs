@@ -36,6 +36,8 @@ public sealed class FinancialConflictReviewService(AppDbContext db)
 
     private async Task<string> SnapshotAsync(Guid orderId, CancellationToken ct)
     {
+        var order = await db.Orders.AsNoTracking().Where(x => x.Id == orderId)
+            .Select(x => new { x.Id, x.CustomerId, x.Currency, x.CountryCode, x.Status }).SingleAsync(ct);
         var payments = await db.Payments.AsNoTracking().Where(x => x.OrderId == orderId).OrderBy(x => x.Id).ToListAsync(ct);
         var paymentIds = payments.Select(x => x.Id).ToArray();
         var operations = await db.Set<PaymentOperation>().AsNoTracking().Where(x => paymentIds.Contains(x.PaymentId)).OrderBy(x => x.Id).ToListAsync(ct);
@@ -45,7 +47,7 @@ public sealed class FinancialConflictReviewService(AppDbContext db)
         var offsets = await db.Set<PayoutRecoveryOffset>().AsNoTracking().Where(x => allocationIds.Contains(x.AllocationId)).OrderBy(x => x.Id).ToListAsync(ct);
         var financials = await db.OrderFinancials.AsNoTracking().Where(x => x.OrderId == orderId).OrderBy(x => x.Id).ToListAsync(ct);
         var conflicts = await db.AuditLogs.AsNoTracking().Where(x => x.OrderId == orderId && x.Action == "Stripe refund evidence conflict held for manual review").OrderBy(x => x.Id).ToListAsync(ct);
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { payments, operations, allocations, offsets, financials, conflicts }))));
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { order, payments, operations, allocations, offsets, financials, conflicts }))));
     }
 
     public async Task<FinancialConflictReview> SubmitAsync(Guid paymentId, FinancialConflictReviewDto request, Guid actor, CancellationToken ct)
