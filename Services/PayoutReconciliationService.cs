@@ -8,8 +8,11 @@ using Microsoft.EntityFrameworkCore;
 namespace Alpha.API.Services;
 
 public sealed record ReconciliationSnapshot(string Kind, Guid Id, Guid OrderId, string PayeeType, Guid? PayeeId,
-    string Currency, string Status, decimal GrossAmount, decimal Adjustment, decimal RecoveryOffset, decimal ExpectedNet,
-    decimal? RecordedNet, string? Reference, string[] Issues, string Fingerprint);
+    string Currency, string Status, decimal? GrossAmount, decimal? Adjustment, decimal? RecoveryOffset, decimal? ExpectedNet,
+    decimal? RecordedNet, string? Reference, string[] Issues, string Fingerprint)
+{
+    public bool InspectionAvailable {get; init;} = true;
+}
 public sealed record ReconciliationCapture(Guid Id, Guid Actor, DateTime CapturedAt, ReconciliationSnapshot Snapshot);
 public sealed record ReconciliationCaptureRequest(Guid Id, string Fingerprint);
 public sealed class ReconciliationQueueRow
@@ -37,7 +40,16 @@ public sealed class PayoutReconciliationService(AppDbContext db)
             : await db.Database.SqlQuery<ReconciliationQueueRow>($"SELECT id AS \"Id\", earning_status AS \"Status\" FROM entrepreneur_earnings WHERE ({after}::uuid IS NULL OR id > {after}::uuid) ORDER BY id LIMIT {limit + 1}").ToListAsync(ct);
         var hasMore = rows.Count > limit; rows = rows.Take(limit).ToList();
         var snapshots = new List<ReconciliationSnapshot>();
-        foreach(var row in rows) snapshots.Add(await Snapshot(kind,row.Id,ct));
+        foreach(var row in rows)
+        {
+            try { snapshots.Add(await Snapshot(kind,row.Id,ct)); }
+            catch(InvalidOperationException ex) when(ex.Data["ReconciliationScopeExceeded"] is true)
+            {
+                // A bounded manual-review marker is not evidence or a zero-value payout.
+                snapshots.Add(new(kind,row.Id,Guid.Empty,"unknown",null,"",row.Status,null,null,null,null,null,null,
+                    ["manual_review_scope_exceeded"],Hash(new {kind,row.Id,scope="manual_review_scope_exceeded"})) {InspectionAvailable=false});
+            }
+        }
         await tx.CommitAsync(ct);
         return new { kind, rows=snapshots, next = hasMore ? (Guid?)rows[^1].Id : null, scope = "internal_records_only" };
     }
@@ -46,6 +58,11 @@ public sealed class PayoutReconciliationService(AppDbContext db)
     {
         Kind(kind); await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
         await Admin(actor, ct); var result = await Snapshot(kind, id, ct); await tx.CommitAsync(ct); return result;
+    }
+
+    private static InvalidOperationException ScopeExceeded(string message)
+    {
+        var error=new InvalidOperationException(message);error.Data["ReconciliationScopeExceeded"]=true;return error;
     }
 
     private async Task<ReconciliationSnapshot> Snapshot(string kind, Guid id, CancellationToken ct)
@@ -63,7 +80,7 @@ public sealed class PayoutReconciliationService(AppDbContext db)
             if (order == Guid.Empty || !payee.HasValue) issues.Add("missing_source_attribution");
             var suppliers = await db.SupplierPayouts.AsNoTracking().Where(x => x.OrderId == order).OrderBy(x => x.Id).Take(201).ToListAsync(ct);
             var drivers = await db.DriverPayouts.AsNoTracking().Where(x => x.OrderId == order).OrderBy(x => x.Id).Take(201).ToListAsync(ct);
-            if(suppliers.Count > 200 || drivers.Count > 200) throw new InvalidOperationException("Order exceeds bounded reconciliation scope; manual review required.");
+            if(suppliers.Count > 200 || drivers.Count > 200) throw ScopeExceeded("Order exceeds bounded reconciliation scope; manual review required.");
             var matches = type == "supplier" ? suppliers.Where(x => x.SupplierId == payee).Select(x => new { x.Amount, x.Currency, x.PayoutStatus, x.PaidAt }).ToList()
                 : drivers.Where(x => x.DriverId == payee).Select(x => new { x.Amount, x.Currency, x.PayoutStatus, x.PaidAt }).ToList();
             var sameSources = await db.SettlementQueue.CountAsync(x => x.OrderFinancialId == q.OrderFinancialId && x.PayeeType == type && x.PayeeId == payee, ct);
@@ -85,7 +102,7 @@ public sealed class PayoutReconciliationService(AppDbContext db)
             gross = e.EntrepreneurEarningsAmount; adjustment = e.RefundAdjustment + e.ChargebackAdjustment; source = e;
             var batch = await db.EntrepreneurPayoutBatches.AsNoTracking().SingleOrDefaultAsync(x => x.Id == e.PayoutBatchId, ct);
             var members = await db.EntrepreneurEarnings.AsNoTracking().Where(x => e.PayoutBatchId != null && x.PayoutBatchId == e.PayoutBatchId).OrderBy(x => x.Id).Take(201).Select(x => new {x.Id,x.EntrepreneurUserId,x.Currency,x.EarningStatus}).ToListAsync(ct);
-            if(members.Count > 200) throw new InvalidOperationException("Batch exceeds bounded reconciliation scope; manual review required.");
+            if(members.Count > 200) throw ScopeExceeded("Batch exceeds bounded reconciliation scope; manual review required.");
             records = new { batch, members };
             if(status == "PAID")
             {
@@ -102,7 +119,7 @@ public sealed class PayoutReconciliationService(AppDbContext db)
         var orderRow = await db.Orders.AsNoTracking().Where(x => x.Id == order).Select(x => new {x.Id,x.Currency}).SingleOrDefaultAsync(ct);
         if(orderRow == null || orderRow.Currency != currency || payee == null || payee == Guid.Empty) issues.Add("missing_or_mismatched_order");
         var offsets = await db.Set<PayoutRecoveryOffset>().AsNoTracking().Where(x => x.TargetId == id).OrderBy(x => x.Id).Take(201).ToListAsync(ct);
-        if(offsets.Count > 200) throw new InvalidOperationException("Offsets exceed bounded reconciliation scope; manual review required.");
+        if(offsets.Count > 200) throw ScopeExceeded("Offsets exceed bounded reconciliation scope; manual review required.");
         var allocationIds = offsets.Select(x => x.AllocationId).ToArray();
         var claims = await db.Set<RefundAllocation>().AsNoTracking().Where(x => allocationIds.Contains(x.Id)).OrderBy(x => x.Id).ToListAsync(ct);
         var totals = await db.Set<PayoutRecoveryOffset>().Where(x => allocationIds.Contains(x.AllocationId)).GroupBy(x => x.AllocationId).Select(g => new {Id=g.Key, Amount=g.Sum(x => x.Amount)}).OrderBy(x => x.Id).ToListAsync(ct);
@@ -122,7 +139,7 @@ public sealed class PayoutReconciliationService(AppDbContext db)
         if(!paid && offsets.Count > 0) issues.Add("offset_without_paid_source");
         var auditPrefix = kind == "settlement" ? $"Payout recorded {id};" : $"Entrepreneur payout recorded {id};";
         var audits = await db.AuditLogs.AsNoTracking().Where(x => x.OrderId == order && x.Action.StartsWith(auditPrefix)).OrderBy(x => x.Id).Take(201).ToListAsync(ct);
-        if(audits.Count > 200) throw new InvalidOperationException("Audit exceeds bounded reconciliation scope; manual review required.");
+        if(audits.Count > 200) throw ScopeExceeded("Audit exceeds bounded reconciliation scope; manual review required.");
         if(paid)
         {
             if(audits.Count != 1) issues.Add("missing_or_duplicate_payout_audit");
