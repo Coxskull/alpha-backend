@@ -94,7 +94,7 @@ public sealed class FinancialConflictReviewTests(DatabaseFixture fixture)
             catch (InvalidOperationException) { return false; }
         }
         var results = await Task.WhenAll(TryApprove(seed.Second), TryApprove(thirdId));
-        Assert.Single(results.Where(x => x));
+        Assert.Single(results, x => x);
         using var check = fixture.Context(); Assert.Equal(1, await check.Set<FinancialConflictApproval>().CountAsync(x => x.ReviewId == reviewId));
     }
 
