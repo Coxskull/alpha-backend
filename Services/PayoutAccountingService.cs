@@ -54,23 +54,28 @@ public sealed class PayoutAccountingService(AppDbContext db)
                 var paidResult = new { settlementId = id, grossAmount = queue.Amount, refundAdjustment = queue.RefundAdjustment,
                     recoveryOffset = queue.RecoveryOffset, paidAmount = queue.Amount - queue.RefundAdjustment - queue.RecoveryOffset, financial.Currency, status = "paid" };
                 if (confirmation != null && (confirmation.PaidAmount != paidResult.paidAmount || confirmation.Currency != financial.Currency))
-                    throw new InvalidOperationException("Replay does not match the recorded payout.");
+                    throw PayoutOperatorContract.Error("payout_replay_conflict", "Replay does not match the recorded payout.");
                 if (confirmation != null && !await db.AuditLogs.AnyAsync(a => a.OrderId == financial.OrderId
                     && a.Action.StartsWith("Payout recorded " + id + ";") && a.Action.EndsWith("; reference=" + confirmation.PayoutReference), ct))
-                    throw new InvalidOperationException("Replay reference does not match the recorded payout.");
+                    throw PayoutOperatorContract.Error("payout_replay_conflict", "Replay reference does not match the recorded payout.");
                 await tx.CommitAsync(ct); return paidResult;
             }
             if (queue.Status is not ("ready_for_payout" or "pending_payout") || !RefundAllocationService.Money(queue.Amount - queue.RefundAdjustment))
                 throw new InvalidOperationException("Settlement is not ready for payout.");
             var payable = queue.Amount - queue.RefundAdjustment;
+            var outstanding = await PayoutOperatorContract.OutstandingAsync(db, queue.PayeeType, queue.PayeeId!.Value, financial.Currency, ct);
             var offset = await recovery.RecoverAsync(queue.PayeeType, queue.PayeeId!.Value, financial.Currency, "settlement", id, payable, ct);
             var net = payable - offset;
             var result = new { settlementId = id, grossAmount = queue.Amount, refundAdjustment = queue.RefundAdjustment,
-                recoveryOffset = offset, paidAmount = net, financial.Currency, status = confirmation == null ? "quote" : "paid" };
+                recoveryOffset = offset, payableBeforeRecovery = payable, paidAmount = net, netAmount = net, remainingRecoveryBalance = outstanding - offset,
+                zeroNet = net == 0, quoteIsAdvisory = confirmation == null, confirmationRequired = confirmation == null,
+                eligibleForConfirmation = confirmation == null, financial.Currency, status = confirmation == null ? "quote" : "paid" };
             if (confirmation == null) { await tx.RollbackAsync(ct); return result; }
-            if (admin == Guid.Empty || confirmation.PaidAmount != net || confirmation.Currency != financial.Currency
+            if (admin == Guid.Empty || confirmation.PaidAmount == null || string.IsNullOrWhiteSpace(confirmation.Currency)
                 || string.IsNullOrWhiteSpace(confirmation.PayoutReference) || confirmation.PayoutReference.Length > 128)
-                throw new InvalidOperationException("Confirm the exact quoted net amount, currency and payout reference; gross payout is not permitted.");
+                throw PayoutOperatorContract.Error("invalid_confirmation", "Supply the net amount, currency and payout reference.");
+            if (confirmation.PaidAmount != net || confirmation.Currency != financial.Currency)
+                throw PayoutOperatorContract.Error("payout_quote_changed", "Refresh the quote and confirm its current net amount and currency; gross payout is not permitted.");
             var duplicate = queue.PayeeType == "supplier"
                 ? await db.SupplierPayouts.AnyAsync(p => p.OrderId == financial.OrderId && p.SupplierId == queue.PayeeId, ct)
                 : await db.DriverPayouts.AnyAsync(p => p.OrderId == financial.OrderId && p.DriverId == queue.PayeeId, ct);
