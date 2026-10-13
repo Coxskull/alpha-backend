@@ -1,7 +1,7 @@
 name: Exact-head release evidence
 on:
   pull_request:
-    branches: [main, review/warning-remediation-evidence-20261012, fix/pr32-financial-audit-integrity, fix/pr33-preserve-refund-conflict-holds]
+    branches: [main, review/warning-remediation-evidence-20261012, fix/pr32-financial-audit-integrity, fix/pr33-preserve-refund-conflict-holds, feature/phase2-conflict-review]
   workflow_dispatch:
 permissions:
   contents: read

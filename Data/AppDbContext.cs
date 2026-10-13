@@ -129,6 +129,14 @@ public class AppDbContext : DbContext
             entity.HasOne<Payment>().WithMany().HasForeignKey(o => o.PaymentId).OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<FinancialRecoveryRelease>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.ReviewId, x.AllocationId }).IsUnique();
+            entity.HasOne<FinancialConflictReview>().WithMany().HasForeignKey(x => x.ReviewId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<RefundAllocation>().WithMany().HasForeignKey(x => x.AllocationId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.ReviewerId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<FinancialConflictReview>(entity =>
         {
             entity.HasKey(x => x.Id);

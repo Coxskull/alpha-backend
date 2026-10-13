@@ -15,7 +15,7 @@ public sealed class FinancialConflictReviewService(AppDbContext db)
         => !string.IsNullOrWhiteSpace(value) && value.Trim().Length <= 4000
             ? value.Trim() : throw new ArgumentException("Evidence is required and must not exceed 4000 characters.");
 
-    private async Task AdministratorAsync(Guid actor, CancellationToken ct)
+    internal async Task AdministratorAsync(Guid actor, CancellationToken ct)
     {
         var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == actor, ct);
         var roles = await db.UserRoles.AsNoTracking().Where(x => x.UserId == actor).ToListAsync(ct);
@@ -23,7 +23,7 @@ public sealed class FinancialConflictReviewService(AppDbContext db)
             throw new UnauthorizedAccessException("An active administrator is required.");
     }
 
-    private async Task<Guid> LockOrderAsync(Guid paymentId, CancellationToken ct)
+    internal async Task<Guid> LockOrderAsync(Guid paymentId, CancellationToken ct)
     {
         var orderId = await db.Payments.AsNoTracking().Where(x => x.Id == paymentId).Select(x => x.OrderId).SingleOrDefaultAsync(ct)
             ?? throw new InvalidOperationException("A payment with an attributable order is required.");
@@ -34,7 +34,7 @@ public sealed class FinancialConflictReviewService(AppDbContext db)
         return orderId;
     }
 
-    private async Task<string> SnapshotAsync(Guid orderId, CancellationToken ct)
+    internal async Task<string> SnapshotAsync(Guid orderId, CancellationToken ct, bool recovery = false)
     {
         var order = await db.Orders.AsNoTracking().Where(x => x.Id == orderId)
             .Select(x => new { x.Id, x.CustomerId, x.Currency, x.CountryCode, x.Status }).SingleAsync(ct);
@@ -47,7 +47,20 @@ public sealed class FinancialConflictReviewService(AppDbContext db)
         var offsets = await db.Set<PayoutRecoveryOffset>().AsNoTracking().Where(x => allocationIds.Contains(x.AllocationId)).OrderBy(x => x.Id).ToListAsync(ct);
         var financials = await db.OrderFinancials.AsNoTracking().Where(x => x.OrderId == orderId).OrderBy(x => x.Id).ToListAsync(ct);
         var conflicts = await db.AuditLogs.AsNoTracking().Where(x => x.OrderId == orderId && x.Action == "Stripe refund evidence conflict held for manual review").OrderBy(x => x.Id).ToListAsync(ct);
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { order, payments, operations, allocations, offsets, financials, conflicts }))));
+        var financialIds = financials.Select(x => x.Id).ToArray();
+        var queues = await db.SettlementQueue.AsNoTracking().Where(x => financialIds.Contains(x.OrderFinancialId)).OrderBy(x => x.Id).ToListAsync(ct);
+        var supplierPaid = await db.SupplierPayouts.AsNoTracking().Where(x => x.OrderId == orderId).OrderBy(x => x.Id).ToListAsync(ct);
+        var driverPaid = await db.DriverPayouts.AsNoTracking().Where(x => x.OrderId == orderId).OrderBy(x => x.Id).ToListAsync(ct);
+        var earnings = await db.EntrepreneurEarnings.AsNoTracking().Where(x => x.OrderId == orderId).OrderBy(x => x.Id).ToListAsync(ct);
+        var batchIds = earnings.Where(x => x.PayoutBatchId != null).Select(x => x.PayoutBatchId).ToArray();
+        var batches = await db.EntrepreneurPayoutBatches.AsNoTracking().Where(x => batchIds.Contains(x.Id)).OrderBy(x => x.Id).ToListAsync(ct);
+        // Ordinary recovery progress must not revoke a claim-specific authorization.
+        // All immutable claim identities/amounts/evidence and source state remain bound.
+        object allocationEvidence = recovery ? allocations.Select(x => new { x.Id, x.OperationId, x.SourceKind, x.SourceId,
+            x.PayeeType, x.PayeeId, x.Currency, x.Amount, x.FutureRecovery, x.ReviewedBy, x.Evidence, x.CreatedAt }).ToArray() : allocations;
+        object offsetEvidence = recovery ? Array.Empty<PayoutRecoveryOffset>() : offsets;
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { order, payments, operations,
+            snapshotVersion = 2, allocations = allocationEvidence, offsets = offsetEvidence, financials, conflicts, queues, supplierPaid, driverPaid, earnings, batches }))));
     }
 
     public async Task<FinancialConflictReview> SubmitAsync(Guid paymentId, FinancialConflictReviewDto request, Guid actor, CancellationToken ct)

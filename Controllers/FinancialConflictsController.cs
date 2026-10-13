@@ -30,6 +30,10 @@ public sealed class FinancialConflictsController(AppDbContext db) : ControllerBa
     public Task<IActionResult> Approve(Guid reviewId, FinancialConflictApprovalDto request, CancellationToken ct)
         => Execute(async () => await new FinancialConflictReviewService(db).ApproveAsync(reviewId, request, User.GetUserId(), ct));
 
+    [HttpPost("reviews/{reviewId:guid}/recovery-releases")]
+    public Task<IActionResult> Release(Guid reviewId, FinancialRecoveryReleaseDto request, CancellationToken ct)
+        => Execute(async () => await new FinancialRecoveryReleaseService(db).ReleaseAsync(reviewId, request, User.GetUserId(), ct));
+
     [HttpGet("reviews/{reviewId:guid}")]
     public Task<IActionResult> Status(Guid reviewId, CancellationToken ct)
         => Execute(async () => await new FinancialConflictReviewService(db).StatusAsync(reviewId, ct));
