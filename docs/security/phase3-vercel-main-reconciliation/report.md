@@ -18,7 +18,7 @@ PR39 merged to main at **b443b3bc0e15d7453b484ce424e97ff802f8d0ee**, whose tree 
 
 Fresh exact-correction disposable validation passed **208 tests (77 unit / 131 PostgreSQL integration), zero failures/skips**, .NET8.0.425 Release warnings-as-errors builds, app/unit/integration vulnerability audits, eleven migrations / 60 tables model/schema parity and startup HTTP200. Source coverage **25.64% (4654/18150)**, generated migrations separated. This is correction-head validation, not a claim that current main already includes the contract.
 
-Backend [Release CI](https://github.com/Coxskull/alpha-backend/actions/runs/38351582036) and [companion CI](https://github.com/Coxskull/alpha-backend/actions/runs/38351582006) were still running when this initial report was published. Local evidence is complete; their final status will be recorded separately.
+Backend [Release CI](https://github.com/Coxskull/alpha-backend/actions/runs/38351582036) and [companion CI](https://github.com/Coxskull/alpha-backend/actions/runs/38351582006) both passed on the exact correction head. Decoded Release logs are preserved in the archive. Artifact 11791690016, SHA256 7339370ae07df1ab0e94c56cc909d183e62660e25c1e3002f8ac08a8d322a992, expires 2026-11-12.
 
 ## Next gates
 
