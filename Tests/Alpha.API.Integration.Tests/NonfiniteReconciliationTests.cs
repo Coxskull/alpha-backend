@@ -51,4 +51,26 @@ public sealed partial class RefundRecoveryTests
         }
         finally {var restoreSql=$"UPDATE {table} SET {column}=40 WHERE id={{0}}";await db.Database.ExecuteSqlRawAsync(restoreSql,record);}
     }
+    [Fact]
+    public async Task NonfiniteSourceDoesNotHideTheNextHealthyPage()
+    {
+        var actor=await ReconciliationAdmin();var bad=await Settlement(paid:false);var good=await Settlement(paid:false);
+        var first=Guid.Parse("00000000-0000-0000-0000-000000000003");var second=Guid.Parse("00000000-0000-0000-0000-000000000004");
+        using var db=fixture.Context();
+        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE settlement_queue SET id={first}, amount='NaN'::numeric WHERE id={bad.Queue}");
+        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE settlement_queue SET id={second} WHERE id={good.Queue}");
+        try
+        {
+            var service=new PayoutReconciliationService(db);
+            var page=JsonSerializer.SerializeToElement(await service.QueueAsync("settlement",Before(first),1,actor,Ct));
+            Assert.Equal(first,page.GetProperty("rows")[0].GetProperty("Id").GetGuid());
+            Assert.False(page.GetProperty("rows")[0].GetProperty("InspectionAvailable").GetBoolean());
+            Assert.Equal(first,page.GetProperty("next").GetGuid());
+            var next=JsonSerializer.SerializeToElement(await service.QueueAsync("settlement",first,1,actor,Ct));
+            Assert.Equal(second,next.GetProperty("rows")[0].GetProperty("Id").GetGuid());
+            Assert.True(next.GetProperty("rows")[0].GetProperty("InspectionAvailable").GetBoolean());
+        }
+        finally {await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE settlement_queue SET amount=40 WHERE id={first}");}
+    }
+
 }

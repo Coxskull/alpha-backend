@@ -70,7 +70,7 @@ public sealed class PayoutReconciliationService(AppDbContext db)
 
     // Check native numeric values before Npgsql attempts decimal materialization.
     // Identifiers come only from the EF model; predicates are internal constants and values are parameters.
-    private async Task RequireFinite<T>(string predicate, object[] parameters, CancellationToken ct)
+    private async Task RequireFinite<T>(string predicate, object[] parameters, CancellationToken ct, bool bounded = true)
     {
         var entity=db.Model.FindEntityType(typeof(T))!;
         var table=entity.GetTableName()!;
@@ -78,7 +78,8 @@ public sealed class PayoutReconciliationService(AppDbContext db)
         static string Quote(string identifier) => "\""+identifier.Replace("\"","\"\"")+"\"";
         var numeric=entity.GetProperties().Where(p => (Nullable.GetUnderlyingType(p.ClrType) ?? p.ClrType)==typeof(decimal))
             .Select(p => $"r.{Quote(p.GetColumnName(store)!)}::text IN ('NaN','Infinity','-Infinity')");
-        var sql=$"SELECT EXISTS (SELECT 1 FROM {Quote(table)} r WHERE ({predicate}) AND ({string.Join(" OR ",numeric)})) AS \"Value\"";
+        var candidates=$"SELECT * FROM {Quote(table)} r WHERE ({predicate})"+(bounded ? " ORDER BY r.id LIMIT 201" : "");
+        var sql=$"SELECT EXISTS (SELECT 1 FROM ({candidates}) r WHERE ({string.Join(" OR ",numeric)})) AS \"Value\"";
         if(await db.Database.SqlQueryRaw<bool>(sql,parameters).SingleAsync(ct))
         {
             var error=new InvalidOperationException("Nonfinite financial numeric requires manual review.");
@@ -151,7 +152,7 @@ public sealed class PayoutReconciliationService(AppDbContext db)
         if(offsets.Count > 200) throw ScopeExceeded("Offsets exceed bounded reconciliation scope; manual review required.");
         var allocationIds = offsets.Select(x => x.AllocationId).ToArray();
         await RequireFinite<RefundAllocation>("r.id = ANY({0})",[allocationIds],ct);
-        await RequireFinite<PayoutRecoveryOffset>("r.allocation_id = ANY({0})",[allocationIds],ct);
+        await RequireFinite<PayoutRecoveryOffset>("r.allocation_id = ANY({0})",[allocationIds],ct,bounded:false);
         var claims = await db.Set<RefundAllocation>().AsNoTracking().Where(x => allocationIds.Contains(x.Id)).OrderBy(x => x.Id).ToListAsync(ct);
         var totals = await db.Set<PayoutRecoveryOffset>().Where(x => allocationIds.Contains(x.AllocationId)).GroupBy(x => x.AllocationId).Select(g => new {Id=g.Key, Amount=g.Sum(x => x.Amount)}).OrderBy(x => x.Id).ToListAsync(ct);
         foreach(var offset in offsets)
