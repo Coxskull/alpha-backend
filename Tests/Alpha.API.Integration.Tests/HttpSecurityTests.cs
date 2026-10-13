@@ -507,4 +507,41 @@ public sealed class HttpSecurityTests(DatabaseFixture fixture) : IAsyncLifetime
         for (var i = 0; i < 21; i++) last = (await Request("/api/Auth/login", method: HttpMethod.Post)).StatusCode;
         Assert.Equal(HttpStatusCode.TooManyRequests, last);
     }
+    [Fact]
+    public async Task FinancialConflictReviewsRequireTwoActiveAdministratorsAndNeverReleaseHold()
+    {
+        var seed = await fixture.SeedAsync(); using var db = fixture.Context();
+        await db.Payments.Where(p => p.Id == seed.PaymentId).ExecuteUpdateAsync(s => s.SetProperty(p => p.RefundEvidenceConflict, true));
+        var first = new Alpha.API.Models.User { Id = Guid.NewGuid(), FullName = "Synthetic reviewer one", Email = Guid.NewGuid() + "@example.invalid", Role = "admin", IsActive = true };
+        var second = new Alpha.API.Models.User { Id = Guid.NewGuid(), FullName = "Synthetic reviewer two", Email = Guid.NewGuid() + "@example.invalid", Role = "admin", IsActive = true };
+        db.AddRange(first, second); await db.SaveChangesAsync();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Request("/api/financial-conflicts")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Request("/api/financial-conflicts", Token(seed.CustomerId, "customer"))).StatusCode);
+        var admin = Token(first.Id, "admin");
+        Assert.Equal(HttpStatusCode.OK, (await Request("/api/financial-conflicts", admin)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Request("/api/financial-conflicts?pageSize=101", admin)).StatusCode);
+        async Task<HttpResponseMessage> Post(string path, string token, object body)
+        {
+            using var message = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
+            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            return await client.SendAsync(message);
+        }
+        var path = $"/api/financial-conflicts/payments/{seed.PaymentId}/reviews";
+        Assert.Equal(HttpStatusCode.Forbidden, (await Post(path, Token(seed.CustomerId, "customer"), new { IdempotencyKey = "http-review", Evidence = "Synthetic evidence" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Post(path, admin, new { IdempotencyKey = "http-review", Evidence = " " })).StatusCode);
+        var submitted = await Post(path, admin, new { IdempotencyKey = "http-review", Evidence = "Synthetic provider evidence CASE-HTTP" });
+        Assert.Equal(HttpStatusCode.OK, submitted.StatusCode);
+        using var body = JsonDocument.Parse(await submitted.Content.ReadAsStringAsync()); var id = body.RootElement.GetProperty("id").GetGuid();
+        var approvePath = $"/api/financial-conflicts/reviews/{id}/approval";
+        Assert.Equal(HttpStatusCode.Conflict, (await Post(approvePath, admin, new { Evidence = "Self approval" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Post(approvePath, Token(second.Id, "admin"), new { Evidence = "Independent synthetic verification" })).StatusCode);
+        var status = await Request($"/api/financial-conflicts/reviews/{id}", admin);
+        Assert.Equal(HttpStatusCode.OK, status.StatusCode);
+        using var result = JsonDocument.Parse(await status.Content.ReadAsStringAsync());
+        Assert.Equal("two_attestations_recorded", result.RootElement.GetProperty("status").GetString());
+        Assert.False(result.RootElement.GetProperty("holdReleased").GetBoolean());
+        Assert.True((await db.Payments.AsNoTracking().SingleAsync(p => p.Id == seed.PaymentId)).RefundEvidenceConflict);
+        await db.Users.Where(u => u.Id == second.Id).ExecuteUpdateAsync(s => s.SetProperty(u => u.IsActive, false));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Post(approvePath, Token(second.Id, "admin"), new { Evidence = "Independent synthetic verification" })).StatusCode);
+    }
 }
