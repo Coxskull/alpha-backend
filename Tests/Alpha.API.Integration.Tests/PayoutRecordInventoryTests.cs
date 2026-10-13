@@ -16,11 +16,13 @@ public sealed partial class RefundRecoveryTests
     public async Task RecordInventoryDetectsMissingSourceAndDoesNotWriteAnything(string kind)
     {
         var source=await Settlement(kind);var actor=await ReconciliationAdmin();using var db=fixture.Context();
+        if(kind=="supplier")await db.SupplierPayouts.Where(x=>x.OrderId==source.Order).ExecuteUpdateAsync(x=>x.SetProperty(p=>p.Amount,80.01m));
+        else await db.DriverPayouts.Where(x=>x.OrderId==source.Order).ExecuteUpdateAsync(x=>x.SetProperty(p=>p.Amount,80.01m));
         await db.SettlementQueue.Where(x=>x.Id==source.Queue).ExecuteDeleteAsync();var audits=await db.AuditLogs.CountAsync();
         var record=kind=="supplier"?await db.SupplierPayouts.Where(x=>x.OrderId==source.Order).Select(x=>x.Id).SingleAsync():await db.DriverPayouts.Where(x=>x.OrderId==source.Order).Select(x=>x.Id).SingleAsync();
         var result=JsonSerializer.SerializeToElement(await new PayoutRecordInventoryService(db).ReadAsync(kind,Before(record),1,actor,Ct));
         Assert.Contains(result.GetProperty("rows").EnumerateArray(),r=>r.GetProperty("OrderId").GetGuid()==source.Order&&r.GetProperty("issues").ToString().Contains("missing_payout_source"));
-        Assert.Equal(JsonValueKind.String,result.GetProperty("rows")[0].GetProperty("amount").ValueKind);Assert.Equal("80.00",result.GetProperty("rows")[0].GetProperty("amount").GetString());
+        Assert.Equal(JsonValueKind.String,result.GetProperty("rows")[0].GetProperty("amount").ValueKind);Assert.Equal("80.01",result.GetProperty("rows")[0].GetProperty("amount").GetString());
         Assert.Equal(audits,await db.AuditLogs.CountAsync());Assert.False(await db.SettlementQueue.AnyAsync(x=>x.Id==source.Queue));
     }
     [Fact]
