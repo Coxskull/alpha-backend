@@ -1,0 +1,131 @@
+{
+  "reviewAttestationGate": "PASS",
+  "phase2HoldRelease": "SEPARATE REVIEWED STEP; NOT IMPLEMENTED",
+  "sha": "442f3ed5c946b08580f0d6934dfa54f2f943cba8",
+  "base": "eebeb85d23a9068cd799b763a2f37a405e0d09b3",
+  "draftPR": 38,
+  "tests": {
+    "unit": {
+      "total": 77,
+      "passed": 77,
+      "failed": 0,
+      "notExecuted": 0
+    },
+    "integration": {
+      "total": 114,
+      "passed": 114,
+      "failed": 0,
+      "notExecuted": 0
+    }
+  },
+  "migrations": 10,
+  "modelTables": 59,
+  "schemaParity": "PASS",
+  "coverage": {
+    "assembly": {
+      "linesCovered": 32804,
+      "linesValid": 50476,
+      "lineRate": 0.6498,
+      "branchesCovered": 1052,
+      "branchesValid": 3421,
+      "branchRate": 0.3075,
+      "includesGeneratedMigrations": true
+    },
+    "nonMigrationSource": {
+      "uniqueLinesCovered": 4531,
+      "uniqueLinesValid": 18022,
+      "lineRate": 0.25141493729885694
+    },
+    "scope": "Merged unit and disposable PostgreSQL/HTTP integration coverage; migration code shown separately"
+  },
+  "startup": {
+    "startup": "PASS",
+    "healthStatus": 200,
+    "healthBody": "API WORKING",
+    "scope": "Development; synthetic keys; loopback targets; health only",
+    "databaseReadinessFromHealth": false,
+    "supabaseIntegrationVerified": false
+  },
+  "execution": [
+    {
+      "check": "identity",
+      "exitCode": 0,
+      "seconds": 0.0
+    },
+    {
+      "check": "dotnet-info",
+      "exitCode": 0,
+      "seconds": 0.16
+    },
+    {
+      "check": "unit-restore",
+      "exitCode": 0,
+      "seconds": 0.87
+    },
+    {
+      "check": "unit-build",
+      "exitCode": 0,
+      "seconds": 4.11
+    },
+    {
+      "check": "integration-restore",
+      "exitCode": 0,
+      "seconds": 0.92
+    },
+    {
+      "check": "integration-build",
+      "exitCode": 0,
+      "seconds": 1.62
+    },
+    {
+      "check": "compatibility-restore",
+      "exitCode": 0,
+      "seconds": 0.92
+    },
+    {
+      "check": "compatibility-build",
+      "exitCode": 0,
+      "seconds": 1.27
+    },
+    {
+      "check": "unit-coverage",
+      "exitCode": 0,
+      "seconds": 6.3
+    },
+    {
+      "check": "audit-Alpha.API",
+      "exitCode": 0,
+      "seconds": 2.32
+    },
+    {
+      "check": "audit-Alpha.API.Tests",
+      "exitCode": 0,
+      "seconds": 2.07
+    },
+    {
+      "check": "audit-Alpha.API.Integration.Tests",
+      "exitCode": 0,
+      "seconds": 1.93
+    },
+    {
+      "check": "database",
+      "exitCode": 0,
+      "seconds": 3.83
+    },
+    {
+      "check": "integration-coverage",
+      "exitCode": 0,
+      "seconds": 82.68
+    },
+    {
+      "check": "coverage-summary",
+      "exitCode": 0,
+      "seconds": 0.27
+    },
+    {
+      "check": "startup",
+      "exitCode": 0,
+      "seconds": 0.72
+    }
+  ]
+}
