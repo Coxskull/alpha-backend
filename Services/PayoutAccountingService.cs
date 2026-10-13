@@ -22,6 +22,7 @@ public sealed class PayoutAccountingService(AppDbContext db)
     {
         await db.Database.ExecuteSqlInterpolatedAsync($"SELECT id FROM payments WHERE order_id = {orderId} ORDER BY id FOR UPDATE", ct);
         if (await HasPendingStripeRefundAsync(db, orderId, ct)) throw new InvalidOperationException("Payout is held for an unprocessed signed Stripe refund event.");
+        if (await RefundConflictGuard.HasAsync(db, orderId, ct)) throw new InvalidOperationException("Payout is held for conflicting refund evidence.");
         var financial = await db.OrderFinancials.AsNoTracking().SingleAsync(f => f.OrderId == orderId, ct);
         if (financial.RefundAmount != 0 || financial.ChargebackAmount != 0 || financial.DisputeReserve != 0
             || financial.FinancialStatus != "verified" || financial.PayoutStatus is not ("ready_for_payout" or "paid")

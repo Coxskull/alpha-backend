@@ -223,7 +223,8 @@ public class FinancialsController : ControllerBase
             return NotFound();
 
         record.PayoutStatus = "on_hold";
-        record.FinancialStatus = "needs_review";
+        if (record.FinancialStatus != RefundConflictGuard.Status)
+            record.FinancialStatus = await RefundConflictGuard.HasAsync(_context, record.OrderId, CancellationToken.None) ? RefundConflictGuard.Status : "needs_review";
 
         await _context.SaveChangesAsync();
 

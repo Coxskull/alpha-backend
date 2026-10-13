@@ -841,7 +841,7 @@ public class StripeWebhookController : ControllerBase
 
         await using var refundTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT id FROM payments WHERE gateway_payment_id = {paymentIntentId} ORDER BY id FOR UPDATE", cancellationToken);
+            $"SELECT id FROM payments WHERE gateway_payment_id = {paymentIntentId} OR order_id IN (SELECT order_id FROM payments WHERE gateway_payment_id = {paymentIntentId}) ORDER BY id FOR UPDATE", cancellationToken);
 
         var matches = await _context.Payments.Where(p => p.GatewayPaymentId == paymentIntentId).Take(2).ToListAsync(cancellationToken);
         if (matches.Count == 0) return;
@@ -884,6 +884,7 @@ public class StripeWebhookController : ControllerBase
             ? await new StripeRefundOperationService(_context).RegisterAsync(payment, charge, cancellationToken)
             : StripeRefundEvidenceState.Incomplete;
         var currentCompleteEvidence = evidence == StripeRefundEvidenceState.Verified && cumulativeRefund >= previousRefund;
+        if (evidence == StripeRefundEvidenceState.Conflict) payment.RefundEvidenceConflict = true;
 
         /*
          * ---------------------------------------------------------
@@ -927,7 +928,8 @@ public class StripeWebhookController : ControllerBase
         // Linearize evidence-state changes against concurrent recovery of existing claims.
         var affectedPayees = await (from allocation in _context.Set<Alpha.API.Models.RefundAllocation>()
             join operation in _context.Set<Alpha.API.Models.PaymentOperation>() on allocation.OperationId equals operation.Id
-            where operation.PaymentId == payment.Id && allocation.FutureRecovery && allocation.RecoveredAmount < allocation.Amount
+            join sourcePayment in _context.Payments on operation.PaymentId equals sourcePayment.Id
+            where sourcePayment.OrderId == payment.OrderId && allocation.FutureRecovery && allocation.RecoveredAmount < allocation.Amount
             select new { allocation.PayeeType, allocation.PayeeId, allocation.Currency }).Distinct()
             .OrderBy(a => a.PayeeType).ThenBy(a => a.PayeeId).ThenBy(a => a.Currency).ToListAsync(cancellationToken);
         var recovery = new RefundAllocationService(_context);
@@ -936,8 +938,13 @@ public class StripeWebhookController : ControllerBase
         var financial = await _context.OrderFinancials.FirstOrDefaultAsync(f => f.OrderId == payment.OrderId, cancellationToken);
         if (financial != null)
         {
-            financial.RefundAmount = payment.RefundedAmount;
-            if (evidence == StripeRefundEvidenceState.Conflict) financial.FinancialStatus = "refund_evidence_conflict";
+            if (financial.Currency != payment.Currency || await _context.Payments.AnyAsync(
+                p => p.OrderId == payment.OrderId && p.RefundedAmount > 0 && p.Currency != financial.Currency, cancellationToken))
+                throw new InvalidOperationException("Refund currencies require manual financial review.");
+            financial.RefundAmount = payment.RefundedAmount + await _context.Payments
+                .Where(p => p.OrderId == payment.OrderId && p.Id != payment.Id).SumAsync(p => p.RefundedAmount, cancellationToken);
+            if (financial.FinancialStatus == RefundConflictGuard.Status || payment.RefundEvidenceConflict
+                || await RefundConflictGuard.HasAsync(_context, payment.OrderId, cancellationToken)) financial.FinancialStatus = RefundConflictGuard.Status;
             else if (currentCompleteEvidence)
                 financial.FinancialStatus = refundDelta == 0 && financial.FinancialStatus == "refund_allocated_review" ? "refund_allocated_review" : "refund_review";
             else if (financial.FinancialStatus != "refund_evidence_conflict" && cumulativeRefund >= previousRefund

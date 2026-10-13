@@ -12,10 +12,12 @@ public sealed class PaymentOperationService(AppDbContext db)
             || amount <= 0 || decimal.Round(amount, 2) != amount || currency.Length != 3)
             throw new ArgumentException("Invalid payment operation request.");
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        await LockPaymentAsync(paymentId, cancellationToken);
+        var orderId = await db.Payments.AsNoTracking().Where(p => p.Id == paymentId).Select(p => p.OrderId).SingleAsync(cancellationToken);
+        if (orderId == null) throw new InvalidOperationException("Unassociated payments require manual review.");
+        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT id FROM payments WHERE order_id = {orderId} ORDER BY id FOR UPDATE", cancellationToken);
         var payment = await db.Payments.SingleAsync(p => p.Id == paymentId, cancellationToken);
         await db.Entry(payment).ReloadAsync(cancellationToken);
-        if (payment.OrderId == null) throw new InvalidOperationException("Unassociated payments require manual review.");
+        if (payment.OrderId != orderId) throw new InvalidOperationException("Payment association changed; manual review is required.");
         var existing = await db.Set<PaymentOperation>().SingleOrDefaultAsync(o =>
             o.PaymentId == paymentId && o.Kind == kind && o.IdempotencyKey == key, cancellationToken);
         if (existing != null)
@@ -35,9 +37,11 @@ public sealed class PaymentOperationService(AppDbContext db)
         if (kind == "refund")
         {
             var financial = await db.OrderFinancials.SingleAsync(f => f.OrderId == payment.OrderId, cancellationToken);
+            await db.Entry(financial).ReloadAsync(cancellationToken);
             financial.PayoutStatus = "on_hold";
             financial.SettlementStatus = "blocked";
-            financial.FinancialStatus = "refund_review";
+            if (financial.FinancialStatus != RefundConflictGuard.Status)
+                financial.FinancialStatus = await RefundConflictGuard.HasAsync(db, orderId, cancellationToken) ? RefundConflictGuard.Status : "refund_review";
             var queues = await db.SettlementQueue.Where(q => q.OrderFinancialId == financial.Id && q.Status != "paid").ToListAsync(cancellationToken);
             foreach (var queue in queues) queue.Status = "on_hold";
         }

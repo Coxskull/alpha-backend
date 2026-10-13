@@ -27,6 +27,9 @@ public class Payment
     [Column("payment_status")]
     public string PaymentStatus { get; set; } = "pending";
 
+    [Column("refund_evidence_conflict")]
+    public bool RefundEvidenceConflict { get; set; }
+
     [Column("transaction_reference")]
     public string? TransactionReference { get; set; }
 
