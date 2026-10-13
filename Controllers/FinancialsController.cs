@@ -236,7 +236,7 @@ public class FinancialsController : ControllerBase
     public async Task<IActionResult> SettlementQuote(Guid id, CancellationToken ct)
     {
         try { return Ok(await new PayoutAccountingService(_context).SettlementAsync(id, null, Guid.Empty, null, ct)); }
-        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+        catch (InvalidOperationException ex) { return Conflict(new { code = PayoutOperatorContract.Code(ex), message = ex.Message }); }
     }
 
     [HttpPost("settlement/{id:guid}/mark-paid")]
@@ -245,7 +245,7 @@ public class FinancialsController : ControllerBase
     {
         if (!Guid.TryParse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var admin)) return Unauthorized();
         try { return Ok(await new PayoutAccountingService(_context).SettlementAsync(id, confirmation, admin, _entrepreneurCommissionService, ct)); }
-        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+        catch (InvalidOperationException ex) { return Conflict(new { code = PayoutOperatorContract.Code(ex), message = ex.Message }); }
     }
 
     [HttpGet("supplier/{supplierId}/earnings")]
