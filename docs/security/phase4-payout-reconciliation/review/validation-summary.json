@@ -1,0 +1,251 @@
+{
+  "date": "2026-10-13",
+  "backend": {
+    "pr": 42,
+    "head": "57f5b359a03ddcdd8202a01f935ca6ac2da31b60",
+    "tests": {
+      "unit": {
+        "passed": 77,
+        "failed": 0,
+        "notExecuted": 0
+      },
+      "integration": {
+        "passed": 149,
+        "failed": 0,
+        "notExecuted": 0
+      }
+    },
+    "sourceCoverage": {
+      "uniqueLinesCovered": 4805,
+      "uniqueLinesValid": 18301,
+      "lineRate": 0.26255395880006555
+    },
+    "releaseCI": 38358882288,
+    "companionCI": 38358882313,
+    "ciStatus": {
+      "workflow_runs": [
+        {
+          "id": 38358882313,
+          "name": ".NET backend validation",
+          "status": "completed",
+          "conclusion": "success",
+          "run_number": 125,
+          "jobs_url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/runs/38358882313/jobs",
+          "logs_url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/runs/38358882313/logs",
+          "workflow_id": 381112911
+        },
+        {
+          "id": 38358882288,
+          "name": "Exact-head release evidence",
+          "status": "completed",
+          "conclusion": "success",
+          "run_number": 25,
+          "jobs_url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/runs/38358882288/jobs",
+          "logs_url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/runs/38358882288/logs",
+          "workflow_id": 381725934
+        }
+      ]
+    },
+    "ciArtifact": {
+      "artifacts": [
+        {
+          "id": 11793334655,
+          "name": "release-evidence-57f5b359a03ddcdd8202a01f935ca6ac2da31b60",
+          "size_in_bytes": 1080509,
+          "url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/artifacts/11793334655",
+          "archive_download_url": "https://api.github.com/repos/Coxskull/alpha-backend/actions/artifacts/11793334655/zip",
+          "expired": false,
+          "created_at": "2026-10-13T06:52:07Z",
+          "expires_at": "2026-11-12T06:52:06Z",
+          "updated_at": "2026-10-13T06:52:07Z",
+          "digest": "sha256:45ad5dbe2390acb2ea1bfeed47ecaa2362401a22183ad7facc07a404df07fd7d",
+          "workflow_run": {
+            "id": 38358882288,
+            "repository_id": 1265044034,
+            "head_repository_id": 1265044034,
+            "head_branch": "feature/phase4-payout-reconciliation",
+            "head_sha": "57f5b359a03ddcdd8202a01f935ca6ac2da31b60"
+          }
+        }
+      ]
+    }
+  },
+  "frontend": {
+    "pr": 2,
+    "head": "72ced72ffe02ee303c36292c72a329ac6a8a2cef",
+    "contractTests": 13,
+    "browserScenarios": [
+      {
+        "name": "Balanced snapshot displays net/reference and captures exact fingerprint",
+        "result": "PASS",
+        "posts": 1
+      },
+      {
+        "name": "Exceptions can be inspected and captured without releasing anything",
+        "result": "PASS",
+        "posts": 1
+      },
+      {
+        "name": "Stale capture requires new inspection and never auto retries",
+        "result": "PASS",
+        "posts": 1
+      },
+      {
+        "name": "Unknown capture outcome resolves from immutable history without repeat",
+        "result": "PASS",
+        "posts": 1
+      },
+      {
+        "name": "Malformed queue fails closed",
+        "result": "PASS",
+        "posts": 0
+      },
+      {
+        "name": "Administrator API denial prevents inspection and capture",
+        "result": "PASS",
+        "posts": 0
+      },
+      {
+        "name": "Keyset pagination and page-only exception filter are explicit",
+        "result": "PASS",
+        "posts": 0
+      },
+      {
+        "name": "Entrepreneur queue uses earning-scoped inspection and capture",
+        "result": "PASS",
+        "posts": 1
+      },
+      {
+        "name": "Oversized source remains a manual row and does not block pagination",
+        "result": "PASS",
+        "posts": 0
+      }
+    ],
+    "productionAudit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "fullGraphResidual": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 5,
+      "critical": 0,
+      "total": 5
+    },
+    "ci": 38358881346,
+    "vercel": {
+      "statuses": [
+        {
+          "context": "Vercel",
+          "state": "success",
+          "target_url": "https://vercel.com/alpha-auto-s-projects/alpha-auto-mvp/BvTnnjQAQeyTbGLM42iwypUsZwsf"
+        }
+      ]
+    },
+    "ciStatus": {
+      "jobs": [
+        {
+          "id": 115168097731,
+          "name": "validate",
+          "status": "completed",
+          "conclusion": "success",
+          "run_id": 38358881346,
+          "logs_url": null,
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1
+            },
+            {
+              "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2
+            },
+            {
+              "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3
+            },
+            {
+              "name": "Run git rev-parse HEAD && node --version",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4
+            },
+            {
+              "name": "Run npm ci --ignore-scripts --no-fund",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5
+            },
+            {
+              "name": "Run npm audit --omit=dev --audit-level=moderate",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6
+            },
+            {
+              "name": "Run npx tsc --noEmit",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7
+            },
+            {
+              "name": "Lint payout changes",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8
+            },
+            {
+              "name": "Pure payout contract cases",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 9
+            },
+            {
+              "name": "Run npm run build",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 10
+            },
+            {
+              "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 19
+            },
+            {
+              "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 20
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 21
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "finding": {
+    "severity": "medium",
+    "scope": "Legacy/out-of-band oversized evidence blocks unrelated reconciliation queue visibility; no financial mutation",
+    "status": "corrected",
+    "originalApplicationHead": "08b31205949db27dcc8cb049fef1d930ccb2289a",
+    "originalRegressionFailures": 1
+  },
+  "reviewType": "Assistant review/automated evidence; not independent human signoff"
+}
