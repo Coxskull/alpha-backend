@@ -1,0 +1,97 @@
+[
+  {
+    "sql": "DELETE FROM audit_logs",
+    "expectedSqlState": "42501",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "TRUNCATE TABLE audit_logs CASCADE",
+    "expectedSqlState": "42501",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "DELETE FROM payout_recovery_offsets",
+    "expectedSqlState": "42501",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "TRUNCATE TABLE payout_recovery_offsets CASCADE",
+    "expectedSqlState": "42501",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "DELETE FROM refund_allocations",
+    "expectedSqlState": "42501",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "TRUNCATE TABLE refund_allocations CASCADE",
+    "expectedSqlState": "42501",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "UPDATE payout_recovery_offsets SET amount = amount \u002B 1",
+    "expectedSqlState": "42501",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "UPDATE refund_allocations SET recovered_amount = 0 WHERE recovered_amount \u003E 0",
+    "expectedSqlState": "23514",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "CREATE OR REPLACE FUNCTION reject_financial_history_change() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
+    "expectedSqlState": "42501",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "DROP TRIGGER audit_logs_append_only ON audit_logs",
+    "expectedSqlState": "42501",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "DELETE FROM audit_logs",
+    "expectedSqlState": "23514",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "TRUNCATE TABLE audit_logs CASCADE",
+    "expectedSqlState": "23514",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "DELETE FROM payout_recovery_offsets",
+    "expectedSqlState": "23514",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "TRUNCATE TABLE payout_recovery_offsets CASCADE",
+    "expectedSqlState": "23514",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "DELETE FROM refund_allocations",
+    "expectedSqlState": "23514",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "TRUNCATE TABLE refund_allocations CASCADE",
+    "expectedSqlState": "23514",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "UPDATE audit_logs SET action = \u0027changed\u0027",
+    "expectedSqlState": "23514",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "UPDATE payout_recovery_offsets SET amount = amount \u002B 1",
+    "expectedSqlState": "23514",
+    "result": "REJECTED"
+  },
+  {
+    "sql": "UPDATE refund_allocations SET recovered_amount = 0 WHERE recovered_amount \u003E 0",
+    "expectedSqlState": "23514",
+    "result": "REJECTED"
+  }
+]

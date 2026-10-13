@@ -1,0 +1,14 @@
+{
+  "upgrade": "PASS",
+  "schemaParity": "PASS",
+  "appliedMigrations": 9,
+  "historicalMoneyPreserved": true,
+  "conflictBackfill": "PASS",
+  "unrelatedSourceUnheld": true,
+  "runtimeRole": "alpha_stage_runtime",
+  "runtimeDDLAndHistoryMutation": "REJECTED",
+  "conflictedRecovery": "BLOCKED",
+  "validRecovery": 10,
+  "validNetPayout": 40,
+  "scope": "Synthetic local upgrade only; runtime permissions are a rehearsal template"
+}
