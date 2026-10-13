@@ -10,6 +10,9 @@ public sealed class PayoutReconciliationController(AppDbContext db) : Controller
     [HttpGet]
     public Task<IActionResult> Queue(string kind="settlement", Guid? after=null, int limit=20, CancellationToken ct=default)
         => Execute(async () => await new PayoutReconciliationService(db).QueueAsync(kind,after,limit,User.GetUserId(),ct));
+    [HttpGet("records")]
+    public Task<IActionResult> Records(string kind="supplier", Guid? after=null, int limit=20, CancellationToken ct=default)
+        => Execute(async () => await new PayoutRecordInventoryService(db).ReadAsync(kind,after,limit,User.GetUserId(),ct));
     [HttpGet("{kind}/{id:guid}")]
     public Task<IActionResult> Inspect(string kind, Guid id, CancellationToken ct)
         => Execute(async () => await new PayoutReconciliationService(db).InspectAsync(kind,id,User.GetUserId(),ct));
