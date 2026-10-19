@@ -39,6 +39,13 @@
     <Folder Include="Services\" />
   </ItemGroup>
 
+  <!-- Public Supabase root certificate only; no secrets or private keys. -->
+  <ItemGroup>
+    <None Update="certs/prod-ca-2021.crt"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <Compile Remove="Tests/**/*.cs" />
     <Content Remove="Tests/**" />
