@@ -77,7 +77,17 @@ jobs:
           docker run --detach --rm --privileged --name aeb012-buildkit moby/buildkit:v0.23.2
           trap 'docker rm --force aeb012-buildkit >/dev/null 2>&1 || true' EXIT
           export BUILDKIT_HOST=docker-container://aeb012-buildkit
-          "$RUNNER_TEMP/railpack-bin/railpack" build --name aeb012-railpack:ci --progress plain .
+          # Prior dotnet restore/tests generated untracked obj/ assets with host NuGet paths.
+          # A Railway Git source build starts from a clean checkout, not the runner worktree.
+          # Archive only the exact tracked commit to prevent host obj/ overriding Railpack's restore.
+          test -f obj/project.assets.json
+          grep -q '/home/runner/.nuget/packages' obj/project.assets.json
+          echo "RUNNER_NUGET_ASSETS_PRESENT=PASS"
+          mkdir -p "$RUNNER_TEMP/aeb012-railpack-source"
+          git archive --format=tar HEAD | tar -xf - -C "$RUNNER_TEMP/aeb012-railpack-source"
+          test ! -e "$RUNNER_TEMP/aeb012-railpack-source/obj/project.assets.json"
+          echo "CLEAN_RAILPACK_SOURCE=PASS"
+          "$RUNNER_TEMP/railpack-bin/railpack" build --name aeb012-railpack:ci --progress plain "$RUNNER_TEMP/aeb012-railpack-source"
           docker run --rm --entrypoint /bin/sh aeb012-railpack:ci -ec '
             set -eu
             file=/app/out/certs/prod-ca-2021.crt
