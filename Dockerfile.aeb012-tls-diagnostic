@@ -1,0 +1,20 @@
+# ALPHA-AEB-012: Isolated diagnostic image only; not deployed to Railway.
+# Nonstandard filename avoids changing Railway's Railpack Dockerfile auto-detection.
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS publish
+WORKDIR /src
+COPY . .
+RUN dotnet restore Alpha.API.csproj --locked-mode \
+ && dotnet publish Alpha.API.csproj --configuration Release --no-restore -o /app/out -warnaserror \
+ && test -r /app/out/certs/prod-ca-2021.crt \
+ && cmp certs/prod-ca-2021.crt /app/out/certs/prod-ca-2021.crt
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS diagnostic
+USER root
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssl \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=publish /app/out /app/out
+ENV Database__RootCertificatePath=/app/out/certs/prod-ca-2021.crt
+USER $APP_UID
+CMD ["/bin/sh", "-c", "test -r \"$Database__RootCertificatePath\" && echo CA_FILE_READABLE=PASS"]

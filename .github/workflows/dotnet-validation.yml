@@ -43,3 +43,24 @@ jobs:
 
       - name: Run backend unit and security tests
         run: dotnet test Tests/Alpha.API.Tests/Alpha.API.Tests.csproj --configuration Release -p:RestoreLockedMode=true -warnaserror
+
+      # AEB-012: only on diagnostic security/aeb012 branches; no credentials, data writes, artifact uploads or deployments.
+      - name: Verify isolated runtime certificate and PostgreSQL VerifyFull
+        if: startsWith(github.ref, 'refs/heads/security/aeb012-')
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --file Dockerfile.aeb012-tls-diagnostic --tag aeb012-tls-check:ci .
+          docker run --rm --entrypoint /bin/sh aeb012-tls-check:ci -ec '
+            set -eu
+            ca="$Database__RootCertificatePath"
+            host="aws-1-ap-southeast-1.pooler.supabase.com"
+            test "$ca" = "/app/out/certs/prod-ca-2021.crt"
+            test -r "$ca"
+            echo "CA_IN_ISOLATED_RUNTIME=PASS"
+            openssl x509 -in "$ca" -noout -subject -issuer -dates
+            timeout 35 openssl s_client -starttls postgres \
+              -connect "$host:5432" -servername "$host" \
+              -verify_hostname "$host" -verify_return_error -CAfile "$ca" -brief </dev/null
+            echo "ISOLATED_RUNTIME_TLS=PASS"
+          '
