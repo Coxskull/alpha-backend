@@ -64,3 +64,24 @@ jobs:
               -verify_hostname "$host" -verify_return_error -CAfile "$ca" -brief </dev/null
             echo "ISOLATED_RUNTIME_TLS=PASS"
           '
+
+      - name: Verify Railpack published CA file path (diagnostic only)
+        if: startsWith(github.ref, 'refs/heads/security/aeb012-')
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/railpack-bin"
+          curl --fail --silent --show-error --location https://railpack.com/install.sh --output "$RUNNER_TEMP/install-railpack.sh"
+          RAILPACK_VERSION=0.40.1 sh "$RUNNER_TEMP/install-railpack.sh" --bin-dir "$RUNNER_TEMP/railpack-bin"
+          "$RUNNER_TEMP/railpack-bin/railpack" --version
+          docker run --detach --rm --privileged --name aeb012-buildkit moby/buildkit:v0.23.2
+          trap 'docker rm --force aeb012-buildkit >/dev/null 2>&1 || true' EXIT
+          export BUILDKIT_HOST=docker-container://aeb012-buildkit
+          "$RUNNER_TEMP/railpack-bin/railpack" build --name aeb012-railpack:ci --progress plain .
+          docker run --rm --entrypoint /bin/sh aeb012-railpack:ci -ec '
+            set -eu
+            file=/app/out/certs/prod-ca-2021.crt
+            test -r "$file"
+            echo "RAILPACK_RUNTIME_CA_READABLE=PASS"
+            sha256sum "$file"
+          '
